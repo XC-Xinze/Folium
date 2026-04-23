@@ -3,7 +3,7 @@ luhmannId: i2
 title: 索引：方法论
 status: INDEX
 tags:
-  - index
+  - '666'
   - methodology
 crossLinks:
   - 3b

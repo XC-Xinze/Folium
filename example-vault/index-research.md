@@ -3,7 +3,7 @@ luhmannId: i1
 title: 索引：加密流量研究
 status: INDEX
 tags:
-  - index
+  - '666'
   - traffic-research
 crossLinks:
   - 1

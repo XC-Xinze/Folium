@@ -2,8 +2,13 @@
 luhmannId: i0
 title: AI 大类
 status: INDEX
-tags: [index, domain, ai]
-crossLinks: [i1, i2]
+tags:
+  - '666'
+  - domain
+  - ai
+crossLinks:
+  - i1
+  - i2
 ---
 
 # AI 大类

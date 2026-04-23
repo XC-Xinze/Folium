@@ -4,6 +4,7 @@ import { ChevronRight, FolderTree, Plus, Settings, Sparkles, Tag } from 'lucide-
 import { api, type IndexNode } from '../lib/api';
 import { useUIStore } from '../store/uiStore';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
+import { setCardDragData } from '../lib/dragCard';
 
 export function Sidebar() {
   const navigate = useNavigateToCard();
@@ -125,16 +126,19 @@ export function Sidebar() {
         </button>
       </Section>
 
-      {/* All Cards：底部 */}
+      {/* All Cards：底部 — 项可拖入工作区 */}
       <Section title="ALL CARDS" scroll>
         {cardsQ.data?.cards.map((c) => (
           <button
             key={c.luhmannId}
             onClick={() => navigate(c.luhmannId)}
-            className={`w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-left hover:bg-gray-50 ${
+            draggable
+            onDragStart={(e) => setCardDragData(e, { luhmannId: c.luhmannId, title: c.title })}
+            className={`w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-left hover:bg-gray-50 cursor-grab active:cursor-grabbing ${
               focusedId === c.luhmannId ? 'bg-accentSoft' : ''
             }`}
             style={{ paddingLeft: 12 + (c.depth - 1) * 12 }}
+            title="拖到工作区"
           >
             <span className="font-mono text-[10px] text-gray-500 w-12 shrink-0">{c.luhmannId}</span>
             <span className="text-[12px] truncate">{c.title}</span>
@@ -193,7 +197,10 @@ function IndexNodeView({
         )}
         <button
           onClick={() => onSelect(node.luhmannId)}
-          className="flex-1 min-w-0 flex items-center gap-1.5 py-1.5 text-left"
+          draggable
+          onDragStart={(e) => setCardDragData(e, { luhmannId: node.luhmannId, title: node.title })}
+          className="flex-1 min-w-0 flex items-center gap-1.5 py-1.5 text-left cursor-grab active:cursor-grabbing"
+          title="拖到工作区"
         >
           <span
             className={`font-mono text-[9.5px] font-bold px-1 py-0.5 rounded shrink-0 ${

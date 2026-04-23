@@ -5,9 +5,9 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
-  addEdge,
   useEdgesState,
   useNodesState,
+  useReactFlow,
   type Connection,
   type Edge,
   type Node,
@@ -17,8 +17,9 @@ import {
   BaseEdge,
   getBezierPath,
 } from '@xyflow/react';
+import { isCardDrag, readCardDragData } from '../lib/dragCard';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, FilePlus, Layers, StickyNote, Undo2, ZoomIn } from 'lucide-react';
+import { FilePlus, Layers, Maximize2, Minimize2, StickyNote, Undo2, X, ZoomIn } from 'lucide-react';
 import { randomUUID } from '../lib/uuid';
 import { api, type Workspace, type WorkspaceEdge, type WorkspaceNode } from '../lib/api';
 import { useUIStore } from '../store/uiStore';
@@ -40,6 +41,8 @@ export function WorkspaceView(props: Props) {
 
 function WorkspaceInner({ workspaceId }: Props) {
   const setFocusWorkspace = useUIStore((s) => s.setFocusWorkspace);
+  const workspaceFullscreen = useUIStore((s) => s.workspaceFullscreen);
+  const setWorkspaceFullscreen = useUIStore((s) => s.setWorkspaceFullscreen);
   const qc = useQueryClient();
   const wsQ = useQuery({
     queryKey: ['workspace', workspaceId],
@@ -272,6 +275,48 @@ function WorkspaceInner({ workspaceId }: Props) {
   );
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const reactFlow = useReactFlow();
+
+  // —— 拖卡入工作区
+  const [dragHover, setDragHover] = useState(false);
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    if (!isCardDrag(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setDragHover(true);
+  }, []);
+  const onDragLeave = useCallback(() => setDragHover(false), []);
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragHover(false);
+      const payload = readCardDragData(e);
+      if (!payload) return;
+      // screen → flow 坐标
+      const flowPos = reactFlow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      // 居中到落点（card 视觉宽 ~340）
+      mutateWs((ws) => {
+        if (ws.nodes.some((n) => n.kind === 'card' && n.cardId === payload.luhmannId)) {
+          return ws;
+        }
+        return {
+          ...ws,
+          nodes: [
+            ...ws.nodes,
+            {
+              kind: 'card',
+              id: randomUUID(),
+              cardId: payload.luhmannId,
+              x: flowPos.x - 170,
+              y: flowPos.y - 80,
+            } as WorkspaceNode,
+          ],
+        };
+      });
+    },
+    [reactFlow, mutateWs],
+  );
+
   const onPaneDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       // 只响应在画布空白处的双击
@@ -293,15 +338,29 @@ function WorkspaceInner({ workspaceId }: Props) {
     return <div className="w-full h-full flex items-center justify-center text-sm text-red-500">{String(wsQ.error ?? '工作区不存在')}</div>;
 
   return (
-    <div ref={containerRef} className="w-full h-full relative bg-[#fafaf6]" onDoubleClick={onPaneDoubleClick}>
+    <div
+      ref={containerRef}
+      className={`w-full h-full relative bg-[#fafaf6] transition-colors ${dragHover ? 'bg-accentSoft/40' : ''}`}
+      onDoubleClick={onPaneDoubleClick}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
       {/* 顶部工具条 */}
       <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-md border border-gray-200">
         <button
+          onClick={() => setWorkspaceFullscreen(!workspaceFullscreen)}
+          className="p-1 rounded hover:bg-gray-100 text-gray-500"
+          title={workspaceFullscreen ? '退出全屏（split 视图）' : '全屏'}
+        >
+          {workspaceFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+        </button>
+        <button
           onClick={() => setFocusWorkspace(null)}
           className="p-1 rounded hover:bg-gray-100 text-gray-500"
-          title="返回 vault"
+          title="关闭工作区面板"
         >
-          <ArrowLeft size={14} />
+          <X size={14} />
         </button>
         <span className="text-[13px] font-bold text-ink">{wsQ.data.name}</span>
         <span className="text-[10px] text-gray-400">

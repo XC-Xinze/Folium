@@ -1,7 +1,8 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowDownToLine, ArrowUpToLine, Layers } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpToLine, GripVertical, Layers } from 'lucide-react';
+import { setCardDragData } from '../lib/dragCard';
 import { api, type Card } from '../lib/api';
 import { attachWikilinkHandler, renderMarkdown } from '../lib/markdown';
 import type { CardNodeData } from '../lib/cardGraph';
@@ -19,6 +20,7 @@ export function CardNode({ data, id }: NodeProps) {
     'contentMd' in card ? (card as Card) : null,
   );
   const navigate = useNavigateToCard();
+  const setFocus = useUIStore((s) => s.setFocus);
   const setFocusTag = useUIStore((s) => s.setFocusTag);
   const qc = useQueryClient();
   const contentRef = useRef<HTMLDivElement>(null);
@@ -133,9 +135,29 @@ export function CardNode({ data, id }: NodeProps) {
       style={{ width: NODE_WIDTH }}
       onClick={(e) => {
         e.stopPropagation();
+        // 单击：仅切换焦点高亮（不换 box / 不重新布局）
+        setFocus(cardLuhmannId);
+      }}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        // 双击：完整导航（可能换 box 或进入新树）
         navigate(cardLuhmannId);
       }}
     >
+      {/* 拖拽手柄：可以把这张卡拖到工作区（用 nodrag 让 React Flow 不拦截） */}
+      <div
+        draggable
+        onDragStart={(e) => {
+          e.stopPropagation();
+          setCardDragData(e, { luhmannId: cardLuhmannId, title: display.title });
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="nodrag absolute top-2 right-2 z-10 w-5 h-5 rounded text-gray-300 hover:text-accent hover:bg-accentSoft flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
+        title="拖到工作区"
+      >
+        <GripVertical size={12} />
+      </div>
+
       {/* Promote / Demote 按钮 — 仅 ATOMIC 卡 hover 时显示 */}
       {!isIndex && (
         <>

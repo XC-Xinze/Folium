@@ -52,8 +52,10 @@ export interface WorkspaceEdge {
   applied?: boolean;
   /** 应用时写到了哪张卡的 .md（保留以便撤销） */
   appliedToFile?: string;
-  /** 应用时插入的 link 字符串（如 [[1a2]]），撤销时按此精确删除 */
+  /** 应用时插入的 marker 字符串（HTML 注释 + 占位文本），撤销时按此精确定位 */
   appliedMarker?: string;
+  /** 等待 promote 的 temp 节点 id 列表（target 是 temp 时填入） */
+  pendingTempIds?: string[];
 }
 
 export interface Workspace {
@@ -124,11 +126,11 @@ export async function updateWorkspace(
   const map = await loadAll();
   const cur = map[id];
   if (!cur) throw new Error('workspace not found');
-  const next: Workspace = {
-    ...cur,
-    ...patch,
-    updatedAt: new Date().toISOString(),
-  };
+  // 不能用 {...cur, ...patch}：patch 里 undefined 会覆盖 cur 的有效值
+  const next: Workspace = { ...cur, updatedAt: new Date().toISOString() };
+  if (patch.name !== undefined) next.name = patch.name;
+  if (patch.nodes !== undefined) next.nodes = patch.nodes;
+  if (patch.edges !== undefined) next.edges = patch.edges;
   map[id] = next;
   await flush(map);
   return next;
@@ -147,8 +149,11 @@ export async function deleteWorkspace(id: string): Promise<void> {
 import { CardRepository } from '../vault/repository.js';
 
 /**
- * 把工作区里的一条边写回 vault：在 source 卡的正文末尾追加一个 marker + [[target]]
- *   marker 用 HTML 注释，撤销时按 marker 精确删除，不会误伤用户其它内容
+ * Apply 把工作区里的一条边写回 vault。
+ *   - source 必须是真实 vault 卡（要写它的 .md 文件）
+ *   - target 是 vault 卡 → 标准 [[link]]
+ *   - target 是 temp 卡 → 写"来自工作区 X"占位文本，标记 pending；temp 提升后会被自动替换为真 [[link]]
+ *   - target/source 是 note → 拒绝
  */
 export async function applyEdge(
   repo: CardRepository,
@@ -163,35 +168,56 @@ export async function applyEdge(
   const source = ws.nodes.find((n) => n.id === edge.source);
   const target = ws.nodes.find((n) => n.id === edge.target);
   if (!source || !target) return { error: 'edge endpoints not found' };
-  if (source.kind !== 'card' || target.kind !== 'card') {
-    return { error: '只能 apply 真实卡片之间的边（temp/note 不能 apply）' };
+  if (source.kind === 'note' || target.kind === 'note') {
+    return { error: '便签不能参与 apply（它们仅在工作区内存在）' };
   }
-
-  const sourceCard = repo.getById((source as CardRefNode).cardId);
-  const targetCard = repo.getById((target as CardRefNode).cardId);
-  if (!sourceCard || !targetCard) return { error: 'card not found in vault' };
-
+  if (source.kind !== 'card') {
+    return { error: 'source 必须是真实卡片才能 apply（先把临时卡提升）' };
+  }
   if (edge.applied) return { error: '此边已经 apply 过了' };
 
-  const marker = `<!-- ws:${workspaceId}:${edgeId} --> [[${targetCard.luhmannId}]]`;
+  const sourceCard = repo.getById((source as CardRefNode).cardId);
+  if (!sourceCard) return { error: 'source card not found in vault' };
 
-  // 读 source 文件，在正文末尾追加
-  const raw = await readFile(sourceCard.filePath, 'utf8');
-  const parsed = matter(raw);
-  const body = parsed.content.endsWith('\n')
-    ? parsed.content + marker + '\n'
-    : parsed.content + '\n\n' + marker + '\n';
-  // 同时把 target 加到 frontmatter.crossLinks
-  if (!Array.isArray(parsed.data.crossLinks)) parsed.data.crossLinks = [];
-  if (!parsed.data.crossLinks.includes(targetCard.luhmannId)) {
-    parsed.data.crossLinks.push(targetCard.luhmannId);
+  const markerPrefix = `<!-- ws:${workspaceId}:${edgeId}`;
+  let marker: string;
+  let pendingTempIds: string[] | undefined;
+
+  if (target.kind === 'card') {
+    const targetCard = repo.getById((target as CardRefNode).cardId);
+    if (!targetCard) return { error: 'target card not found in vault' };
+    marker = `${markerPrefix} --> [[${targetCard.luhmannId}]]`;
+
+    // 加到 frontmatter.crossLinks
+    const raw = await readFile(sourceCard.filePath, 'utf8');
+    const parsed = matter(raw);
+    const body = parsed.content.endsWith('\n')
+      ? parsed.content + marker + '\n'
+      : parsed.content + '\n\n' + marker + '\n';
+    if (!Array.isArray(parsed.data.crossLinks)) parsed.data.crossLinks = [];
+    if (!parsed.data.crossLinks.includes(targetCard.luhmannId)) {
+      parsed.data.crossLinks.push(targetCard.luhmannId);
+    }
+    await writeFile(sourceCard.filePath, matter.stringify(body, parsed.data), 'utf8');
+  } else {
+    // target 是 temp：写占位文本，等 temp 提升后自动转真链接
+    const tempNode = target as TempCardNode;
+    const titleHint = tempNode.title || '(未命名临时卡)';
+    marker = `${markerPrefix} pending:${tempNode.id} --> 🔗 来自工作区《${ws.name}》: "${titleHint}"`;
+    pendingTempIds = [tempNode.id];
+
+    const raw = await readFile(sourceCard.filePath, 'utf8');
+    const parsed = matter(raw);
+    const body = parsed.content.endsWith('\n')
+      ? parsed.content + marker + '\n'
+      : parsed.content + '\n\n' + marker + '\n';
+    await writeFile(sourceCard.filePath, matter.stringify(body, parsed.data), 'utf8');
   }
-  await writeFile(sourceCard.filePath, matter.stringify(body, parsed.data), 'utf8');
 
-  // 标记 edge 为 applied
   edge.applied = true;
   edge.appliedToFile = sourceCard.filePath;
   edge.appliedMarker = marker;
+  if (pendingTempIds) edge.pendingTempIds = pendingTempIds;
   await updateWorkspace(workspaceId, { edges: ws.edges });
   return { ok: true };
 }
@@ -205,36 +231,55 @@ export async function unapplyEdge(
   if (!ws) return { error: 'workspace not found' };
   const edge = ws.edges.find((e) => e.id === edgeId);
   if (!edge) return { error: 'edge not found' };
-  if (!edge.applied || !edge.appliedToFile || !edge.appliedMarker) {
+  if (!edge.applied || !edge.appliedToFile) {
     return { error: '此边未 apply' };
   }
 
-  // 读文件，删除带 marker 的行，并清理 frontmatter.crossLinks 中的 target
-  const target = ws.nodes.find((n) => n.id === edge.target);
-  if (!target || target.kind !== 'card') return { error: 'target not found' };
-  const targetCardId = (target as CardRefNode).cardId;
-
   const raw = await readFile(edge.appliedToFile, 'utf8');
   const parsed = matter(raw);
-  // 删除整行
+  // 按 ws:wsId:edgeId 这个稳定前缀匹配（不论 marker 后面是 [[link]] 还是占位文本）
+  const stableMarker = `<!-- ws:${workspaceId}:${edgeId}`;
   const lines = parsed.content.split('\n');
-  const newLines = lines.filter((line) => !line.includes(edge.appliedMarker!));
+  const newLines = lines.filter((line) => !line.includes(stableMarker));
   const newBody = newLines.join('\n');
 
-  // 检查正文是否还有其他对 target 的 [[link]] 引用，没有就清 frontmatter
-  const stillReferenced = new RegExp(
-    `\\[\\[\\s*${targetCardId.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\s*(\\|[^\\]]+)?\\s*\\]\\]`,
-  ).test(newBody);
-  if (!stillReferenced && Array.isArray(parsed.data.crossLinks)) {
-    parsed.data.crossLinks = parsed.data.crossLinks.filter((x: unknown) => String(x) !== targetCardId);
+  // 如果 target 已经是真卡，检查是否还有其他对它的引用，没有就清 frontmatter
+  const target = ws.nodes.find((n) => n.id === edge.target);
+  if (target && target.kind === 'card') {
+    const targetCardId = (target as CardRefNode).cardId;
+    const escaped = targetCardId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const stillReferenced = new RegExp(
+      `\\[\\[\\s*${escaped}\\s*(\\|[^\\]]+)?\\s*\\]\\]`,
+    ).test(newBody);
+    if (!stillReferenced && Array.isArray(parsed.data.crossLinks)) {
+      parsed.data.crossLinks = parsed.data.crossLinks.filter(
+        (x: unknown) => String(x) !== targetCardId,
+      );
+    }
   }
   await writeFile(edge.appliedToFile, matter.stringify(newBody, parsed.data), 'utf8');
 
   edge.applied = false;
   delete edge.appliedToFile;
   delete edge.appliedMarker;
+  delete edge.pendingTempIds;
   await updateWorkspace(workspaceId, { edges: ws.edges });
+  void repo;
   return { ok: true };
+}
+
+/** 列出所有 workspace 中等待某 temp 节点提升的边 */
+async function findEdgesPendingTemp(tempNodeId: string): Promise<Array<{ ws: Workspace; edge: WorkspaceEdge }>> {
+  const all = await loadAll();
+  const result: Array<{ ws: Workspace; edge: WorkspaceEdge }> = [];
+  for (const ws of Object.values(all)) {
+    for (const e of ws.edges) {
+      if (e.applied && e.pendingTempIds?.includes(tempNodeId)) {
+        result.push({ ws, edge: e });
+      }
+    }
+  }
+  return result;
 }
 
 /**
@@ -280,5 +325,36 @@ export async function tempToVault(
     y: tempNode.y,
   };
   await updateWorkspace(workspaceId, { nodes: ws.nodes });
+
+  // 关键：resolve 所有指向这个 temp 的 pending edges
+  const pending = await findEdgesPendingTemp(tempNode.id);
+  for (const { ws: pws, edge } of pending) {
+    if (!edge.appliedToFile) continue;
+    try {
+      const raw = await readFile(edge.appliedToFile, 'utf8');
+      const parsed = matter(raw);
+      const stableMarker = `<!-- ws:${pws.id}:${edge.id}`;
+      const newMarker = `<!-- ws:${pws.id}:${edge.id} --> [[${luhmannId}]]`;
+      const lines = parsed.content.split('\n');
+      const newLines = lines.map((line) => (line.includes(stableMarker) ? newMarker : line));
+      const newBody = newLines.join('\n');
+
+      // 加 luhmannId 到 frontmatter.crossLinks
+      if (!Array.isArray(parsed.data.crossLinks)) parsed.data.crossLinks = [];
+      if (!parsed.data.crossLinks.includes(luhmannId)) {
+        parsed.data.crossLinks.push(luhmannId);
+      }
+      await writeFile(edge.appliedToFile, matter.stringify(newBody, parsed.data), 'utf8');
+
+      // 更新 edge：清掉 pending，更新 marker
+      edge.appliedMarker = newMarker;
+      edge.pendingTempIds = (edge.pendingTempIds ?? []).filter((id) => id !== tempNode.id);
+      if (edge.pendingTempIds.length === 0) delete edge.pendingTempIds;
+      await updateWorkspace(pws.id, { edges: pws.edges });
+    } catch (err) {
+      console.error('failed to resolve pending edge', edge.id, err);
+    }
+  }
+
   return { ok: true, luhmannId };
 }

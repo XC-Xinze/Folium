@@ -1,0 +1,30 @@
+node_modules/
+dist/
+build/
+*.log
+.DS_Store
+.env
+.env.local
+
+# TypeScript 增量缓存
+*.tsbuildinfo
+
+# SQLite 索引（可重建，不入库）
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Vite
+.vite/
+
+# IDE
+.vscode/
+.idea/
+
+# 用户运行时数据（每个用户/会话独立）
+example-vault/.zettel/
+example-vault/attachments/
+
+# 后端日志
+/tmp/zk-*.log

@@ -1,0 +1,19 @@
+{
+  "name": "zettelkasten-card",
+  "version": "0.0.1",
+  "private": true,
+  "description": "A Zettelkasten card system with chain-reading semantics, Obsidian-compatible MD storage",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

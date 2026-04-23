@@ -1,0 +1,136 @@
+import type Database from 'better-sqlite3';
+import type { Card } from '../types.js';
+import { hooks } from '../hooks.js';
+
+export class CardRepository {
+  constructor(private db: Database.Database) {}
+
+  upsertMany(cards: Card[]): void {
+    const tx = this.db.transaction((batch: Card[]) => {
+      for (const card of batch) this.upsertOne(card);
+    });
+    tx(cards);
+  }
+
+  upsertOne(card: Card): void {
+    hooks.emit('card:beforeSave', card);
+
+    this.db
+      .prepare(
+        `INSERT INTO cards (luhmann_id, title, status, parent_id, sort_key, depth, content_md, file_path, mtime, created_at, updated_at)
+         VALUES (@luhmannId, @title, @status, @parentId, @sortKey, @depth, @contentMd, @filePath, @mtime, @createdAt, @updatedAt)
+         ON CONFLICT(luhmann_id) DO UPDATE SET
+           title = excluded.title,
+           status = excluded.status,
+           parent_id = excluded.parent_id,
+           sort_key = excluded.sort_key,
+           depth = excluded.depth,
+           content_md = excluded.content_md,
+           file_path = excluded.file_path,
+           mtime = excluded.mtime,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at`,
+      )
+      .run(card);
+
+    // tags
+    this.db.prepare(`DELETE FROM card_tags WHERE luhmann_id = ?`).run(card.luhmannId);
+    const insTag = this.db.prepare(`INSERT OR IGNORE INTO tags(name) VALUES (?)`);
+    const linkTag = this.db.prepare(`INSERT OR IGNORE INTO card_tags(luhmann_id, tag) VALUES (?, ?)`);
+    for (const t of card.tags) {
+      insTag.run(t);
+      linkTag.run(card.luhmannId, t);
+    }
+
+    // cross links
+    this.db.prepare(`DELETE FROM cross_links WHERE source_id = ?`).run(card.luhmannId);
+    const insLink = this.db.prepare(`INSERT OR IGNORE INTO cross_links(source_id, target_id) VALUES (?, ?)`);
+    for (const target of card.crossLinks) {
+      if (target !== card.luhmannId) insLink.run(card.luhmannId, target);
+    }
+
+    hooks.emit('card:afterSave', card);
+  }
+
+  deleteByPath(filePath: string): string | null {
+    const row = this.db.prepare(`SELECT luhmann_id FROM cards WHERE file_path = ?`).get(filePath) as
+      | { luhmann_id: string }
+      | undefined;
+    if (!row) return null;
+    hooks.emit('card:beforeDelete', row.luhmann_id);
+    this.db.prepare(`DELETE FROM cards WHERE luhmann_id = ?`).run(row.luhmann_id);
+    return row.luhmann_id;
+  }
+
+  list(): Card[] {
+    const rows = this.db.prepare(`SELECT * FROM cards ORDER BY sort_key`).all() as RawCardRow[];
+    return rows.map((r) => this.hydrate(r));
+  }
+
+  getById(luhmannId: string): Card | null {
+    const row = this.db.prepare(`SELECT * FROM cards WHERE luhmann_id = ?`).get(luhmannId) as
+      | RawCardRow
+      | undefined;
+    return row ? this.hydrate(row) : null;
+  }
+
+  count(): number {
+    return (this.db.prepare(`SELECT COUNT(*) as n FROM cards`).get() as { n: number }).n;
+  }
+
+  removeOrphans(existingPaths: Set<string>): number {
+    const all = this.db.prepare(`SELECT luhmann_id, file_path FROM cards`).all() as {
+      luhmann_id: string;
+      file_path: string;
+    }[];
+    let removed = 0;
+    const del = this.db.prepare(`DELETE FROM cards WHERE luhmann_id = ?`);
+    for (const row of all) {
+      if (!existingPaths.has(row.file_path)) {
+        hooks.emit('card:beforeDelete', row.luhmann_id);
+        del.run(row.luhmann_id);
+        removed += 1;
+      }
+    }
+    return removed;
+  }
+
+  private hydrate(row: RawCardRow): Card {
+    const tags = (this.db.prepare(`SELECT tag FROM card_tags WHERE luhmann_id = ?`).all(row.luhmann_id) as {
+      tag: string;
+    }[]).map((t) => t.tag);
+    const crossLinks = (this.db
+      .prepare(`SELECT target_id FROM cross_links WHERE source_id = ?`)
+      .all(row.luhmann_id) as { target_id: string }[]).map((l) => l.target_id);
+
+    return {
+      luhmannId: row.luhmann_id,
+      title: row.title,
+      status: row.status,
+      parentId: row.parent_id,
+      sortKey: row.sort_key,
+      depth: row.depth,
+      contentMd: row.content_md,
+      tags,
+      crossLinks,
+      filePath: row.file_path,
+      mtime: row.mtime,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+}
+
+interface RawCardRow {
+  luhmann_id: string;
+  title: string;
+  status: 'ATOMIC' | 'INDEX';
+  parent_id: string | null;
+  sort_key: string;
+  depth: number;
+  content_md: string;
+  file_path: string;
+  mtime: number;
+  created_at: string | null;
+  updated_at: string | null;
+}

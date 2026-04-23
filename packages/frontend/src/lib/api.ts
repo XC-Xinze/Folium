@@ -173,6 +173,14 @@ export const api = {
     }
     return res.json();
   },
+  deleteCard: async (id: string): Promise<{ deleted: string; filesUpdated: number; workspacesUpdated: number }> => {
+    const res = await fetch(`${BASE}/cards/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
   demoteCard: async (id: string): Promise<{ oldId: string; newId: string; filesUpdated: number }> => {
     const res = await fetch(`${BASE}/cards/${encodeURIComponent(id)}/demote`, {
       method: 'POST',

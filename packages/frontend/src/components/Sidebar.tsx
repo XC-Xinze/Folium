@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, FolderTree, Plus, Settings, Sparkles, Tag } from 'lucide-react';
+import { ChevronRight, FolderTree, Tag, Trash2 } from 'lucide-react';
 import { api, type IndexNode } from '../lib/api';
 import { useUIStore } from '../store/uiStore';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
@@ -9,38 +9,29 @@ import { setCardDragData } from '../lib/dragCard';
 export function Sidebar() {
   const navigate = useNavigateToCard();
   const setFocusTag = useUIStore((s) => s.setFocusTag);
-  const setFocusWorkspace = useUIStore((s) => s.setFocusWorkspace);
-  const setViewMode = useUIStore((s) => s.setViewMode);
   const focusedId = useUIStore((s) => s.focusedCardId);
   const focusedBoxId = useUIStore((s) => s.focusedBoxId);
   const focusedTag = useUIStore((s) => s.focusedTag);
-  const focusedWorkspaceId = useUIStore((s) => s.focusedWorkspaceId);
-  const qc = useQueryClient();
 
   const tagsQ = useQuery({ queryKey: ['tags'], queryFn: api.listTags });
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
   const indexesQ = useQuery({ queryKey: ['indexes'], queryFn: api.listIndexes });
-  const workspacesQ = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces });
-
-  const createWs = useMutation({
-    mutationFn: (name: string) => api.createWorkspace(name),
-    onSuccess: (ws) => {
+  const qc = useQueryClient();
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => api.deleteCard(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cards'] });
+      qc.invalidateQueries({ queryKey: ['indexes'] });
+      qc.invalidateQueries({ queryKey: ['positions'] });
+      qc.invalidateQueries({ queryKey: ['tags'] });
       qc.invalidateQueries({ queryKey: ['workspaces'] });
-      setFocusWorkspace(ws.id);
     },
   });
 
   return (
     <aside className="w-72 h-full border-r border-gray-200 bg-white flex flex-col">
-      <header className="h-12 px-5 flex items-center justify-between border-b border-gray-100">
-        <span className="font-bold text-sm tracking-tight">Zettelkasten</span>
-        <button
-          onClick={() => setViewMode('settings')}
-          className="text-gray-400 hover:text-ink"
-          title="设置"
-        >
-          <Settings size={16} />
-        </button>
+      <header className="h-12 px-5 flex items-center border-b border-gray-100">
+        <span className="font-bold text-sm tracking-tight">Vault</span>
       </header>
 
       {/* Indexes 树：顶部最重要 */}
@@ -100,52 +91,36 @@ export function Sidebar() {
         )}
       </Section>
 
-      {/* Workspaces：头脑风暴白板 */}
-      <Section icon={<Sparkles size={12} />} title="WORKSPACES">
-        {(workspacesQ.data?.workspaces ?? []).map((ws) => (
-          <button
-            key={ws.id}
-            onClick={() => setFocusWorkspace(ws.id)}
-            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-left hover:bg-gray-50 ${
-              focusedWorkspaceId === ws.id ? 'bg-accentSoft' : ''
-            }`}
-          >
-            <span className="text-[12px] truncate">{ws.name}</span>
-            <span className="text-[9px] text-gray-400">{ws.nodes.length}</span>
-          </button>
-        ))}
-        <button
-          onClick={() => {
-            const name = window.prompt('工作区名称：', '新工作区');
-            if (name?.trim()) createWs.mutate(name.trim());
-          }}
-          className="w-full flex items-center gap-1.5 px-3 py-1.5 rounded-md text-left text-[11px] text-gray-400 hover:text-accent hover:bg-accentSoft/40"
-        >
-          <Plus size={11} />
-          新工作区
-        </button>
-      </Section>
-
       {/* All Cards：底部 — 项可拖入工作区 */}
       <Section title="ALL CARDS" scroll>
         {cardsQ.data?.cards.map((c) => (
-          <button
+          <div
             key={c.luhmannId}
-            onClick={() => navigate(c.luhmannId)}
-            draggable
-            onDragStart={(e) => setCardDragData(e, { luhmannId: c.luhmannId, title: c.title })}
-            className={`w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-left hover:bg-gray-50 cursor-grab active:cursor-grabbing ${
+            className={`group flex items-center gap-3 px-3 py-1.5 rounded-md hover:bg-gray-50 cursor-grab active:cursor-grabbing ${
               focusedId === c.luhmannId ? 'bg-accentSoft' : ''
             }`}
             style={{ paddingLeft: 12 + (c.depth - 1) * 12 }}
+            draggable
+            onDragStart={(e) => setCardDragData(e, { luhmannId: c.luhmannId, title: c.title })}
+            onClick={() => navigate(c.luhmannId)}
             title="拖到工作区"
           >
             <span className="font-mono text-[10px] text-gray-500 w-12 shrink-0">{c.luhmannId}</span>
-            <span className="text-[12px] truncate">{c.title}</span>
+            <span className="text-[12px] truncate flex-1 min-w-0">{c.title}</span>
             {c.status === 'INDEX' && (
-              <span className="text-[8px] font-bold text-accent ml-auto shrink-0">IDX</span>
+              <span className="text-[8px] font-bold text-accent shrink-0">IDX</span>
             )}
-          </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (confirm(`删除 ${c.luhmannId}？`)) deleteMut.mutate(c.luhmannId);
+              }}
+              className="p-0.5 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+              title="删除"
+            >
+              <Trash2 size={11} />
+            </button>
+          </div>
         ))}
       </Section>
     </aside>

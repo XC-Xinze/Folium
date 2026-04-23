@@ -5,6 +5,7 @@ import { CardRepository } from '../vault/repository.js';
 import { getLinkedCards, getPotentialLinks, getReferencedFrom, getTagRelated } from '../services/links.js';
 import { buildIndexTree } from '../services/indexes.js';
 import { demoteCard, promoteCard } from '../services/promote.js';
+import { deleteVaultCard } from '../services/deleteCard.js';
 import { parseCardFile } from '../vault/parser.js';
 import { writeNewCard } from '../vault/writer.js';
 
@@ -124,6 +125,16 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       return reply.code(400).send({ error: 'promote_failed', message: msg });
+    }
+  });
+
+  app.delete<{ Params: { id: string } }>('/cards/:id', async (req, reply) => {
+    try {
+      const result = await deleteVaultCard(db, repo, req.params.id);
+      return reply.code(200).send(result);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.code(400).send({ error: 'delete_failed', message: msg });
     }
   });
 

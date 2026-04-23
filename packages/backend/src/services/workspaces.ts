@@ -75,7 +75,7 @@ const filePath = () => join(dirPath(), FILE);
 
 let cache: Record<string, Workspace> | null = null;
 
-async function loadAll(): Promise<Record<string, Workspace>> {
+export async function loadAll(): Promise<Record<string, Workspace>> {
   if (cache) return cache;
   try {
     const raw = await readFile(filePath(), 'utf8');

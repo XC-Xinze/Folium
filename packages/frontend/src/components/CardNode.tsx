@@ -1,7 +1,7 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowDownToLine, ArrowUpToLine, GripVertical, Layers } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpToLine, GripVertical, Layers, Trash2 } from 'lucide-react';
 import { setCardDragData } from '../lib/dragCard';
 import { api, type Card } from '../lib/api';
 import { attachWikilinkHandler, renderMarkdown } from '../lib/markdown';
@@ -38,6 +38,24 @@ export function CardNode({ data, id }: NodeProps) {
       qc.invalidateQueries({ queryKey: ['positions'] });
       qc.invalidateQueries({ queryKey: ['tags'] });
       navigate(result.newId);
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setPromoting(false);
+    }
+  };
+
+  const onDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`确定删除 ${cardLuhmannId} 吗？\n\n会删除 .md 文件，并清理其他卡片对它的 crossLinks 引用。`)) return;
+    setPromoting(true);
+    try {
+      await api.deleteCard(cardLuhmannId);
+      qc.invalidateQueries({ queryKey: ['cards'] });
+      qc.invalidateQueries({ queryKey: ['indexes'] });
+      qc.invalidateQueries({ queryKey: ['positions'] });
+      qc.invalidateQueries({ queryKey: ['tags'] });
+      qc.invalidateQueries({ queryKey: ['workspaces'] });
     } catch (err) {
       alert((err as Error).message);
     } finally {
@@ -144,7 +162,11 @@ export function CardNode({ data, id }: NodeProps) {
         navigate(cardLuhmannId);
       }}
     >
-      {/* 拖拽手柄：可以把这张卡拖到工作区（用 nodrag 让 React Flow 不拦截） */}
+      {/* 拖拽手柄：可以把这张卡拖到工作区
+          - nodrag class：阻止 React Flow 自己启动节点拖动
+          - nopan class：阻止 RF 在此元素触发画布平移
+          - stopPropagation 在 mousedown / pointerdown：让 RF 完全不接管这次按下
+          - 始终可见的 5px 凸出标签，hover 加深 */}
       <div
         draggable
         onDragStart={(e) => {
@@ -152,13 +174,15 @@ export function CardNode({ data, id }: NodeProps) {
           setCardDragData(e, { luhmannId: cardLuhmannId, title: display.title });
         }}
         onMouseDown={(e) => e.stopPropagation()}
-        className="nodrag absolute top-2 right-2 z-10 w-5 h-5 rounded text-gray-300 hover:text-accent hover:bg-accentSoft flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
-        title="拖到工作区"
+        onPointerDown={(e) => e.stopPropagation()}
+        className="nodrag nopan absolute top-1 right-1 z-20 px-1.5 py-1 rounded flex items-center gap-1 bg-white/80 hover:bg-accent hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 hover:border-accent shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
+        title="按住拖动到工作区（顶部胶囊或工作区画布）"
       >
-        <GripVertical size={12} />
+        <GripVertical size={10} />
+        <span>WS</span>
       </div>
 
-      {/* Promote / Demote 按钮 — 仅 ATOMIC 卡 hover 时显示 */}
+      {/* Promote / Demote / Delete 按钮 — hover 时显示 */}
       {!isIndex && (
         <>
           <button
@@ -179,6 +203,14 @@ export function CardNode({ data, id }: NodeProps) {
           </button>
         </>
       )}
+      <button
+        onClick={onDelete}
+        disabled={promoting}
+        className="absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full bg-red-500 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-all disabled:opacity-30"
+        title={`删除 ${cardLuhmannId}`}
+      >
+        <Trash2 size={12} />
+      </button>
       {/* tree 用上下；非 tree 关系（tag/cross/potential）用左右，避免边路径穿越 */}
       <Handle id="top" type="target" position={Position.Top} className="!bg-gray-300 !w-2 !h-2 !border-0" />
       <Handle id="bottom" type="source" position={Position.Bottom} className="!bg-gray-300 !w-2 !h-2 !border-0" />

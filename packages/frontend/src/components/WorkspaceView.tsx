@@ -19,7 +19,22 @@ import {
 } from '@xyflow/react';
 import { isCardDrag, readCardDragData } from '../lib/dragCard';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FilePlus, Layers, Maximize2, Minimize2, StickyNote, Undo2, X, ZoomIn } from 'lucide-react';
+import {
+  FilePlus,
+  Layers,
+  Maximize2,
+  Minimize2,
+  PanelBottom,
+  PanelLeft,
+  PanelRight,
+  PanelTop,
+  Pin,
+  PinOff,
+  StickyNote,
+  Undo2,
+  X,
+  ZoomIn,
+} from 'lucide-react';
 import { randomUUID } from '../lib/uuid';
 import { api, type Workspace, type WorkspaceEdge, type WorkspaceNode } from '../lib/api';
 import { useUIStore } from '../store/uiStore';
@@ -43,6 +58,10 @@ function WorkspaceInner({ workspaceId }: Props) {
   const setFocusWorkspace = useUIStore((s) => s.setFocusWorkspace);
   const workspaceFullscreen = useUIStore((s) => s.workspaceFullscreen);
   const setWorkspaceFullscreen = useUIStore((s) => s.setWorkspaceFullscreen);
+  const workspacePanelPosition = useUIStore((s) => s.workspacePanelPosition);
+  const setWorkspacePanelPosition = useUIStore((s) => s.setWorkspacePanelPosition);
+  const workspacePanelPinned = useUIStore((s) => s.workspacePanelPinned);
+  const toggleWorkspacePanelPinned = useUIStore((s) => s.toggleWorkspacePanelPinned);
   const qc = useQueryClient();
   const wsQ = useQuery({
     queryKey: ['workspace', workspaceId],
@@ -347,7 +366,21 @@ function WorkspaceInner({ workspaceId }: Props) {
       onDrop={onDrop}
     >
       {/* 顶部工具条 */}
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-md border border-gray-200">
+      <div className="absolute top-4 left-4 z-10 flex items-center gap-1 bg-white/95 backdrop-blur-sm px-2 py-1.5 rounded-lg shadow-md border border-gray-200">
+        {/* 4 方向 docking */}
+        <div className="flex items-center gap-0.5 px-1 border-r border-gray-200 mr-1">
+          <DockBtn icon={<PanelLeft size={13} />} active={workspacePanelPosition === 'left'} onClick={() => setWorkspacePanelPosition('left')} title="停靠到左边" />
+          <DockBtn icon={<PanelTop size={13} />} active={workspacePanelPosition === 'top'} onClick={() => setWorkspacePanelPosition('top')} title="停靠到上边" />
+          <DockBtn icon={<PanelBottom size={13} />} active={workspacePanelPosition === 'bottom'} onClick={() => setWorkspacePanelPosition('bottom')} title="停靠到下边" />
+          <DockBtn icon={<PanelRight size={13} />} active={workspacePanelPosition === 'right'} onClick={() => setWorkspacePanelPosition('right')} title="停靠到右边" />
+        </div>
+        <button
+          onClick={toggleWorkspacePanelPinned}
+          className={`p-1 rounded hover:bg-gray-100 ${workspacePanelPinned ? 'text-accent' : 'text-gray-400'}`}
+          title={workspacePanelPinned ? '已 pin（布局会被记住）' : 'pin 当前布局'}
+        >
+          {workspacePanelPinned ? <Pin size={13} /> : <PinOff size={13} />}
+        </button>
         <button
           onClick={() => setWorkspaceFullscreen(!workspaceFullscreen)}
           className="p-1 rounded hover:bg-gray-100 text-gray-500"
@@ -362,7 +395,7 @@ function WorkspaceInner({ workspaceId }: Props) {
         >
           <X size={14} />
         </button>
-        <span className="text-[13px] font-bold text-ink">{wsQ.data.name}</span>
+        <span className="text-[13px] font-bold text-ink ml-1">{wsQ.data.name}</span>
         <span className="text-[10px] text-gray-400">
           {wsQ.data.nodes.length} 节点 · {wsQ.data.edges.length} 边
         </span>
@@ -517,3 +550,27 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
 }
 
 const edgeTypes = { wsApply: ApplyEdge };
+
+function DockBtn({
+  icon,
+  active,
+  onClick,
+  title,
+}: {
+  icon: React.ReactNode;
+  active: boolean;
+  onClick: () => void;
+  title: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={`w-6 h-6 rounded flex items-center justify-center transition-colors ${
+        active ? 'bg-accent text-white' : 'text-gray-400 hover:bg-gray-100 hover:text-ink'
+      }`}
+    >
+      {icon}
+    </button>
+  );
+}

@@ -4,7 +4,7 @@ import { getDb } from '../db/client.js';
 import { CardRepository } from '../vault/repository.js';
 import { getLinkedCards, getPotentialLinks, getReferencedFrom, getTagRelated } from '../services/links.js';
 import { buildIndexTree } from '../services/indexes.js';
-import { promoteCard } from '../services/promote.js';
+import { demoteCard, promoteCard } from '../services/promote.js';
 import { parseCardFile } from '../vault/parser.js';
 import { writeNewCard } from '../vault/writer.js';
 
@@ -124,6 +124,16 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       return reply.code(400).send({ error: 'promote_failed', message: msg });
+    }
+  });
+
+  app.post<{ Params: { id: string } }>('/cards/:id/demote', async (req, reply) => {
+    try {
+      const result = await demoteCard(db, repo, req.params.id);
+      return reply.code(200).send(result);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.code(400).send({ error: 'demote_failed', message: msg });
     }
   });
 

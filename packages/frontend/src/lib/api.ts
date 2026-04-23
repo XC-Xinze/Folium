@@ -53,6 +53,47 @@ export interface SavedPosition {
 }
 export type PositionMap = Record<string, SavedPosition>;
 
+export interface CardRefNode {
+  kind: 'card';
+  id: string;
+  cardId: string;
+  x: number;
+  y: number;
+}
+export interface TempCardNode {
+  kind: 'temp';
+  id: string;
+  title: string;
+  content: string;
+  x: number;
+  y: number;
+}
+export interface NoteNode {
+  kind: 'note';
+  id: string;
+  content: string;
+  x: number;
+  y: number;
+}
+export type WorkspaceNode = CardRefNode | TempCardNode | NoteNode;
+
+export interface WorkspaceEdge {
+  id: string;
+  source: string;
+  target: string;
+  label?: string;
+  applied?: boolean;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  nodes: WorkspaceNode[];
+  edges: WorkspaceEdge[];
+}
+
 export interface ReferencedFromHit {
   sourceId: string;
   sourceTitle: string;
@@ -98,17 +139,29 @@ export const api = {
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     return res.json();
   },
-  getPositions: () => get<PositionMap>('/positions'),
-  setPosition: async (id: string, x: number, y: number): Promise<void> => {
-    const res = await fetch(`${BASE}/positions/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ x, y }),
-    });
+  getPositions: (scope: string) =>
+    get<PositionMap>(`/positions/${encodeURIComponent(scope)}`),
+  setPosition: async (
+    scope: string,
+    id: string,
+    x: number,
+    y: number,
+  ): Promise<void> => {
+    const res = await fetch(
+      `${BASE}/positions/${encodeURIComponent(scope)}/${encodeURIComponent(id)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x, y }),
+      },
+    );
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   },
-  deletePosition: async (id: string): Promise<void> => {
-    await fetch(`${BASE}/positions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  deletePosition: async (scope: string, id: string): Promise<void> => {
+    await fetch(
+      `${BASE}/positions/${encodeURIComponent(scope)}/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    );
   },
   promoteCard: async (id: string): Promise<{ oldId: string; newId: string; filesUpdated: number }> => {
     const res = await fetch(`${BASE}/cards/${encodeURIComponent(id)}/promote`, {
@@ -119,5 +172,73 @@ export const api = {
       throw new Error(j.message ?? `${res.status} ${res.statusText}`);
     }
     return res.json();
+  },
+  demoteCard: async (id: string): Promise<{ oldId: string; newId: string; filesUpdated: number }> => {
+    const res = await fetch(`${BASE}/cards/${encodeURIComponent(id)}/demote`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  // Workspaces
+  listWorkspaces: () => get<{ workspaces: Workspace[] }>('/workspaces'),
+  getWorkspace: (id: string) => get<Workspace>(`/workspaces/${encodeURIComponent(id)}`),
+  createWorkspace: async (name: string): Promise<Workspace> => {
+    const res = await fetch(`${BASE}/workspaces`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.json();
+  },
+  updateWorkspace: async (id: string, patch: Partial<Pick<Workspace, 'name' | 'nodes' | 'edges'>>): Promise<Workspace> => {
+    const res = await fetch(`${BASE}/workspaces/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.json();
+  },
+  deleteWorkspace: async (id: string): Promise<void> => {
+    await fetch(`${BASE}/workspaces/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  applyEdge: async (workspaceId: string, edgeId: string): Promise<void> => {
+    const res = await fetch(`${BASE}/workspaces/${encodeURIComponent(workspaceId)}/apply-edge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ edgeId }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? `${res.status} ${res.statusText}`);
+    }
+  },
+  unapplyEdge: async (workspaceId: string, edgeId: string): Promise<void> => {
+    const res = await fetch(`${BASE}/workspaces/${encodeURIComponent(workspaceId)}/unapply-edge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ edgeId }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? `${res.status} ${res.statusText}`);
+    }
+  },
+  tempToVault: async (workspaceId: string, nodeId: string, luhmannId: string): Promise<void> => {
+    const res = await fetch(`${BASE}/workspaces/${encodeURIComponent(workspaceId)}/temp-to-vault`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nodeId, luhmannId }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? `${res.status} ${res.statusText}`);
+    }
   },
 };

@@ -62,9 +62,11 @@ function CanvasInner({ focusedBoxId, focusedCardId }: Props) {
     enabled: showPotential && backboneIds.length > 0,
   });
 
+  // 位置按 box 隔离：不同 box 即使是同一张卡，也有各自独立的位置
+  const scope = `box:${focusedBoxId}`;
   const positionsQ = useQuery({
-    queryKey: ['positions'],
-    queryFn: api.getPositions,
+    queryKey: ['positions', scope],
+    queryFn: () => api.getPositions(scope),
   });
 
   const graph = useMemo(() => {
@@ -113,20 +115,19 @@ function CanvasInner({ focusedBoxId, focusedCardId }: Props) {
     setEdges(graph.edges);
   }, [graph, focusedBoxId, setNodes, setEdges]);
 
-  // 拖拽结束 → 乐观更新 positions cache + 异步写磁盘
-  // 乐观更新避免"切 box 时 positions 还没拿到 → 刚拖的位置丢失"的竞态
+  // 拖拽结束 → 乐观更新 + 异步写磁盘（scope 限定）
   const onNodeDragStop = useCallback(
     (_e: unknown, node: Node) => {
-      if (node.id.startsWith('__')) return; // tag-root 等虚拟节点
-      qc.setQueryData<PositionMap>(['positions'], (old = {}) => ({
+      if (node.id.startsWith('__')) return;
+      qc.setQueryData<PositionMap>(['positions', scope], (old = {}) => ({
         ...old,
         [node.id]: { x: node.position.x, y: node.position.y },
       }));
-      api.setPosition(node.id, node.position.x, node.position.y).catch((err) => {
+      api.setPosition(scope, node.id, node.position.x, node.position.y).catch((err) => {
         console.error('save position failed', err);
       });
     },
-    [qc],
+    [qc, scope],
   );
 
   if (cardsQ.isLoading) return <FullCenter>加载卡片库…</FullCenter>;

@@ -7,10 +7,11 @@ import { CardRepository } from '../vault/repository.js';
 import {
   parseSegments,
   segmentsToCanonical,
+  sortKey,
   deriveParentIdFn,
   type Segment,
 } from '../vault/luhmann.js';
-import { setPosition, deletePosition, loadPositions } from './positions.js';
+import { renameCardInAllScopes } from './positions.js';
 import { walkMd } from '../vault/scanner.js';
 import { parseCardFile } from '../vault/parser.js';
 
@@ -18,39 +19,109 @@ function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/* ============================================================
+ * Promote / Demote 命名计算
+ * ============================================================ */
+
+type IdResult = { ok: true; newId: string } | { ok: false; error: string };
+
 /**
- * 算提权后的新 luhmannId。
- *   规则：父 ID + 一个字母后缀（'a', 'b', ...），跳过已存在的 ID。
- *   要求：父 ID 必须以字母段结尾（如 1a），新 id 才能合并成连续字母段（1a + a = 1aa, 视为深度 2）。
+ * 提权：把卡片移到父级所在的层级（成为父级的兄弟）。
+ *
+ * 规则（按父级最后一段类型分支）：
+ *   - 父级以字母结尾（如 1a）→ 加字母后缀做"标记"（1a → 1aa, 1ab, ...）
+ *     这种命名能保留"从 1a 提上来"的语义
+ *   - 父级以数字结尾（如 1a2）→ 在祖父下找下一个空数字位（1a3, 1a4, ...）
+ *   - 没有祖父（父就是顶层）→ 在最顶层加新的同类型段（i → j; 1 → 4）
  */
-export function computePromotedId(
-  oldId: string,
-  existingIds: Set<string>,
-): { ok: true; newId: string } | { ok: false; error: string } {
+export function computePromotedId(oldId: string, existingIds: Set<string>): IdResult {
   const segs = parseSegments(oldId);
-  if (segs.length < 3) {
-    return { ok: false, error: '只能提权深度 ≥ 3 的卡' };
+  if (segs.length < 2) {
+    return { ok: false, error: '顶层卡无法提权（已经在最顶）' };
   }
+
   const parentId = deriveParentIdFn(oldId);
   if (!parentId) return { ok: false, error: '找不到父级' };
   const parentSegs = parseSegments(parentId);
-  const lastParentSeg = parentSegs[parentSegs.length - 1];
-  if (!lastParentSeg || lastParentSeg.kind !== 'alpha') {
-    return { ok: false, error: '父级以数字结尾，目前不支持这种提权' };
+  const lastParentSeg = parentSegs[parentSegs.length - 1]!;
+  const grandparentId = deriveParentIdFn(parentId); // 可能为 null（父级是顶层）
+
+  if (lastParentSeg.kind === 'alpha') {
+    // 标记式：父级 + 字母
+    for (let i = 0; i < 26; i++) {
+      const ch = String.fromCharCode('a'.charCodeAt(0) + i);
+      const candidate = parentId + ch;
+      if (!existingIds.has(candidate)) return { ok: true, newId: candidate };
+    }
+    return { ok: false, error: '所有 a-z 标记后缀都已被占用' };
   }
-  for (let i = 0; i < 26; i++) {
-    const ch = String.fromCharCode('a'.charCodeAt(0) + i);
-    const candidate = parentId + ch;
-    if (!existingIds.has(candidate)) return { ok: true, newId: candidate };
+
+  // 父级以数字结尾：在祖父下找下一个数字位
+  const startN = lastParentSeg.value + 1;
+  if (grandparentId === null) {
+    // 父级是顶层数字段（如 1），找下一个顶层数字
+    for (let i = startN; i < startN + 1000; i++) {
+      const candidate = String(i);
+      if (!existingIds.has(candidate)) return { ok: true, newId: candidate };
+    }
+  } else {
+    // 父级是中间层数字段（如 1a2），祖父末尾必为字母（如 1a），新位是 1aN
+    for (let i = startN; i < startN + 1000; i++) {
+      const candidate = grandparentId + String(i);
+      if (!existingIds.has(candidate)) return { ok: true, newId: candidate };
+    }
   }
-  return { ok: false, error: '所有 a-z 后缀都已用完' };
+  return { ok: false, error: '找不到可用的提权位置' };
 }
 
 /**
- * 翻转后缀的段类型，让它和新前缀的尾部交替。
- * 把字母段映射成数字（a=1,b=2,...），数字段映射成字母（1=a,2=b,...）。
- *   原 `[a, 1, b]` 在 `aa` 之后 → 第一个段需要数字 → flip 后 `[1, a, 2]`
+ * 降权：把卡片移到下一个兄弟之下，成为它的子节点。
+ *   策略：找 sortKey 排序后的"下一个兄弟"，把卡片塞到它下面。
+ *   如果没有兄弟卡片（在父下唯一），无法降权（没有可用的"宿主"）。
  */
+export function computeDemotedId(
+  oldId: string,
+  existingIds: Set<string>,
+  allIds: string[],
+): (IdResult & { newParent?: string }) {
+  const parentId = deriveParentIdFn(oldId);
+  // 找 siblings：同 parent
+  const siblings = allIds.filter(
+    (id) => id !== oldId && deriveParentIdFn(id) === parentId,
+  );
+  if (siblings.length === 0) {
+    return { ok: false, error: '没有兄弟卡片可作为宿主，无法降权' };
+  }
+
+  // 按 sortKey 排序，找比 oldId 大的第一个；都没有就回环到第一个
+  const oldKey = sortKey(oldId);
+  const sorted = siblings.slice().sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+  const newParent = sorted.find((s) => sortKey(s).localeCompare(oldKey) > 0) ?? sorted[0]!;
+
+  // 在 newParent 下找下一个空位
+  const parentSegs = parseSegments(newParent);
+  const parentLastSeg = parentSegs[parentSegs.length - 1]!;
+  if (parentLastSeg.kind === 'alpha') {
+    // 子段必须是数字
+    for (let i = 1; i < 10000; i++) {
+      const candidate = newParent + String(i);
+      if (!existingIds.has(candidate)) return { ok: true, newId: candidate, newParent };
+    }
+  } else {
+    // 子段必须是字母
+    for (let i = 0; i < 26; i++) {
+      const ch = String.fromCharCode('a'.charCodeAt(0) + i);
+      const candidate = newParent + ch;
+      if (!existingIds.has(candidate)) return { ok: true, newId: candidate, newParent };
+    }
+  }
+  return { ok: false, error: '找不到可用的降权位置' };
+}
+
+/* ============================================================
+ * 子树重命名（promote/demote 共用）
+ * ============================================================ */
+
 function flipSuffix(suffix: Segment[], firstShouldBe: 'num' | 'alpha'): Segment[] {
   let nextShouldBe = firstShouldBe;
   const result: Segment[] = [];
@@ -61,7 +132,7 @@ function flipSuffix(suffix: Segment[], firstShouldBe: 'num' | 'alpha'): Segment[
       const ch = seg.value[0]!;
       const code = ch.charCodeAt(0) - 'a'.charCodeAt(0) + 1;
       if (code < 1 || code > 26 || seg.value.length > 1) {
-        throw new Error(`无法把字母段 ${seg.value} 映射成单数字（要求 a-z 单字符）`);
+        throw new Error(`无法把字母段 "${seg.value}" 映射成单数字（要求 a-z 单字符）`);
       }
       result.push({ kind: 'num', value: code });
     } else if (nextShouldBe === 'alpha' && seg.kind === 'num') {
@@ -78,7 +149,6 @@ function flipSuffix(suffix: Segment[], firstShouldBe: 'num' | 'alpha'): Segment[
   return result;
 }
 
-/** 给定原 root 和新 root，构建整个子树的 oldId → newId 映射 */
 function computeRenameMap(
   originalRoot: string,
   newRoot: string,
@@ -90,7 +160,6 @@ function computeRenameMap(
   const originalRootSegs = parseSegments(originalRoot);
   const newRootSegs = parseSegments(newRoot);
   const newLastSeg = newRootSegs[newRootSegs.length - 1]!;
-  // newRoot 尾部是字母 → 后缀第一段需要数字；反之亦然
   const firstSuffixShouldBe: 'num' | 'alpha' = newLastSeg.kind === 'alpha' ? 'num' : 'alpha';
 
   for (const desc of descendants) {
@@ -118,63 +187,52 @@ function isDescendantOf(child: string, ancestor: string): boolean {
   return true;
 }
 
-interface PromoteResult {
+export interface RenameResult {
   oldId: string;
   newId: string;
-  renamed: number; // 含子孙
-  filesUpdated: number; // 不含被改名的文件
+  renamed: number;
+  filesUpdated: number;
 }
 
 /**
- * 执行级联提权：
- *   1. 算新 id 和子孙的 rename map（带类型翻转）
- *   2. 验证不和现存非重命名卡冲突
- *   3. 按映射写新文件 + 更新 frontmatter + 替换正文 [[link]]
- *   4. 删旧文件
- *   5. 更新其他文件的引用
- *   6. 迁移 positions
- *   7. 更新 DB
+ * 通用子树重命名：把 oldId 改成 newId，子孙按交替规则跟着改。
+ * 处理：文件改名、frontmatter 更新、其他文件 [[link]]/crossLinks 替换、位置迁移、DB 更新。
  */
-export async function promoteCard(
+async function renameSubtree(
   db: Database.Database,
   repo: CardRepository,
   cardId: string,
-): Promise<PromoteResult> {
+  newId: string,
+): Promise<RenameResult> {
   const card = repo.getById(cardId);
   if (!card) throw new Error(`card not found: ${cardId}`);
+  if (cardId === newId) {
+    return { oldId: cardId, newId, renamed: 0, filesUpdated: 0 };
+  }
 
   const allCards = repo.list();
   const allIds = allCards.map((c) => c.luhmannId);
-  const allIdsSet = new Set(allIds);
-
-  // === 1. 算新 id ===
-  const compute = computePromotedId(cardId, allIdsSet);
-  if (!compute.ok) throw new Error(compute.error);
-  const newId = compute.newId;
-
-  // === 1a. 子孙 + rename map（带类型翻转） ===
   const descendants = allIds.filter((id) => isDescendantOf(id, cardId));
   const renameMap = computeRenameMap(cardId, newId, descendants);
 
-  // === 2. 验证：新 ID 不能撞到任何不在 renameMap 里的现存卡 ===
+  // 验证
   const renamedSources = new Set(renameMap.keys());
   const newIds = new Set(renameMap.values());
   for (const id of allIds) {
     if (renamedSources.has(id)) continue;
     if (newIds.has(id)) {
-      throw new Error(`提权后会与现有卡 "${id}" 冲突，请先处理`);
+      throw new Error(`重命名后会与现有卡 "${id}" 冲突`);
     }
   }
-  // 同时新 ID 集合内部也不能有重复
   if (newIds.size !== renameMap.size) {
-    throw new Error('级联提权出现内部 ID 冲突，请检查子孙编号');
+    throw new Error('级联重命名出现内部 ID 冲突');
   }
 
   const today = new Date().toISOString().slice(0, 10);
   const linkReFor = (oid: string) =>
     new RegExp(`\\[\\[\\s*${escapeRe(oid)}\\s*(\\|[^\\]]+)?\\s*\\]\\]`, 'g');
 
-  // === 3. 写新文件（每个 renameMap 条目）===
+  // 写新文件
   const oldPaths: string[] = [];
   for (const [oldId, newCardId] of renameMap) {
     const oldRow = repo.getById(oldId);
@@ -185,14 +243,12 @@ export async function promoteCard(
     const parsed = matter(raw);
     parsed.data.luhmannId = newCardId;
     parsed.data.updated = today;
-    // 改 crossLinks 中可能引用其他被重命名的卡
     if (Array.isArray(parsed.data.crossLinks)) {
       parsed.data.crossLinks = parsed.data.crossLinks.map((x: unknown) => {
         const s = String(x);
         return renameMap.get(s) ?? s;
       });
     }
-    // 改正文里所有可能被重命名的 [[link]]
     let body = parsed.content;
     for (const [oid, nid] of renameMap) {
       body = body.replace(linkReFor(oid), (_m, alias?: string) => `[[${nid}${alias ?? ''}]]`);
@@ -201,22 +257,19 @@ export async function promoteCard(
     if (newPath !== oldPath) oldPaths.push(oldPath);
   }
 
-  // === 4. 删旧文件 ===
+  // 删旧文件
   for (const p of oldPaths) {
     try {
       await unlink(p);
-    } catch {
-      // 文件可能因为同名 newPath = oldPath 已不存在
-    }
+    } catch {}
   }
 
-  // === 5. 其他卡的引用更新 ===
+  // 其他文件的引用更新
   let filesUpdated = 0;
   const allRenamedSourceBases = new Set([...renameMap.keys()]);
   const allRenamedTargetBases = new Set([...renameMap.values()]);
   for await (const file of walkMd(config.vaultPath)) {
     const base = basename(file, '.md');
-    // 跳过被重命名的文件本身（它们的内容已在 step 3 处理）
     if (allRenamedSourceBases.has(base) || allRenamedTargetBases.has(base)) continue;
     let content: string;
     try {
@@ -226,7 +279,6 @@ export async function promoteCard(
     }
     const p = matter(content);
     let changed = false;
-
     if (Array.isArray(p.data.crossLinks)) {
       const updated = p.data.crossLinks.map((x: unknown) => {
         const s = String(x);
@@ -239,7 +291,6 @@ export async function promoteCard(
       });
       p.data.crossLinks = updated;
     }
-
     let body = p.content;
     for (const [oid, nid] of renameMap) {
       const re = linkReFor(oid);
@@ -249,24 +300,18 @@ export async function promoteCard(
       });
       body = newBody;
     }
-
     if (changed) {
       await writeFile(file, matter.stringify(body, p.data), 'utf8');
       filesUpdated += 1;
     }
   }
 
-  // === 6. 迁移 positions ===
-  const positions = await loadPositions();
+  // 位置迁移
   for (const [oid, nid] of renameMap) {
-    if (positions[oid]) {
-      const { x, y } = positions[oid];
-      await setPosition(nid, x, y);
-      await deletePosition(oid);
-    }
+    await renameCardInAllScopes(oid, nid);
   }
 
-  // === 7. DB：删旧记录，重扫所有文件 ===
+  // DB 更新
   for (const oid of renameMap.keys()) {
     db.prepare(`DELETE FROM cards WHERE luhmann_id = ?`).run(oid);
   }
@@ -276,4 +321,31 @@ export async function promoteCard(
   }
 
   return { oldId: cardId, newId, renamed: renameMap.size, filesUpdated };
+}
+
+/* ============================================================
+ * 公开 API
+ * ============================================================ */
+
+export async function promoteCard(
+  db: Database.Database,
+  repo: CardRepository,
+  cardId: string,
+): Promise<RenameResult> {
+  const allCards = repo.list();
+  const compute = computePromotedId(cardId, new Set(allCards.map((c) => c.luhmannId)));
+  if (!compute.ok) throw new Error(compute.error);
+  return renameSubtree(db, repo, cardId, compute.newId);
+}
+
+export async function demoteCard(
+  db: Database.Database,
+  repo: CardRepository,
+  cardId: string,
+): Promise<RenameResult> {
+  const allCards = repo.list();
+  const ids = allCards.map((c) => c.luhmannId);
+  const compute = computeDemotedId(cardId, new Set(ids), ids);
+  if (!compute.ok) throw new Error(compute.error);
+  return renameSubtree(db, repo, cardId, compute.newId);
 }

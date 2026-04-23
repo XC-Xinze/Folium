@@ -1,7 +1,7 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowUpToLine, Layers } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpToLine, Layers } from 'lucide-react';
 import { api, type Card } from '../lib/api';
 import { attachWikilinkHandler, renderMarkdown } from '../lib/markdown';
 import type { CardNodeData } from '../lib/cardGraph';
@@ -12,6 +12,9 @@ import { useUIStore } from '../store/uiStore';
 export function CardNode({ data, id }: NodeProps) {
   const nodeData = data as unknown as CardNodeData;
   const { card, variant } = nodeData;
+  // 关键：用 card.luhmannId 拉取，不用 React Flow 的 node id
+  // 因为 workspace 里节点 id 是 workspace 本地 uuid，不是 luhmannId
+  const cardLuhmannId = card.luhmannId;
   const [full, setFull] = useState<Card | null>(
     'contentMd' in card ? (card as Card) : null,
   );
@@ -20,13 +23,32 @@ export function CardNode({ data, id }: NodeProps) {
   const qc = useQueryClient();
   const contentRef = useRef<HTMLDivElement>(null);
   const [promoting, setPromoting] = useState(false);
+  void id; // 仅在某些场景需要，主体逻辑用 cardLuhmannId
 
   const onPromote = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`确定提权 ${id} 吗？\n\n会重命名文件并更新所有引用 [[${id}]] → [[新ID]]`)) return;
+    if (!confirm(`确定提权 ${cardLuhmannId} 吗？\n\n会重命名文件并更新所有引用 [[${cardLuhmannId}]] → [[新ID]]`)) return;
     setPromoting(true);
     try {
-      const result = await api.promoteCard(id);
+      const result = await api.promoteCard(cardLuhmannId);
+      qc.invalidateQueries({ queryKey: ['cards'] });
+      qc.invalidateQueries({ queryKey: ['indexes'] });
+      qc.invalidateQueries({ queryKey: ['positions'] });
+      qc.invalidateQueries({ queryKey: ['tags'] });
+      navigate(result.newId);
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setPromoting(false);
+    }
+  };
+
+  const onDemote = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`确定降权 ${cardLuhmannId} 吗？\n\n卡片会变成下一个兄弟卡片的子卡，子树跟随移动。`)) return;
+    setPromoting(true);
+    try {
+      const result = await api.demoteCard(cardLuhmannId);
       qc.invalidateQueries({ queryKey: ['cards'] });
       qc.invalidateQueries({ queryKey: ['indexes'] });
       qc.invalidateQueries({ queryKey: ['positions'] });
@@ -44,7 +66,7 @@ export function CardNode({ data, id }: NodeProps) {
     if (full) return;
     let cancelled = false;
     api
-      .getCard(id)
+      .getCard(cardLuhmannId)
       .then((c) => {
         if (!cancelled) setFull(c);
       })
@@ -52,7 +74,7 @@ export function CardNode({ data, id }: NodeProps) {
     return () => {
       cancelled = true;
     };
-  }, [id, full]);
+  }, [cardLuhmannId, full]);
 
   useEffect(() => {
     if (!contentRef.current) return;
@@ -91,8 +113,10 @@ export function CardNode({ data, id }: NodeProps) {
   } as const;
   const styles = stylesByVariant[variant];
 
-  const isIndex = 'status' in card && card.status === 'INDEX';
-  const tags = 'tags' in card ? card.tags : [];
+  // 优先用已加载的 full（在 workspace 里 card 是 dummy）
+  const display = full ?? card;
+  const isIndex = 'status' in display && display.status === 'INDEX';
+  const tags = 'tags' in display ? display.tags : [];
   const sharedBoxes = nodeData.sharedBoxes ?? [];
   const sharedBoxLabels = nodeData.sharedBoxLabels ?? [];
   const isShared = sharedBoxes.length > 1; // 被多个 INDEX 引用
@@ -109,19 +133,29 @@ export function CardNode({ data, id }: NodeProps) {
       style={{ width: NODE_WIDTH }}
       onClick={(e) => {
         e.stopPropagation();
-        navigate(id);
+        navigate(cardLuhmannId);
       }}
     >
-      {/* Promote 按钮 — 仅 ATOMIC 卡 hover 时显示 */}
+      {/* Promote / Demote 按钮 — 仅 ATOMIC 卡 hover 时显示 */}
       {!isIndex && (
-        <button
-          onClick={onPromote}
-          disabled={promoting}
-          className="absolute -top-2 -left-2 z-10 w-6 h-6 rounded-full bg-amber-500 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-amber-600 transition-all disabled:opacity-30"
-          title={`提权 ${id} → 父级的兄弟 (e.g., 1a2 → 1aa)`}
-        >
-          <ArrowUpToLine size={12} />
-        </button>
+        <>
+          <button
+            onClick={onPromote}
+            disabled={promoting}
+            className="absolute -top-2 -left-2 z-10 w-6 h-6 rounded-full bg-amber-500 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-amber-600 transition-all disabled:opacity-30"
+            title={`提权 ${cardLuhmannId} → 父级的兄弟 (e.g., 1a2 → 1aa)`}
+          >
+            <ArrowUpToLine size={12} />
+          </button>
+          <button
+            onClick={onDemote}
+            disabled={promoting}
+            className="absolute -top-2 left-6 z-10 w-6 h-6 rounded-full bg-sky-500 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-sky-600 transition-all disabled:opacity-30"
+            title={`降权 ${cardLuhmannId} → 下一个兄弟卡片的子卡`}
+          >
+            <ArrowDownToLine size={12} />
+          </button>
+        </>
       )}
       {/* tree 用上下；非 tree 关系（tag/cross/potential）用左右，避免边路径穿越 */}
       <Handle id="top" type="target" position={Position.Top} className="!bg-gray-300 !w-2 !h-2 !border-0" />
@@ -134,9 +168,9 @@ export function CardNode({ data, id }: NodeProps) {
       <header className="px-5 pt-4 pb-3 flex items-start justify-between gap-3">
         <div className="flex items-baseline gap-2 min-w-0">
           <span className={`font-mono text-[11px] font-bold px-1.5 py-0.5 rounded ${styles.badge}`}>
-            {card.luhmannId}
+            {display.luhmannId}
           </span>
-          <h3 className="text-[13px] font-bold tracking-tight truncate">{card.title}</h3>
+          <h3 className="text-[13px] font-bold tracking-tight truncate">{display.title || cardLuhmannId}</h3>
         </div>
         {isIndex && (
           <span className="shrink-0 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-accent text-white">

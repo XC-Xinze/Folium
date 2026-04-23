@@ -5,6 +5,8 @@ import { Canvas } from './components/Canvas';
 import { NewCardBar } from './components/NewCardBar';
 import { SettingsView } from './components/SettingsView';
 import { TagView } from './components/TagView';
+import { WorkspaceView } from './components/WorkspaceView';
+import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { useUIStore } from './store/uiStore';
 import { api } from './lib/api';
 
@@ -14,6 +16,7 @@ export function App() {
   const focusedId = useUIStore((s) => s.focusedCardId);
   const focusedBoxId = useUIStore((s) => s.focusedBoxId);
   const focusedTag = useUIStore((s) => s.focusedTag);
+  const focusedWorkspaceId = useUIStore((s) => s.focusedWorkspaceId);
   const setBoxAndFocus = useUIStore((s) => s.setBoxAndFocus);
   const viewMode = useUIStore((s) => s.viewMode);
 
@@ -40,9 +43,15 @@ export function App() {
           </div>
         ) : (
           <>
-            <NewCardBar />
+            {/* 顶部细条：workspace 切换器永远可见 */}
+            <div className="flex items-center justify-end px-6 pt-4 pb-1 border-b border-gray-100/60 bg-[#fafafa]">
+              <WorkspaceSwitcher />
+            </div>
+            {viewMode !== 'workspace' && <NewCardBar />}
             <div className="flex-1 relative min-h-0">
-              {viewMode === 'tag' && focusedTag ? (
+              {viewMode === 'workspace' && focusedWorkspaceId ? (
+                <WorkspaceView workspaceId={focusedWorkspaceId} />
+              ) : viewMode === 'tag' && focusedTag ? (
                 <TagView tag={focusedTag} />
               ) : focusedBoxId && focusedId ? (
                 <Canvas focusedBoxId={focusedBoxId} focusedCardId={focusedId} />

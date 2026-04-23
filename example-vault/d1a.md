@@ -1,12 +1,12 @@
 ---
-luhmannId: 1aa
+luhmannId: d1a
 title: RBF 核函数优化
 status: ATOMIC
 tags:
   - SVM
   - ML
 crossLinks:
-  - 1ab
+  - d1
 created: 2026-01-17T00:00:00.000Z
 updated: '2026-04-23'
 ---
@@ -17,4 +17,4 @@ updated: '2026-04-23'
 
 代价是：核矩阵计算复杂度为 O(n²)，对大规模流量数据集是显著瓶颈。需要结合 Nyström 近似或随机傅里叶特征。
 
-参见 [[1ab]] 关于核方法在其他领域的对照。
+参见 [[d1]] 关于核方法在其他领域的对照。

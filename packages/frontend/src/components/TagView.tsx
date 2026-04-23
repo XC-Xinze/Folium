@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Background,
   Controls,
@@ -12,7 +12,7 @@ import {
   type Node,
 } from '@xyflow/react';
 import { ArrowLeft, Tag } from 'lucide-react';
-import { api } from '../lib/api';
+import { api, type PositionMap } from '../lib/api';
 import { useUIStore } from '../store/uiStore';
 import { CardNode } from './CardNode';
 import { TagRootNode } from './TagRootNode';
@@ -36,7 +36,11 @@ function TagViewInner({ tag }: Props) {
   const setFocusTag = useUIStore((s) => s.setFocusTag);
   const q = useQuery({ queryKey: ['tag-cards', tag], queryFn: () => api.getCardsByTag(tag) });
 
-  const positionsQ = useQuery({ queryKey: ['positions'], queryFn: api.getPositions });
+  const scope = `tag:${tag}`;
+  const positionsQ = useQuery({
+    queryKey: ['positions', scope],
+    queryFn: () => api.getPositions(scope),
+  });
 
   const graph = useMemo(() => {
     if (!q.data?.cards) return { nodes: [] as Node[], edges: [] as Edge[] };
@@ -59,12 +63,20 @@ function TagViewInner({ tag }: Props) {
     setEdges(graph.edges);
   }, [graph, setNodes, setEdges]);
 
-  const onNodeDragStop = useCallback((_e: unknown, node: Node) => {
-    if (node.id.startsWith('__')) return;
-    api.setPosition(node.id, node.position.x, node.position.y).catch((err) => {
-      console.error('save position failed', err);
-    });
-  }, []);
+  const qc = useQueryClient();
+  const onNodeDragStop = useCallback(
+    (_e: unknown, node: Node) => {
+      if (node.id.startsWith('__')) return;
+      qc.setQueryData<PositionMap>(['positions', scope], (old = {}) => ({
+        ...old,
+        [node.id]: { x: node.position.x, y: node.position.y },
+      }));
+      api.setPosition(scope, node.id, node.position.x, node.position.y).catch((err) => {
+        console.error('save position failed', err);
+      });
+    },
+    [qc, scope],
+  );
 
   return (
     <div className="w-full h-full relative bg-[#fafafa]">

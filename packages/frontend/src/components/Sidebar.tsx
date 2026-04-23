@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, FolderTree, Settings, Tag } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ChevronRight, FolderTree, Plus, Settings, Sparkles, Tag } from 'lucide-react';
 import { api, type IndexNode } from '../lib/api';
 import { useUIStore } from '../store/uiStore';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
@@ -8,14 +8,26 @@ import { useNavigateToCard } from '../lib/useNavigateToCard';
 export function Sidebar() {
   const navigate = useNavigateToCard();
   const setFocusTag = useUIStore((s) => s.setFocusTag);
+  const setFocusWorkspace = useUIStore((s) => s.setFocusWorkspace);
   const setViewMode = useUIStore((s) => s.setViewMode);
   const focusedId = useUIStore((s) => s.focusedCardId);
   const focusedBoxId = useUIStore((s) => s.focusedBoxId);
   const focusedTag = useUIStore((s) => s.focusedTag);
+  const focusedWorkspaceId = useUIStore((s) => s.focusedWorkspaceId);
+  const qc = useQueryClient();
 
   const tagsQ = useQuery({ queryKey: ['tags'], queryFn: api.listTags });
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
   const indexesQ = useQuery({ queryKey: ['indexes'], queryFn: api.listIndexes });
+  const workspacesQ = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces });
+
+  const createWs = useMutation({
+    mutationFn: (name: string) => api.createWorkspace(name),
+    onSuccess: (ws) => {
+      qc.invalidateQueries({ queryKey: ['workspaces'] });
+      setFocusWorkspace(ws.id);
+    },
+  });
 
   return (
     <aside className="w-72 h-full border-r border-gray-200 bg-white flex flex-col">
@@ -85,6 +97,32 @@ export function Sidebar() {
               </button>
             ))
         )}
+      </Section>
+
+      {/* Workspaces：头脑风暴白板 */}
+      <Section icon={<Sparkles size={12} />} title="WORKSPACES">
+        {(workspacesQ.data?.workspaces ?? []).map((ws) => (
+          <button
+            key={ws.id}
+            onClick={() => setFocusWorkspace(ws.id)}
+            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-left hover:bg-gray-50 ${
+              focusedWorkspaceId === ws.id ? 'bg-accentSoft' : ''
+            }`}
+          >
+            <span className="text-[12px] truncate">{ws.name}</span>
+            <span className="text-[9px] text-gray-400">{ws.nodes.length}</span>
+          </button>
+        ))}
+        <button
+          onClick={() => {
+            const name = window.prompt('工作区名称：', '新工作区');
+            if (name?.trim()) createWs.mutate(name.trim());
+          }}
+          className="w-full flex items-center gap-1.5 px-3 py-1.5 rounded-md text-left text-[11px] text-gray-400 hover:text-accent hover:bg-accentSoft/40"
+        >
+          <Plus size={11} />
+          新工作区
+        </button>
       </Section>
 
       {/* All Cards：底部 */}

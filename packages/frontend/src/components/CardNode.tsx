@@ -1,4 +1,4 @@
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowDownToLine, ArrowUpToLine, Check, GripVertical, Layers, Pencil, Trash2, X } from 'lucide-react';
@@ -10,9 +10,14 @@ import { NODE_WIDTH } from '../lib/cardGraph';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
 import { useUIStore } from '../store/uiStore';
 
-export function CardNode({ data, id }: NodeProps) {
+export function CardNode({ data, id, selected }: NodeProps) {
   const nodeData = data as unknown as CardNodeData;
   const { card, variant } = nodeData;
+  const savedW = nodeData.savedW;
+  const savedH = nodeData.savedH;
+  const focusedBoxId = useUIStore((s) => s.focusedBoxId);
+  const focusedTag = useUIStore((s) => s.focusedTag);
+  const scope = focusedTag ? `tag:${focusedTag}` : `box:${focusedBoxId ?? ''}`;
   // 关键：用 card.luhmannId 拉取，不用 React Flow 的 node id
   // 因为 workspace 里节点 id 是 workspace 本地 uuid，不是 luhmannId
   const cardLuhmannId = card.luhmannId;
@@ -89,6 +94,12 @@ export function CardNode({ data, id }: NodeProps) {
 
   const onDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    // 工作区里：仅移除工作区节点引用，不动 vault
+    if (nodeData.onDeleteOverride) {
+      if (!confirm(`从工作区移除 ${cardLuhmannId}？（不删 vault 卡片）`)) return;
+      nodeData.onDeleteOverride();
+      return;
+    }
     if (!confirm(`确定删除 ${cardLuhmannId} 吗？\n\n会删除 .md 文件，并清理其他卡片对它的 crossLinks 引用。`)) return;
     setPromoting(true);
     try {
@@ -183,7 +194,6 @@ export function CardNode({ data, id }: NodeProps) {
   const sharedBoxLabels = nodeData.sharedBoxLabels ?? [];
   const isShared = sharedBoxes.length > 1; // 被多个 INDEX 引用
   // 当前是从外部"借"过来的卡片（cross-flank / potential）—— 显示来源 box
-  const focusedBoxId = useUIStore((s) => s.focusedBoxId);
   const otherBoxLabels = sharedBoxLabels.filter((b) => b.id !== focusedBoxId);
   const showSourceLabel =
     (variant === 'cross-flank' || variant === 'potential') && otherBoxLabels.length > 0;
@@ -191,34 +201,37 @@ export function CardNode({ data, id }: NodeProps) {
 
   return (
     <div
-      className={`group relative rounded-xl ${styles.border} ${styles.bg} ${styles.shadow} ${styles.opacity} cursor-default`}
-      style={{ width: NODE_WIDTH }}
+      className={`group relative rounded-xl ${styles.border} ${styles.bg} ${styles.shadow} ${styles.opacity} cursor-default flex flex-col overflow-hidden`}
+      style={{
+        width: savedW ?? NODE_WIDTH,
+        height: savedH,
+      }}
       onClick={(e) => {
         e.stopPropagation();
-        // 单击：仅切换焦点高亮（不换 box / 不重新布局）
         setFocus(cardLuhmannId);
       }}
       onDoubleClick={(e) => {
         e.stopPropagation();
-        // 双击：完整导航（可能换 box 或进入新树）
         navigate(cardLuhmannId);
       }}
     >
-      {/* 拖拽手柄：右下角，避开顶部 INDEX/HUB/Layers 徽章 */}
-      <div
-        draggable
-        onDragStart={(e) => {
-          e.stopPropagation();
-          setCardDragData(e, { luhmannId: cardLuhmannId, title: display.title });
-        }}
-        onMouseDown={(e) => e.stopPropagation()}
-        onPointerDown={(e) => e.stopPropagation()}
-        className="nodrag nopan absolute bottom-2 right-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white/90 hover:bg-accent hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 hover:border-accent shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
-        title="按住拖动到工作区"
-      >
-        <GripVertical size={10} />
-        <span>WS</span>
-      </div>
+      {/* 拖拽手柄：右下角；workspace 内不显示（已在工作区里） */}
+      {!nodeData.isInWorkspace && (
+        <div
+          draggable
+          onDragStart={(e) => {
+            e.stopPropagation();
+            setCardDragData(e, { luhmannId: cardLuhmannId, title: display.title });
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="nodrag nopan absolute bottom-2 right-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white/90 hover:bg-accent hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 hover:border-accent shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
+          title="按住拖动到工作区"
+        >
+          <GripVertical size={10} />
+          <span>WS</span>
+        </div>
+      )}
 
       {/* Promote / Demote / Delete 按钮 — hover 时显示 */}
       {!isIndex && (
@@ -257,6 +270,19 @@ export function CardNode({ data, id }: NodeProps) {
       >
         <Pencil size={11} />
       </button>
+      {/* 调整大小：选中时显示 8 个手柄。保存到 positions 的 w/h 字段 */}
+      <NodeResizer
+        isVisible={selected}
+        minWidth={240}
+        minHeight={180}
+        lineClassName="!border-accent/40"
+        handleClassName="!bg-accent !border !border-white !w-2 !h-2"
+        onResizeEnd={(_e, params) => {
+          api.setSize(scope, cardLuhmannId, params.width, params.height).catch((err) => {
+            console.error('save size failed', err);
+          });
+        }}
+      />
       {/* tree 用上下；非 tree 关系（tag/cross/potential）用左右，避免边路径穿越 */}
       <Handle id="top" type="target" position={Position.Top} className="!bg-gray-300 !w-2 !h-2 !border-0" />
       <Handle id="bottom" type="source" position={Position.Bottom} className="!bg-gray-300 !w-2 !h-2 !border-0" />
@@ -342,7 +368,9 @@ export function CardNode({ data, id }: NodeProps) {
 
           <div
             ref={contentRef}
-            className="prose-card text-[12px] text-ink px-5 pb-4 max-h-72 overflow-hidden"
+            className={`prose-card text-[12px] text-ink px-5 pb-4 ${
+              savedH ? 'flex-1 overflow-y-auto' : 'max-h-72 overflow-hidden'
+            }`}
             dangerouslySetInnerHTML={{ __html: html }}
           />
 

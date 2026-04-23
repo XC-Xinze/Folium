@@ -88,15 +88,12 @@ function WorkspaceInner({ workspaceId }: Props) {
             id: n.id,
             type: 'card',
             position: { x: n.x, y: n.y },
-            // CardNode 是按 luhmannId 渲染的，这里把它当成普通节点
-            // 把 cardId 塞进 data 让 CardNode 拉到正确的卡
             data: {
               card: { luhmannId: n.cardId, title: '', status: 'ATOMIC', tags: [], crossLinks: [], depth: 0, sortKey: '' },
               variant: 'tree',
+              isInWorkspace: true,
+              onDeleteOverride: () => handlers.deleteNode(n.id),
             } as unknown as Record<string, unknown>,
-            // override id used by CardNode for fetching: CardNode uses props.id
-            // but CardNode's useEffect uses `id` from NodeProps which is workspace-local
-            // We need to make CardNode fetch by cardId instead — solve via WorkspaceCardNodeWrapper below
           };
         }
         if (n.kind === 'note') {

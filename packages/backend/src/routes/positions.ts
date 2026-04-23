@@ -6,6 +6,7 @@ import {
   loadAll,
   loadScope,
   setPosition,
+  setSize,
 } from '../services/positions.js';
 
 export const positionRoutes: FastifyPluginAsync = async (app) => {
@@ -20,6 +21,8 @@ export const positionRoutes: FastifyPluginAsync = async (app) => {
   const putSchema = z.object({
     x: z.number(),
     y: z.number(),
+    w: z.number().optional(),
+    h: z.number().optional(),
   });
 
   app.put<{ Params: { scope: string; id: string } }>(
@@ -32,6 +35,24 @@ export const positionRoutes: FastifyPluginAsync = async (app) => {
         decodeURIComponent(req.params.id),
         parsed.data.x,
         parsed.data.y,
+        parsed.data.w,
+        parsed.data.h,
+      );
+      return { ok: true };
+    },
+  );
+
+  const sizeSchema = z.object({ w: z.number(), h: z.number() });
+  app.put<{ Params: { scope: string; id: string } }>(
+    '/positions/:scope/:id/size',
+    async (req, reply) => {
+      const parsed = sizeSchema.safeParse(req.body);
+      if (!parsed.success) return reply.code(400).send({ error: 'bad_input' });
+      await setSize(
+        decodeURIComponent(req.params.scope),
+        decodeURIComponent(req.params.id),
+        parsed.data.w,
+        parsed.data.h,
       );
       return { ok: true };
     },

@@ -14,10 +14,15 @@ const POTENTIAL_OFFSET_X = 200; // potential 比 cross-flank 更外（更"外层
 export type CardNodeData = {
   card: Card | CardSummary;
   variant: 'focus' | 'tree' | 'cross-flank' | 'potential';
-  /** 引用此卡的 INDEX 列表（用于显示"共享"徽章） */
   sharedBoxes?: string[];
-  /** 同 sharedBoxes 但带 INDEX 的 title，用于显示"来自 X" */
   sharedBoxLabels?: { id: string; title: string }[];
+  /** 来自保存的大小（如果有） */
+  savedW?: number;
+  savedH?: number;
+  /** workspace 等场景：覆盖默认的"vault 删卡"为本地删除（仅移除节点引用） */
+  onDeleteOverride?: () => void;
+  /** 在 workspace 里时隐藏 WS 拖拽手柄（卡片已经在工作区里了） */
+  isInWorkspace?: boolean;
 };
 
 /** 计算每张卡被哪些 INDEX 引用 */
@@ -482,7 +487,25 @@ export function applyAnchorPositions(
     return p;
   };
 
-  return nodes.map((n) => ({ ...n, position: resolve(n.id) }));
+  return nodes.map((n) => {
+    const sav = saved[n.id];
+    const data = n.data as Record<string, unknown> & {
+      savedW?: number;
+      savedH?: number;
+    };
+    return {
+      ...n,
+      position: resolve(n.id),
+      // 让 React Flow 知道实际尺寸，避免 fitView / 其他卡片把它压到默认大小
+      width: sav?.w ?? (n.width as number | undefined),
+      height: sav?.h ?? undefined,
+      data: {
+        ...data,
+        savedW: sav?.w,
+        savedH: sav?.h,
+      },
+    };
+  });
 }
 
 /* -------- TagView 用的图：以 tag 为虚拟根，卡片按自然树扩展 -------- */

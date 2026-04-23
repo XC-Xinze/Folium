@@ -15,6 +15,8 @@ import { config } from '../config.js';
 export interface Position {
   x: number;
   y: number;
+  w?: number;
+  h?: number;
 }
 export type PositionMap = Record<string, Position>;
 export type ScopedPositions = Record<string, PositionMap>;
@@ -78,10 +80,32 @@ export async function setPosition(
   id: string,
   x: number,
   y: number,
+  w?: number,
+  h?: number,
 ): Promise<void> {
   const all = await loadAllInternal();
   if (!all[scope]) all[scope] = {};
-  all[scope][id] = { x, y };
+  // 保留之前的 w/h（如果新调用没传）
+  const existing = all[scope][id];
+  all[scope][id] = {
+    x,
+    y,
+    w: w ?? existing?.w,
+    h: h ?? existing?.h,
+  };
+  await flush(all);
+}
+
+export async function setSize(
+  scope: string,
+  id: string,
+  w: number,
+  h: number,
+): Promise<void> {
+  const all = await loadAllInternal();
+  if (!all[scope]) all[scope] = {};
+  const existing = all[scope][id] ?? { x: 0, y: 0 };
+  all[scope][id] = { ...existing, w, h };
   await flush(all);
 }
 

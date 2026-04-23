@@ -50,6 +50,8 @@ export interface RelatedBatch {
 export interface SavedPosition {
   x: number;
   y: number;
+  w?: number;
+  h?: number;
 }
 export type PositionMap = Record<string, SavedPosition>;
 
@@ -146,13 +148,26 @@ export const api = {
     id: string,
     x: number,
     y: number,
+    w?: number,
+    h?: number,
   ): Promise<void> => {
     const res = await fetch(
       `${BASE}/positions/${encodeURIComponent(scope)}/${encodeURIComponent(id)}`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x, y }),
+        body: JSON.stringify({ x, y, w, h }),
+      },
+    );
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  },
+  setSize: async (scope: string, id: string, w: number, h: number): Promise<void> => {
+    const res = await fetch(
+      `${BASE}/positions/${encodeURIComponent(scope)}/${encodeURIComponent(id)}/size`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ w, h }),
       },
     );
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);

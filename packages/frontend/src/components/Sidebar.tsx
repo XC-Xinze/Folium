@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, FolderTree, Tag, Trash2 } from 'lucide-react';
+import { ChevronRight, FolderTree, Pencil, Tag, Trash2 } from 'lucide-react';
 import { api, type IndexNode } from '../lib/api';
 import { useUIStore } from '../store/uiStore';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
@@ -25,6 +25,14 @@ export function Sidebar() {
       qc.invalidateQueries({ queryKey: ['positions'] });
       qc.invalidateQueries({ queryKey: ['tags'] });
       qc.invalidateQueries({ queryKey: ['workspaces'] });
+    },
+  });
+  const renameTagMut = useMutation({
+    mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>
+      api.renameTag(oldName, newName),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tags'] });
+      qc.invalidateQueries({ queryKey: ['cards'] });
     },
   });
 
@@ -63,17 +71,17 @@ export function Sidebar() {
             .slice()
             .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
             .map((t) => (
-              <button
+              <div
                 key={t.name}
-                onClick={() => setFocusTag(t.name)}
-                className={`group w-full flex items-center justify-between px-3 py-1.5 rounded-md text-left transition-colors ${
+                className={`group flex items-center justify-between px-3 py-1.5 rounded-md transition-colors cursor-pointer ${
                   focusedTag === t.name
                     ? 'bg-accentSoft text-accent'
                     : 'hover:bg-gray-50 text-gray-700'
                 }`}
+                onClick={() => setFocusTag(t.name)}
                 title={`查看 #${t.name} 下所有卡片`}
               >
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
                   <span
                     className={`text-[10px] font-bold w-2.5 text-right ${
                       focusedTag === t.name ? 'text-accent' : 'text-gray-300 group-hover:text-accent'
@@ -83,10 +91,23 @@ export function Sidebar() {
                   </span>
                   <span className="text-[12px] truncate">{t.name}</span>
                 </div>
-                <span className="text-[10px] font-mono text-gray-400 tabular-nums shrink-0">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const newName = window.prompt(`重命名 #${t.name} 为：`, t.name);
+                    if (newName?.trim() && newName.trim() !== t.name) {
+                      renameTagMut.mutate({ oldName: t.name, newName: newName.trim() });
+                    }
+                  }}
+                  className="p-0.5 text-gray-300 hover:text-accent opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                  title="重命名 tag（级联到所有 .md）"
+                >
+                  <Pencil size={10} />
+                </button>
+                <span className="text-[10px] font-mono text-gray-400 tabular-nums shrink-0 ml-1">
                   {t.count}
                 </span>
-              </button>
+              </div>
             ))
         )}
       </Section>

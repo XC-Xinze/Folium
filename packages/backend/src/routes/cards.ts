@@ -7,7 +7,8 @@ import { buildIndexTree } from '../services/indexes.js';
 import { demoteCard, promoteCard } from '../services/promote.js';
 import { deleteVaultCard } from '../services/deleteCard.js';
 import { parseCardFile } from '../vault/parser.js';
-import { writeNewCard } from '../vault/writer.js';
+import { updateCardFile, writeNewCard } from '../vault/writer.js';
+import { renameTag } from '../services/renameTag.js';
 
 export const cardRoutes: FastifyPluginAsync = async (app) => {
   const db = getDb();
@@ -127,6 +128,43 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(400).send({ error: 'promote_failed', message: msg });
     }
   });
+
+  const updateSchema = z.object({
+    title: z.string().optional(),
+    content: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+    status: z.enum(['ATOMIC', 'INDEX']).optional(),
+  });
+
+  app.patch<{ Params: { id: string } }>('/cards/:id', async (req, reply) => {
+    const card = repo.getById(req.params.id);
+    if (!card) return reply.code(404).send({ error: 'not_found' });
+    const parsed = updateSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'bad_input', detail: parsed.error.flatten() });
+    try {
+      await updateCardFile(card.filePath, parsed.data);
+      // 立即重新解析入库
+      const reparsed = await parseCardFile(card.filePath);
+      if (reparsed) repo.upsertOne(reparsed);
+      return reparsed ?? card;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.code(400).send({ error: 'update_failed', message: msg });
+    }
+  });
+
+  app.put<{ Params: { tag: string }; Body: { newName: string } }>(
+    '/tags/:tag/rename',
+    async (req, reply) => {
+      try {
+        const result = await renameTag(db, repo, req.params.tag, req.body.newName);
+        return result;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return reply.code(400).send({ error: 'rename_failed', message: msg });
+      }
+    },
+  );
 
   app.delete<{ Params: { id: string } }>('/cards/:id', async (req, reply) => {
     try {

@@ -18,6 +18,7 @@ import {
   getBezierPath,
 } from '@xyflow/react';
 import { isCardDrag, readCardDragData } from '../lib/dragCard';
+import { RenamableName } from './RenamableName';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FilePlus,
@@ -395,7 +396,17 @@ function WorkspaceInner({ workspaceId }: Props) {
         >
           <X size={14} />
         </button>
-        <span className="text-[13px] font-bold text-ink ml-1">{wsQ.data.name}</span>
+        <RenamableName
+          value={wsQ.data.name}
+          onSave={(name) => {
+            if (!name.trim()) return;
+            api.updateWorkspace(workspaceId, { name: name.trim() }).then(() => {
+              qc.invalidateQueries({ queryKey: ['workspace', workspaceId] });
+              qc.invalidateQueries({ queryKey: ['workspaces'] });
+            });
+          }}
+          className="text-[13px] font-bold text-ink ml-1"
+        />
         <span className="text-[10px] text-gray-400">
           {wsQ.data.nodes.length} 节点 · {wsQ.data.edges.length} 边
         </span>

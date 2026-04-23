@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useUIStore } from '../store/uiStore';
+import { RenamableName } from './RenamableName';
 
 /**
  * Sidebar 在 'workspaces' tab 下展示的内容。
@@ -30,6 +31,14 @@ export function WorkspacesSidebar() {
     onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ['workspaces'] });
       if (focusedWorkspaceId === id) setFocusWorkspace(null);
+    },
+  });
+
+  const renameMut = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      api.updateWorkspace(id, { name }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['workspaces'] });
     },
   });
 
@@ -69,7 +78,11 @@ export function WorkspacesSidebar() {
               }`}
               onClick={() => setFocusWorkspace(ws.id)}
             >
-              <span className="flex-1 text-[12px] font-semibold truncate">{ws.name}</span>
+              <RenamableName
+                value={ws.name}
+                onSave={(name) => renameMut.mutate({ id: ws.id, name })}
+                className="flex-1 text-[12px] font-semibold truncate"
+              />
               <span className="text-[9px] text-gray-400 shrink-0">{ws.nodes.length}</span>
               <button
                 onClick={(e) => {

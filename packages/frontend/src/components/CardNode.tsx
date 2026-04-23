@@ -1,7 +1,7 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowDownToLine, ArrowUpToLine, GripVertical, Layers, Trash2 } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpToLine, Check, GripVertical, Layers, Pencil, Trash2, X } from 'lucide-react';
 import { setCardDragData } from '../lib/dragCard';
 import { api, type Card } from '../lib/api';
 import { attachWikilinkHandler, renderMarkdown } from '../lib/markdown';
@@ -25,7 +25,12 @@ export function CardNode({ data, id }: NodeProps) {
   const qc = useQueryClient();
   const contentRef = useRef<HTMLDivElement>(null);
   const [promoting, setPromoting] = useState(false);
-  void id; // 仅在某些场景需要，主体逻辑用 cardLuhmannId
+  const [editing, setEditing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState('');
+  const [draftContent, setDraftContent] = useState('');
+  const [draftTags, setDraftTags] = useState('');
+  const [draftStatus, setDraftStatus] = useState<'ATOMIC' | 'INDEX'>('ATOMIC');
+  void id;
 
   const onPromote = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -43,6 +48,43 @@ export function CardNode({ data, id }: NodeProps) {
     } finally {
       setPromoting(false);
     }
+  };
+
+  const startEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!full) return;
+    setDraftTitle(full.title);
+    setDraftContent(full.contentMd);
+    setDraftTags(full.tags.join(', '));
+    setDraftStatus(full.status);
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    if (!full) return;
+    try {
+      const tagsList = draftTags
+        .split(/[,，\s]+/)
+        .map((t) => t.trim())
+        .filter(Boolean);
+      const updated = await api.updateCard(cardLuhmannId, {
+        title: draftTitle,
+        content: draftContent,
+        tags: tagsList,
+        status: draftStatus,
+      });
+      setFull(updated);
+      qc.invalidateQueries({ queryKey: ['cards'] });
+      qc.invalidateQueries({ queryKey: ['indexes'] });
+      qc.invalidateQueries({ queryKey: ['tags'] });
+      setEditing(false);
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
   };
 
   const onDelete = async (e: React.MouseEvent) => {
@@ -162,11 +204,7 @@ export function CardNode({ data, id }: NodeProps) {
         navigate(cardLuhmannId);
       }}
     >
-      {/* 拖拽手柄：可以把这张卡拖到工作区
-          - nodrag class：阻止 React Flow 自己启动节点拖动
-          - nopan class：阻止 RF 在此元素触发画布平移
-          - stopPropagation 在 mousedown / pointerdown：让 RF 完全不接管这次按下
-          - 始终可见的 5px 凸出标签，hover 加深 */}
+      {/* 拖拽手柄：右下角，避开顶部 INDEX/HUB/Layers 徽章 */}
       <div
         draggable
         onDragStart={(e) => {
@@ -175,8 +213,8 @@ export function CardNode({ data, id }: NodeProps) {
         }}
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
-        className="nodrag nopan absolute top-1 right-1 z-20 px-1.5 py-1 rounded flex items-center gap-1 bg-white/80 hover:bg-accent hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 hover:border-accent shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
-        title="按住拖动到工作区（顶部胶囊或工作区画布）"
+        className="nodrag nopan absolute bottom-2 right-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white/90 hover:bg-accent hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 hover:border-accent shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
+        title="按住拖动到工作区"
       >
         <GripVertical size={10} />
         <span>WS</span>
@@ -205,11 +243,19 @@ export function CardNode({ data, id }: NodeProps) {
       )}
       <button
         onClick={onDelete}
-        disabled={promoting}
+        disabled={promoting || editing}
         className="absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full bg-red-500 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-all disabled:opacity-30"
         title={`删除 ${cardLuhmannId}`}
       >
         <Trash2 size={12} />
+      </button>
+      <button
+        onClick={startEdit}
+        disabled={promoting || editing || !full}
+        className="absolute -top-2 right-6 z-10 w-6 h-6 rounded-full bg-gray-700 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-ink transition-all disabled:opacity-30"
+        title={`编辑 ${cardLuhmannId}`}
+      >
+        <Pencil size={11} />
       </button>
       {/* tree 用上下；非 tree 关系（tag/cross/potential）用左右，避免边路径穿越 */}
       <Handle id="top" type="target" position={Position.Top} className="!bg-gray-300 !w-2 !h-2 !border-0" />
@@ -219,51 +265,105 @@ export function CardNode({ data, id }: NodeProps) {
       <Handle id="right-in" type="target" position={Position.Right} className="!bg-transparent !w-2 !h-2 !border-0" />
       <Handle id="right-out" type="source" position={Position.Right} className="!bg-transparent !w-2 !h-2 !border-0" />
 
-      <header className="px-5 pt-4 pb-3 flex items-start justify-between gap-3">
-        <div className="flex items-baseline gap-2 min-w-0">
-          <span className={`font-mono text-[11px] font-bold px-1.5 py-0.5 rounded ${styles.badge}`}>
-            {display.luhmannId}
-          </span>
-          <h3 className="text-[13px] font-bold tracking-tight truncate">{display.title || cardLuhmannId}</h3>
-        </div>
-        {isIndex && (
-          <span className="shrink-0 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-accent text-white">
-            INDEX
-          </span>
-        )}
-        {isShared && (
-          <span
-            className="shrink-0 flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200"
-            title={`同时存在于：${sharedBoxes.join(', ')}`}
-          >
-            <Layers size={9} />
-            {sharedBoxes.length}
-          </span>
-        )}
-      </header>
-
-      <div
-        ref={contentRef}
-        className="prose-card text-[12px] text-ink px-5 pb-4 max-h-72 overflow-hidden"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-
-      {tags.length > 0 && (
-        <footer className="px-5 pb-3 flex flex-wrap gap-1.5 border-t border-gray-100 pt-2">
-          {tags.slice(0, 6).map((t) => (
-            <button
-              key={t}
-              onClick={(e) => {
-                e.stopPropagation();
-                setFocusTag(t);
-              }}
-              className="text-[9px] font-bold text-accent hover:underline cursor-pointer"
-              title={`查看 #${t} 下所有卡片`}
+      {editing ? (
+        // ━━━ 编辑模式 ━━━
+        <div className="nodrag nopan p-3 space-y-2" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-2">
+            <span className={`font-mono text-[11px] font-bold px-1.5 py-0.5 rounded ${styles.badge}`}>
+              {display.luhmannId}
+            </span>
+            <input
+              value={draftTitle}
+              onChange={(e) => setDraftTitle(e.target.value)}
+              className="flex-1 text-[13px] font-bold px-2 py-1 border border-gray-200 rounded focus:border-accent outline-none"
+              placeholder="标题"
+            />
+            <select
+              value={draftStatus}
+              onChange={(e) => setDraftStatus(e.target.value as 'ATOMIC' | 'INDEX')}
+              className="text-[10px] font-bold px-1 py-0.5 border border-gray-200 rounded outline-none"
             >
-              #{t}
+              <option value="ATOMIC">Atomic</option>
+              <option value="INDEX">Index</option>
+            </select>
+          </div>
+          <textarea
+            value={draftContent}
+            onChange={(e) => setDraftContent(e.target.value)}
+            placeholder="markdown 正文，支持 [[link]] 和 #tag"
+            className="w-full text-[12px] font-mono px-2 py-1 border border-gray-200 rounded focus:border-accent outline-none resize-y"
+            rows={8}
+          />
+          <input
+            value={draftTags}
+            onChange={(e) => setDraftTags(e.target.value)}
+            placeholder="tags（逗号分隔）"
+            className="w-full text-[11px] px-2 py-1 border border-gray-200 rounded focus:border-accent outline-none"
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={cancelEdit}
+              className="text-[11px] font-bold px-3 py-1 rounded text-gray-500 hover:bg-gray-100 flex items-center gap-1"
+            >
+              <X size={11} /> 取消
             </button>
-          ))}
-        </footer>
+            <button
+              onClick={saveEdit}
+              className="text-[11px] font-bold px-3 py-1 rounded bg-accent text-white hover:bg-accent/90 flex items-center gap-1"
+            >
+              <Check size={11} /> 保存
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <header className="px-5 pt-4 pb-3 flex items-start justify-between gap-3">
+            <div className="flex items-baseline gap-2 min-w-0">
+              <span className={`font-mono text-[11px] font-bold px-1.5 py-0.5 rounded ${styles.badge}`}>
+                {display.luhmannId}
+              </span>
+              <h3 className="text-[13px] font-bold tracking-tight truncate">{display.title || cardLuhmannId}</h3>
+            </div>
+            {isIndex && (
+              <span className="shrink-0 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-accent text-white">
+                INDEX
+              </span>
+            )}
+            {isShared && (
+              <span
+                className="shrink-0 flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200"
+                title={`同时存在于：${sharedBoxes.join(', ')}`}
+              >
+                <Layers size={9} />
+                {sharedBoxes.length}
+              </span>
+            )}
+          </header>
+
+          <div
+            ref={contentRef}
+            className="prose-card text-[12px] text-ink px-5 pb-4 max-h-72 overflow-hidden"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+
+          {tags.length > 0 && (
+            <footer className="px-5 pb-3 flex flex-wrap gap-1.5 border-t border-gray-100 pt-2">
+              {tags.slice(0, 6).map((t) => (
+                <button
+                  key={t}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFocusTag(t);
+                  }}
+                  className="text-[9px] font-bold text-accent hover:underline cursor-pointer"
+                  title={`查看 #${t} 下所有卡片`}
+                >
+                  #{t}
+                </button>
+              ))}
+            </footer>
+          )}
+        </>
       )}
 
       {/* 来源盒子标签：本卡是从其他 box 借进来的 → 显示原属盒子 */}

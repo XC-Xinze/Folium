@@ -181,6 +181,33 @@ export const api = {
     }
     return res.json();
   },
+  updateCard: async (
+    id: string,
+    patch: { title?: string; content?: string; tags?: string[]; status?: 'ATOMIC' | 'INDEX' },
+  ): Promise<Card> => {
+    const res = await fetch(`${BASE}/cards/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+  renameTag: async (oldName: string, newName: string): Promise<{ filesUpdated: number; oldName: string; newName: string }> => {
+    const res = await fetch(`${BASE}/tags/${encodeURIComponent(oldName)}/rename`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newName }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
   demoteCard: async (id: string): Promise<{ oldId: string; newId: string; filesUpdated: number }> => {
     const res = await fetch(`${BASE}/cards/${encodeURIComponent(id)}/demote`, {
       method: 'POST',

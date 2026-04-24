@@ -10,6 +10,7 @@ import { NewCardBar } from './components/NewCardBar';
 import { Splitter } from './components/Splitter';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { EmptyVault } from './components/EmptyVault';
+import { useIsMobile } from './lib/useIsMobile';
 
 // 懒加载 — 不在主 bundle 里拖慢首屏；切到 tag/workspace/settings 时才加载
 const SettingsView = lazy(() =>
@@ -40,7 +41,20 @@ export function App() {
   const workspacePanelSize = useUIStore((s) => s.workspacePanelSize);
   const setWorkspacePanelSize = useUIStore((s) => s.setWorkspacePanelSize);
   const leftSidebarCollapsed = useUIStore((s) => s.leftSidebarCollapsed);
+  const toggleLeftSidebar = useUIStore((s) => s.toggleLeftSidebar);
   const sidebarTab = useUIStore((s) => s.sidebarTab);
+  const isMobile = useIsMobile();
+  // Mobile：默认折叠 sidebar，避免一进来就被遮住主区
+  useEffect(() => {
+    if (isMobile && !leftSidebarCollapsed) {
+      // 只在切换到 mobile 时收起一次；之后用户手动开/关
+      // 用 sessionStorage 避免反复触发
+      if (!sessionStorage.getItem('mobile-sidebar-init')) {
+        toggleLeftSidebar();
+        sessionStorage.setItem('mobile-sidebar-init', '1');
+      }
+    }
+  }, [isMobile, leftSidebarCollapsed, toggleLeftSidebar]);
   const setBoxAndFocus = useUIStore((s) => s.setBoxAndFocus);
   const viewMode = useUIStore((s) => s.viewMode);
   const theme = useUIStore((s) => s.theme);
@@ -81,7 +95,6 @@ export function App() {
   const qc = useQueryClient();
   const setQuickSwitcherOpen = useUIStore((s) => s.setQuickSwitcherOpen);
   const setViewMode = useUIStore((s) => s.setViewMode);
-  const toggleLeftSidebar = useUIStore((s) => s.toggleLeftSidebar);
 
   // 注册命令——组件挂载/卸载时进出注册表。focusedId / qc 变化时重新注册
   // 让闭包捕获最新值。
@@ -169,10 +182,12 @@ export function App() {
   const showMain = !workspaceFullscreen || !showWorkspacePanel;
 
   // 主 + workspace 的 split 布局：方向 + 顺序
+  // mobile 强制 bottom 摆放，避免横向 split 把两边都挤成不可用宽度
+  const effectivePosition = isMobile ? 'bottom' : workspacePanelPosition;
   const isHorizontal =
-    workspacePanelPosition === 'left' || workspacePanelPosition === 'right';
+    effectivePosition === 'left' || effectivePosition === 'right';
   const wsBefore =
-    workspacePanelPosition === 'left' || workspacePanelPosition === 'top';
+    effectivePosition === 'left' || effectivePosition === 'top';
 
   const mainArea = showMain ? (
     <div
@@ -206,7 +221,7 @@ export function App() {
 
   const wsBorderClass = (() => {
     if (workspaceFullscreen) return '';
-    switch (workspacePanelPosition) {
+    switch (effectivePosition) {
       case 'right':
         return 'border-l border-gray-200';
       case 'left':
@@ -233,10 +248,31 @@ export function App() {
     </aside>
   ) : null;
 
+  const sidebarOpen = !leftSidebarCollapsed;
   return (
-    <div className="h-screen flex">
+    <div className="h-screen flex relative">
       <RibbonBar />
-      {!leftSidebarCollapsed && (sidebarTab === 'workspaces' ? <WorkspacesSidebar /> : <Sidebar />)}
+      {sidebarOpen && (
+        <>
+          {/* mobile: 浮层；desktop: 占据 flex 宽度 */}
+          <div
+            className={
+              isMobile
+                ? 'fixed inset-y-0 left-12 z-40 w-72 max-w-[85vw] shadow-2xl'
+                : 'contents'
+            }
+          >
+            {sidebarTab === 'workspaces' ? <WorkspacesSidebar /> : <Sidebar />}
+          </div>
+          {/* mobile 背景 backdrop —— 点击关 */}
+          {isMobile && (
+            <div
+              className="fixed inset-0 z-30 bg-black/30"
+              onClick={() => toggleLeftSidebar()}
+            />
+          )}
+        </>
+      )}
 
       <main className="flex-1 flex flex-col bg-[#fafafa] dark:bg-[#24273a] min-w-0">
         <div className="flex items-center justify-end px-6 pt-4 pb-1 border-b border-gray-100/60 dark:border-[#363a4f]/60 bg-[#fafafa] dark:bg-[#24273a]">
@@ -254,7 +290,7 @@ export function App() {
             isHorizontal={isHorizontal}
             wsBefore={wsBefore}
             showSplitter={showWorkspacePanel && showMain && !workspaceFullscreen}
-            workspacePanelPosition={workspacePanelPosition}
+            workspacePanelPosition={effectivePosition}
             onSplitterResize={setWorkspacePanelSize}
             mainArea={mainArea}
             workspaceArea={workspaceArea}

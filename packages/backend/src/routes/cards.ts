@@ -6,6 +6,7 @@ import { getLinkedCards, getPotentialLinks, getReferencedFrom, getTagRelated } f
 import { buildIndexTree } from '../services/indexes.js';
 import { demoteCard, promoteCard } from '../services/promote.js';
 import { deleteVaultCard } from '../services/deleteCard.js';
+import { runSearchReplace } from '../services/searchReplace.js';
 import { parseCardFile } from '../vault/parser.js';
 import { updateCardFile, writeNewCard } from '../vault/writer.js';
 import { deleteTag, renameTag } from '../services/renameTag.js';
@@ -125,6 +126,27 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
       return { hits };
     } catch {
       return { hits: [] };
+    }
+  });
+
+  // 全局搜索替换：dryRun=true 时只返回 preview，不动文件
+  const searchReplaceSchema = z.object({
+    query: z.string().min(1),
+    replacement: z.string(),
+    useRegex: z.boolean().optional(),
+    caseSensitive: z.boolean().optional(),
+    bodyOnly: z.boolean().optional(),
+    dryRun: z.boolean().optional(),
+  });
+  app.post('/search-replace', async (req, reply) => {
+    const parsed = searchReplaceSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'bad_input', detail: parsed.error.flatten() });
+    try {
+      const result = await runSearchReplace(repo, parsed.data);
+      return result;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.code(400).send({ error: 'search_replace_failed', message: msg });
     }
   });
 

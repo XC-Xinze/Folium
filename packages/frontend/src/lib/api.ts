@@ -366,6 +366,29 @@ export const api = {
     }
     return res.json();
   },
+  searchReplace: async (input: {
+    query: string;
+    replacement: string;
+    useRegex?: boolean;
+    caseSensitive?: boolean;
+    bodyOnly?: boolean;
+    dryRun?: boolean;
+  }): Promise<{
+    changes: Array<{ luhmannId: string; title: string; count: number; preview: string }>;
+    totalCount: number;
+    filesUpdated: number;
+  }> => {
+    const res = await fetch(`${BASE}/search-replace`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
   listPlugins: () =>
     get<{ plugins: Array<{ name: string; size: number; mtime: number }> }>(`/plugins`),
   getPluginSource: async (name: string): Promise<string> => {

@@ -6,6 +6,7 @@ import { listLoadedPlugins, reloadPlugins, type LoadedPlugin } from '../lib/plug
 import { HotkeysPanel } from './HotkeysPanel';
 import { TrashPanel } from './TrashPanel';
 import { SearchReplacePanel } from './SearchReplacePanel';
+import { ExportPanel } from './ExportPanel';
 
 export function SettingsView() {
   const setViewMode = useUIStore((s) => s.setViewMode);
@@ -63,6 +64,10 @@ export function SettingsView() {
 
       <Section title="Search & Replace">
         <SearchReplacePanel />
+      </Section>
+
+      <Section title="Export">
+        <ExportPanel />
       </Section>
 
       <Section title="Trash">

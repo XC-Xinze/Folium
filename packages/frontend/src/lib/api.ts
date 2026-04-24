@@ -366,6 +366,9 @@ export const api = {
     }
     return res.json();
   },
+  exportCardUrl: (id: string) => `${BASE}/export/card/${encodeURIComponent(id)}`,
+  exportSubtreeUrl: (id: string) => `${BASE}/export/subtree/${encodeURIComponent(id)}`,
+  exportVaultUrl: () => `${BASE}/export/vault`,
   searchReplace: async (input: {
     query: string;
     replacement: string;

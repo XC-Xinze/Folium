@@ -2,6 +2,21 @@ import { lazy, Suspense, useCallback, useRef, useState, type ReactNode } from 'r
 import { ChevronDown, GripVertical, Network, Settings, SplitSquareHorizontal, SplitSquareVertical, Tag, X, XSquare } from 'lucide-react';
 import { Canvas } from './Canvas';
 import { usePaneStore, type LeafPane, type Pane, type SplitPane, type Tab } from '../store/paneStore';
+import { useIsMobile } from '../lib/useIsMobile';
+
+/** 在 pane 树里找当前 active leaf */
+function findActiveLeaf(node: Pane, id: string): LeafPane | null {
+  if (node.kind === 'leaf') return node.id === id ? node : null;
+  for (const c of node.children) {
+    const r = findActiveLeaf(c, id);
+    if (r) return r;
+  }
+  return null;
+}
+function firstLeaf(node: Pane): LeafPane {
+  if (node.kind === 'leaf') return node;
+  return firstLeaf(node.children[0]);
+}
 
 /**
  * 跨 pane 拖 tab 的 dataTransfer mime 类型 + 序列化协议
@@ -70,6 +85,18 @@ const GraphView = lazy(() =>
  */
 export function PaneRoot() {
   const root = usePaneStore((s) => s.root);
+  const activeLeafId = usePaneStore((s) => s.activeLeafId);
+  const isMobile = useIsMobile();
+
+  // 移动端：只渲染 active leaf，把整个树拍平。Split 在小屏没意义（两边都不可用）。
+  if (isMobile) {
+    const activeLeaf = findActiveLeaf(root, activeLeafId) ?? firstLeaf(root);
+    return (
+      <div className="flex-1 flex min-h-0 min-w-0 bg-[#fafafa] dark:bg-[#24273a]">
+        <PaneNode pane={activeLeaf} />
+      </div>
+    );
+  }
   return (
     <div className="flex-1 flex min-h-0 min-w-0 bg-[#fafafa] dark:bg-[#24273a]">
       <PaneNode pane={root} />
@@ -164,8 +191,11 @@ function LeafPaneView({ pane }: { pane: LeafPane }) {
     setZone(pickDropZone(rect, e.clientX, e.clientY));
   };
   const onBodyDragLeave = (e: React.DragEvent) => {
-    // 离开 pane 边界时才清；冒泡内部子元素 leave 不算
-    if (e.currentTarget === e.target) setZone(null);
+    // 用 relatedTarget 判断是不是真的离开了 pane 边界
+    // currentTarget === target 在嵌套元素上不可靠，会闪烁
+    const next = e.relatedTarget as Node | null;
+    if (next && bodyRef.current?.contains(next)) return;
+    setZone(null);
   };
   const onBodyDrop = (e: React.DragEvent) => {
     const data = readTabDrag(e);
@@ -211,20 +241,25 @@ function LeafPaneView({ pane }: { pane: LeafPane }) {
   );
 }
 
-/** 拖 tab 时显示的高亮预览：center/edge 都能看到落点 */
+/** 拖 tab 时显示的高亮预览：center/edge 都能看到落点。150ms transition 顺滑切换。 */
 function DropZoneOverlay({ zone }: { zone: Exclude<DropZone, null> }) {
-  const base = 'absolute z-20 pointer-events-none bg-accent/25 border-2 border-accent/70 rounded';
+  const base =
+    'absolute z-20 pointer-events-none bg-accent/25 border-2 border-accent/70 rounded transition-all duration-150 ease-out';
   switch (zone) {
     case 'center':
       return <div className={`${base} inset-2`} />;
     case 'left':
-      return <div className={`${base} left-2 top-2 bottom-2 w-1/2`} />;
+      return <div className={`${base} left-2 top-2 bottom-2`} style={{ width: 'calc(50% - 8px)' }} />;
     case 'right':
-      return <div className={`${base} right-2 top-2 bottom-2 w-1/2`} />;
+      return (
+        <div className={`${base} right-2 top-2 bottom-2`} style={{ width: 'calc(50% - 8px)' }} />
+      );
     case 'top':
-      return <div className={`${base} top-2 left-2 right-2 h-1/2`} />;
+      return <div className={`${base} top-2 left-2 right-2`} style={{ height: 'calc(50% - 8px)' }} />;
     case 'bottom':
-      return <div className={`${base} bottom-2 left-2 right-2 h-1/2`} />;
+      return (
+        <div className={`${base} bottom-2 left-2 right-2`} style={{ height: 'calc(50% - 8px)' }} />
+      );
   }
 }
 
@@ -234,7 +269,9 @@ function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
   const splitPane = usePaneStore((s) => s.splitPane);
   const moveTab = usePaneStore((s) => s.moveTab);
   const root = usePaneStore((s) => s.root);
+  const isMobile = useIsMobile();
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   // 唯一 leaf 不能关；split 的孩子可以关
   const isOnlyLeaf = root.kind === 'leaf' && root.id === pane.id;
   const closePane = () => {
@@ -261,7 +298,20 @@ function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
                 TAB_DRAG_MIME,
                 JSON.stringify({ fromPaneId: pane.id, tabId: tab.id }),
               );
+              setDraggingTabId(tab.id);
+              // 自定义 drag image：复制当前 tab 元素 + 半透明，比浏览器默认灰 ghost 好看
+              const ghost = (e.currentTarget as HTMLElement).cloneNode(true) as HTMLElement;
+              ghost.style.position = 'absolute';
+              ghost.style.top = '-1000px';
+              ghost.style.opacity = '0.85';
+              ghost.style.pointerEvents = 'none';
+              ghost.style.boxShadow = '0 8px 24px rgba(0,0,0,0.18)';
+              ghost.style.borderRadius = '6px';
+              document.body.appendChild(ghost);
+              e.dataTransfer.setDragImage(ghost, 12, 12);
+              setTimeout(() => document.body.removeChild(ghost), 0);
             }}
+            onDragEnd={() => setDraggingTabId(null)}
             onDragOver={(e) => {
               if (!isTabDrag(e)) return;
               e.preventDefault();
@@ -278,7 +328,16 @@ function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
               moveTab(data.fromPaneId, data.tabId, pane.id, i);
             }}
             onClick={() => setActiveTab(pane.id, tab.id)}
-            className={`group relative flex items-center gap-1.5 px-3 cursor-pointer border-r border-gray-100 dark:border-[#363a4f] text-[12px] select-none min-w-0 max-w-[200px] ${
+            onAuxClick={(e) => {
+              // 中键关 tab —— 浏览器 tab 通用习惯
+              if (e.button === 1) {
+                e.preventDefault();
+                closeTab(pane.id, tab.id);
+              }
+            }}
+            className={`group relative flex items-center gap-1.5 px-3 cursor-pointer border-r border-gray-100 dark:border-[#363a4f] text-[12px] select-none min-w-0 max-w-[200px] transition-opacity ${
+              draggingTabId === tab.id ? 'opacity-30' : ''
+            } ${
               isActiveTab
                 ? 'bg-white dark:bg-[#1e2030] text-ink dark:text-[#cad3f5]'
                 : 'bg-gray-100/60 dark:bg-[#24273a] text-gray-500 dark:text-[#a5adcb] hover:bg-gray-100 dark:hover:bg-[#1e2030]'
@@ -304,7 +363,7 @@ function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
         );
       })}
       <div className="flex-1" />
-      {pane.tabs.length > 0 && (
+      {pane.tabs.length > 0 && !isMobile && (
         <>
           <button
             onClick={() => splitPane(pane.id, 'horizontal')}

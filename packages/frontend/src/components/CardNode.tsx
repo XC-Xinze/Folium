@@ -21,9 +21,9 @@ export function CardNode({ data, id, selected }: NodeProps) {
   const { card, variant } = nodeData;
   const savedW = nodeData.savedW;
   const savedH = nodeData.savedH;
-  const focusedBoxId = useUIStore((s) => s.focusedBoxId);
-  const focusedTag = useUIStore((s) => s.focusedTag);
-  const scope = focusedTag ? `tag:${focusedTag}` : `box:${focusedBoxId ?? ''}`;
+  // scope 从 nodeData 来（Canvas/TagView 注入），不读全局 useUIStore —— 避免多 pane 串
+  const focusedBoxId = useUIStore((s) => s.focusedBoxId); // 仅用于 sharedBoxes 标签判断
+  const scope = nodeData.scope ?? `box:${focusedBoxId ?? ''}`;
   // 关键：用 card.luhmannId 拉取，不用 React Flow 的 node id
   // 因为 workspace 里节点 id 是 workspace 本地 uuid，不是 luhmannId
   const cardLuhmannId = card.luhmannId;
@@ -173,6 +173,10 @@ export function CardNode({ data, id, selected }: NodeProps) {
       qc.invalidateQueries({ queryKey: ['positions'] });
       qc.invalidateQueries({ queryKey: ['tags'] });
       qc.invalidateQueries({ queryKey: ['workspaces'] });
+      // 清掉指向被删卡片的 tab，避免下次激活时崩
+      usePaneStoreImported.getState().removeTabsWhere(
+        (t) => t.kind === 'card' && (t.cardBoxId === cardLuhmannId || t.cardFocusId === cardLuhmannId),
+      );
     } catch (err) {
       dialog.alert((err as Error).message, { title: 'Delete failed' });
     } finally {

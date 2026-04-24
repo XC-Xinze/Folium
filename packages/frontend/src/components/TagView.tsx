@@ -47,8 +47,13 @@ function TagViewInner({ tag }: Props) {
     if (!q.data?.cards) return { nodes: [] as Node[], edges: [] as Edge[] };
     const raw = buildTagGraph(tag, q.data.cards);
     const finalNodes = applyAnchorPositions(raw.nodes, raw.edges, positionsQ.data ?? {});
-    return { nodes: finalNodes, edges: raw.edges };
-  }, [tag, q.data, positionsQ.data]);
+    // 把 scope 印到节点 data 上 —— CardNode 用它做位置存储 key
+    const stamped = finalNodes.map((n) => ({
+      ...n,
+      data: { ...(n.data as object), scope },
+    }));
+    return { nodes: stamped, edges: raw.edges };
+  }, [tag, q.data, positionsQ.data, scope]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);

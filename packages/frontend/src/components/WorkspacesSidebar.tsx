@@ -28,8 +28,11 @@ export function WorkspacesSidebar() {
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.deleteWorkspace(id),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ['workspaces'] });
+      usePaneStore
+        .getState()
+        .removeTabsWhere((t) => t.kind === 'workspace' && t.workspaceId === id);
     },
   });
 

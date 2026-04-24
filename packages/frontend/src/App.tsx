@@ -7,6 +7,7 @@ import { Dialog } from './components/Dialog';
 import { QuickSwitcher } from './components/QuickSwitcher';
 import { SettingsModal } from './components/SettingsModal';
 import { CreateCardModal } from './components/CreateCardModal';
+import { CommandPalette } from './components/CommandPalette';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { EmptyVault } from './components/EmptyVault';
 import { PaneRoot } from './components/PaneRoot';
@@ -17,7 +18,7 @@ import { api } from './lib/api';
 import { dialog } from './lib/dialog';
 import { registerCommand, useGlobalCommands } from './lib/commands';
 import { loadAllPlugins } from './lib/pluginLoader';
-import { usePaneBootstrap, usePaneSync } from './lib/usePaneSync';
+import { usePaneBootstrap, usePaneSync, useStaleTabCleanup } from './lib/usePaneSync';
 
 export function App() {
   const focusedId = useUIStore((s) => s.focusedCardId);
@@ -27,9 +28,10 @@ export function App() {
   const isMobile = useIsMobile();
   const theme = useUIStore((s) => s.theme);
 
-  // 把 active tab 同步到 uiStore（让老组件继续工作）+ 空 pane 启动种子
+  // 把 active tab 同步到 uiStore（让老组件继续工作）+ 空 pane 启动种子 + 清持久化脏数据
   usePaneSync();
   usePaneBootstrap();
+  useStaleTabCleanup();
 
   // Mobile：默认折叠 sidebar
   useEffect(() => {
@@ -93,6 +95,10 @@ export function App() {
               qc.invalidateQueries({ queryKey: ['positions'] });
               qc.invalidateQueries({ queryKey: ['tags'] });
               qc.invalidateQueries({ queryKey: ['workspaces'] });
+              // 清掉指向已删卡片的 tab —— 不然 active 那张会变 404
+              usePaneStore.getState().removeTabsWhere(
+                (t) => t.kind === 'card' && (t.cardBoxId === focusedId || t.cardFocusId === focusedId),
+              );
             } catch (err) {
               dialog.alert((err as Error).message, { title: 'Delete failed' });
             }
@@ -106,6 +112,14 @@ export function App() {
         group: 'Navigation',
         allowInInput: true,
         run: () => setQuickSwitcherOpen(true),
+      }),
+      registerCommand({
+        id: 'app.commandPalette',
+        title: 'Open command palette',
+        defaultShortcut: 'Mod+p',
+        group: 'Navigation',
+        allowInInput: true,
+        run: () => useUIStore.getState().setCommandPaletteOpen(true),
       }),
       registerCommand({
         id: 'app.dailyNote',
@@ -179,6 +193,29 @@ export function App() {
           splitPane(activeLeafId, 'vertical');
         },
       }),
+      registerCommand({
+        id: 'tab.close',
+        title: 'Close active tab',
+        defaultShortcut: 'Mod+w',
+        group: 'Tab',
+        run: () => usePaneStore.getState().closeActiveTab(),
+      }),
+      registerCommand({
+        id: 'tab.reopen',
+        title: 'Reopen recently closed tab',
+        defaultShortcut: 'Mod+Shift+t',
+        group: 'Tab',
+        run: () => usePaneStore.getState().reopenLastClosed(),
+      }),
+      ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) =>
+        registerCommand({
+          id: `tab.select${n}`,
+          title: `Switch to tab ${n}`,
+          defaultShortcut: `Mod+${n}`,
+          group: 'Tab',
+          run: () => usePaneStore.getState().selectTabAt(n - 1),
+        }),
+      ),
     ];
     return () => cleanups.forEach((fn) => fn());
   }, [focusedId, qc, setQuickSwitcherOpen, toggleLeftSidebar]);
@@ -230,6 +267,7 @@ export function App() {
       <QuickSwitcher />
       <SettingsModal />
       <CreateCardModal />
+      <CommandPalette />
     </div>
   );
 }

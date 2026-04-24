@@ -61,6 +61,8 @@ interface PaneStateData {
   root: Pane;
   /** 当前焦点 leaf pane id —— 新 tab 默认开在这里 */
   activeLeafId: string;
+  /** 最近关闭的 tab spec —— 用于 ⌘⇧T 恢复（栈顶=最近关的） */
+  closedHistory: Omit<Tab, 'id'>[];
 }
 
 interface PaneActions {
@@ -85,6 +87,14 @@ interface PaneActions {
   updateTab: (paneId: string, tabId: string, patch: Partial<Tab>) => void;
   /** 强制关掉一个 pane（无视它有几个 tab）—— 唯一 leaf 时退化成空 leaf */
   removeEmptyPane: (paneId: string) => void;
+  /** 批量删除满足 pred 的 tab（删卡 / 删 workspace 后清理用） */
+  removeTabsWhere: (pred: (tab: Tab) => boolean) => void;
+  /** 恢复最近关闭的 tab —— 失败（栈空）时无 op */
+  reopenLastClosed: () => void;
+  /** 选 active leaf 的第 idx (0-based) tab；越界无 op */
+  selectTabAt: (idx: number) => void;
+  /** 关 active tab —— ⌘W 用 */
+  closeActiveTab: () => void;
   /** 把 tab 从一个 pane 移到另一个 pane 的指定位置（同 pane 内 fromIdx→toIdx 也用这个） */
   moveTab: (
     fromPaneId: string,
@@ -118,8 +128,10 @@ function emptyLeaf(): LeafPane {
 
 const INITIAL: PaneStateData = (() => {
   const leaf = emptyLeaf();
-  return { root: leaf, activeLeafId: leaf.id };
+  return { root: leaf, activeLeafId: leaf.id, closedHistory: [] };
 })();
+
+const CLOSED_STACK_MAX = 20;
 
 // ── 树辅助 ──
 
@@ -301,20 +313,26 @@ export const usePaneStore = create<PaneStore>()(
       },
 
       closeTab: (paneId, tabId) => {
-        const { root, activeLeafId } = get();
+        const { root, activeLeafId, closedHistory } = get();
         const leaf = findLeaf(root, paneId);
         if (!leaf) return;
         const idx = leaf.tabs.findIndex((t) => t.id === tabId);
         if (idx < 0) return;
+        const closing = leaf.tabs[idx]!;
         const remaining = leaf.tabs.filter((t) => t.id !== tabId);
 
+        // 把关掉的 tab 推进 closedHistory（不存 id，恢复时重发）
+        const { id: _ignored, ...closingSpec } = closing;
+        void _ignored;
+        const nextHistory = [closingSpec, ...closedHistory].slice(0, CLOSED_STACK_MAX);
+
         if (remaining.length === 0) {
-          // 整个 pane 删掉（除非它是 root 的唯一 leaf）
           const onlyLeaf = root.kind === 'leaf' && root.id === paneId;
           if (onlyLeaf) {
             set({
               root: { ...leaf, tabs: [], activeTabId: null },
               activeLeafId: paneId,
+              closedHistory: nextHistory,
             });
             return;
           }
@@ -322,13 +340,15 @@ export const usePaneStore = create<PaneStore>()(
           set({
             root: nextRoot,
             activeLeafId: activeLeafId === paneId ? nextActive : activeLeafId,
+            closedHistory: nextHistory,
           });
           return;
         }
 
+        // 关 active tab → 优先切到右邻居（被关那个的下一位），没右就切左
         const nextActiveId =
           leaf.activeTabId === tabId
-            ? remaining[Math.min(idx, remaining.length - 1)]!.id
+            ? (remaining[idx] ?? remaining[idx - 1] ?? remaining[0])!.id
             : leaf.activeTabId;
         set({
           root: mapTree(root, (n) =>
@@ -336,6 +356,7 @@ export const usePaneStore = create<PaneStore>()(
               ? { ...n, tabs: remaining, activeTabId: nextActiveId }
               : n,
           ),
+          closedHistory: nextHistory,
         });
       },
 
@@ -465,7 +486,6 @@ export const usePaneStore = create<PaneStore>()(
         });
 
         // 如果源 pane 现在空了，删掉它（除非是唯一 leaf）
-        let nextActive = toPaneId;
         if (fromTabsAfter.length === 0) {
           const isOnly = nextRoot.kind === 'leaf' && nextRoot.id === fromPaneId;
           if (!isOnly) {
@@ -473,11 +493,11 @@ export const usePaneStore = create<PaneStore>()(
             nextRoot = removed.root;
           }
         }
-        set({
-          root: nextRoot,
-          activeLeafId:
-            activeLeafId === fromPaneId && fromTabsAfter.length === 0 ? nextActive : nextActive,
-        });
+        // 拖完之后焦点跟随 moved tab → 接收方 pane
+        // 若源 pane 还在且原本是 active，则保持 active 在源；否则切到接收方
+        const nextActiveLeaf =
+          activeLeafId === fromPaneId && fromTabsAfter.length > 0 ? fromPaneId : toPaneId;
+        set({ root: nextRoot, activeLeafId: nextActiveLeaf });
       },
 
       moveTabToSplit: (fromPaneId, tabId, targetPaneId, side) => {
@@ -543,6 +563,49 @@ export const usePaneStore = create<PaneStore>()(
         void activeLeafId;
       },
 
+      removeTabsWhere: (pred) => {
+        const { root, activeLeafId } = get();
+
+        // 1) 先清掉每个 leaf 里的 stale tab
+        let nextRoot = mapTree(root, (n) => {
+          if (n.kind !== 'leaf') return n;
+          const filtered = n.tabs.filter((t) => !pred(t));
+          if (filtered.length === n.tabs.length) return n;
+          const stillActive =
+            n.activeTabId && filtered.some((t) => t.id === n.activeTabId);
+          return {
+            ...n,
+            tabs: filtered,
+            activeTabId: stillActive ? n.activeTabId : filtered[0]?.id ?? null,
+          };
+        });
+
+        // 2) 把所有空 leaf 折叠掉（保留唯一 leaf 即使空）
+        const collectEmptyLeafIds = (node: Pane, out: string[]): void => {
+          if (node.kind === 'leaf') {
+            if (node.tabs.length === 0) out.push(node.id);
+            return;
+          }
+          collectEmptyLeafIds(node.children[0], out);
+          collectEmptyLeafIds(node.children[1], out);
+        };
+        const empties: string[] = [];
+        collectEmptyLeafIds(nextRoot, empties);
+        for (const emptyId of empties) {
+          const isOnly = nextRoot.kind === 'leaf' && nextRoot.id === emptyId;
+          if (isOnly) continue; // 留唯一 leaf
+          const removed = removeLeaf(nextRoot, emptyId);
+          nextRoot = removed.root;
+        }
+
+        // 3) activeLeafId 还在树里就保留，否则切到第一个 leaf
+        const stillActive = findLeaf(nextRoot, activeLeafId) != null;
+        set({
+          root: nextRoot,
+          activeLeafId: stillActive ? activeLeafId : findFirstLeaf(nextRoot).id,
+        });
+      },
+
       removeEmptyPane: (paneId) => {
         const { root, activeLeafId } = get();
         // 唯一 leaf —— 不能真删，清空 tabs 即可
@@ -557,11 +620,40 @@ export const usePaneStore = create<PaneStore>()(
         });
       },
 
+      reopenLastClosed: () => {
+        const { closedHistory } = get();
+        if (closedHistory.length === 0) return;
+        const [spec, ...rest] = closedHistory;
+        if (!spec) return;
+        set({ closedHistory: rest });
+        // 用 newTab=true 避免覆盖当前 active
+        get().openTab(spec, { newTab: true });
+      },
+
+      selectTabAt: (idx) => {
+        const { root, activeLeafId } = get();
+        const leaf = findLeaf(root, activeLeafId) ?? findFirstLeaf(root);
+        const target = leaf.tabs[idx];
+        if (!target) return;
+        get().setActiveTab(leaf.id, target.id);
+      },
+
+      closeActiveTab: () => {
+        const { root, activeLeafId } = get();
+        const leaf = findLeaf(root, activeLeafId) ?? findFirstLeaf(root);
+        if (!leaf.activeTabId) return;
+        get().closeTab(leaf.id, leaf.activeTabId);
+      },
+
       reset: () => set(INITIAL),
     }),
     {
       name: 'zk-panes-v1',
-      partialize: (s) => ({ root: s.root, activeLeafId: s.activeLeafId }),
+      partialize: (s) => ({
+        root: s.root,
+        activeLeafId: s.activeLeafId,
+        closedHistory: s.closedHistory,
+      }),
       // hydrate 后保证 activeLeafId 仍然指向有效 leaf
       onRehydrateStorage: () => (state) => {
         if (!state) return;

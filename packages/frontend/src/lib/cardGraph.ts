@@ -34,6 +34,9 @@ export type CardNodeData = {
   isInWorkspace?: boolean;
   /** 来自工作区的"幽灵 temp 节点"——只读、不发请求、只显示标题/正文 */
   ghostFromWorkspace?: { workspaceId: string; workspaceName: string };
+  /** 位置存储 scope（box:xxx 或 tag:xxx）—— 由父视图（Canvas/TagView/WorkspaceView）注入，
+   *  不再读全局 useUIStore，多 pane 同屏时各算各的 */
+  scope?: string;
 };
 
 /** 计算每张卡被哪些 INDEX 引用 */

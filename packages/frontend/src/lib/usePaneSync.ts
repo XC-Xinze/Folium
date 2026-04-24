@@ -54,6 +54,10 @@ export function usePaneSync(): void {
       case 'settings':
         setViewMode('settings');
         break;
+      case 'workspace':
+        // 没有专门的 workspace viewMode；退回 chain，让命令系统继续工作
+        setViewMode('chain');
+        break;
     }
   }, [root, activeLeafId, setBoxAndFocus, setFocusTag, setViewMode]);
 }
@@ -82,4 +86,49 @@ export function usePaneBootstrap(): void {
       cardFocusId: firstId,
     });
   }, [root, cardsQ.data, indexesQ.data, openTab]);
+}
+
+/**
+ * 启动时清掉持久化里指向已删 card / workspace / tag 的 tab。
+ * 只在所有 query 都首次返回后跑一次（避免 loading 时误判全删）。
+ */
+export function useStaleTabCleanup(): void {
+  const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
+  const wsQ = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces });
+  const tagsQ = useQuery({ queryKey: ['tags'], queryFn: api.listTags });
+  const removeTabsWhere = usePaneStore((s) => s.removeTabsWhere);
+  const ranRef = (function useOnceFlag() {
+    return useRefBox();
+  })();
+
+  useEffect(() => {
+    if (ranRef.value) return;
+    if (!cardsQ.data || !wsQ.data || !tagsQ.data) return;
+    ranRef.value = true;
+
+    const cardIds = new Set(cardsQ.data.cards.map((c) => c.luhmannId));
+    const wsIds = new Set(wsQ.data.workspaces.map((w) => w.id));
+    const tagNames = new Set(tagsQ.data.tags.map((t) => t.name));
+
+    removeTabsWhere((tab) => {
+      if (tab.kind === 'card') {
+        return !!(
+          (tab.cardBoxId && !cardIds.has(tab.cardBoxId)) ||
+          (tab.cardFocusId && !cardIds.has(tab.cardFocusId))
+        );
+      }
+      if (tab.kind === 'workspace') return !!tab.workspaceId && !wsIds.has(tab.workspaceId);
+      if (tab.kind === 'tag') return !!tab.tagName && !tagNames.has(tab.tagName);
+      return false;
+    });
+  }, [cardsQ.data, wsQ.data, tagsQ.data, removeTabsWhere, ranRef]);
+}
+
+// 极简的"会话内只跑一次"flag，避免 hot reload 重复
+function useRefBox() {
+  const ref = (window as unknown as { __zkCleanupRan?: { value: boolean } }).__zkCleanupRan;
+  if (ref) return ref;
+  const box = { value: false };
+  (window as unknown as { __zkCleanupRan?: { value: boolean } }).__zkCleanupRan = box;
+  return box;
 }

@@ -24,12 +24,17 @@ export function Sidebar() {
   const qc = useQueryClient();
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.deleteCard(id),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ['cards'] });
       qc.invalidateQueries({ queryKey: ['indexes'] });
       qc.invalidateQueries({ queryKey: ['positions'] });
       qc.invalidateQueries({ queryKey: ['tags'] });
       qc.invalidateQueries({ queryKey: ['workspaces'] });
+      usePaneStore
+        .getState()
+        .removeTabsWhere(
+          (t) => t.kind === 'card' && (t.cardBoxId === id || t.cardFocusId === id),
+        );
     },
   });
   // tag 改名 / 删除会改写大量卡片的 frontmatter+正文，凡是缓存了卡片内容的查询都得失效
@@ -53,7 +58,12 @@ export function Sidebar() {
   });
   const deleteTagMut = useMutation({
     mutationFn: (name: string) => api.deleteTag(name),
-    onSuccess: invalidateAfterTagOp,
+    onSuccess: async (_data, name) => {
+      await invalidateAfterTagOp();
+      usePaneStore
+        .getState()
+        .removeTabsWhere((t) => t.kind === 'tag' && t.tagName === name);
+    },
   });
 
   // 把 daily 卡和 orphan 卡（不在任何 INDEX 树里的顶层卡）从主流分离

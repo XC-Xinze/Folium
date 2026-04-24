@@ -106,8 +106,14 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange }: Props
     const anchored = applyAnchorPositions(raw.nodes, raw.edges, positionsQ.data ?? {});
     // 一次性碰撞解算：把自动布局产生的重叠抹掉，但锁定用户手动拖过的位置
     const finalNodes = resolveCollisions(anchored, positionsQ.data ?? {});
-    return { nodes: finalNodes, edges: raw.edges };
+    // 把 scope 印到每个节点 data 上，CardNode 直接读，多 pane 同屏不串
+    const stamped = finalNodes.map((n) => ({
+      ...n,
+      data: { ...(n.data as object), scope },
+    }));
+    return { nodes: stamped, edges: raw.edges };
   }, [
+    scope,
     cardsQ.data,
     boxQ.data,
     fullCards,

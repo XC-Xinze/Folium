@@ -120,13 +120,16 @@ export function QuickSwitcher() {
 
   const close = () => setOpen(false);
 
-  const acceptHit = (hit: Hit) => {
+  const acceptHit = (
+    hit: Hit,
+    opts?: { newTab?: boolean; splitDirection?: 'horizontal' | 'vertical' },
+  ) => {
     if (hit.kind === 'card' && hit.card) {
-      navigate(hit.card.luhmannId);
+      navigate(hit.card.luhmannId, opts);
     } else if (hit.kind === 'tag' && hit.tag) {
-      openPaneTab({ kind: 'tag', title: `#${hit.tag.name}`, tagName: hit.tag.name });
+      openPaneTab({ kind: 'tag', title: `#${hit.tag.name}`, tagName: hit.tag.name }, opts);
     } else if (hit.kind === 'content' && hit.content) {
-      navigate(hit.content.luhmannId);
+      navigate(hit.content.luhmannId, opts);
     }
     close();
   };
@@ -158,7 +161,11 @@ export function QuickSwitcher() {
               } else if (e.key === 'Enter') {
                 e.preventDefault();
                 const hit = hits[activeIdx];
-                if (hit) acceptHit(hit);
+                if (!hit) return;
+                const cmd = e.metaKey || e.ctrlKey;
+                if (cmd && e.shiftKey) acceptHit(hit, { splitDirection: 'horizontal' });
+                else if (cmd) acceptHit(hit, { newTab: true });
+                else acceptHit(hit);
               }
             }}
             placeholder="Jump to a card by id, title, or tag…"
@@ -188,7 +195,10 @@ export function QuickSwitcher() {
                   data-idx={i}
                   onMouseDown={(e) => {
                     e.preventDefault();
-                    acceptHit(h);
+                    const cmd = e.metaKey || e.ctrlKey;
+                    if (cmd && e.shiftKey) acceptHit(h, { splitDirection: 'horizontal' });
+                    else if (cmd) acceptHit(h, { newTab: true });
+                    else acceptHit(h);
                   }}
                   onMouseEnter={() => setActiveIdx(i)}
                   className={`w-full flex items-start gap-3 px-4 py-2 text-left transition-colors ${

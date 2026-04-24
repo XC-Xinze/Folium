@@ -3,7 +3,7 @@ luhmannId: i2
 title: 索引：方法论
 status: INDEX
 tags:
-  - '666'
+  - 放寒假
   - methodology
 crossLinks:
   - 3b

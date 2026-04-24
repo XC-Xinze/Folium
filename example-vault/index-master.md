@@ -3,7 +3,7 @@ luhmannId: i0
 title: AI 大类
 status: INDEX
 tags:
-  - '666'
+  - 放寒假
   - domain
   - ai
 crossLinks:

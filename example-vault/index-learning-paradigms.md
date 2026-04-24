@@ -3,7 +3,7 @@ luhmannId: i3
 title: 索引：标注与学习范式
 status: INDEX
 tags:
-  - '666'
+  - 放寒假
   - paradigm
 crossLinks:
   - 5

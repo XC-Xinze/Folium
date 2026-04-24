@@ -86,7 +86,9 @@ export function useNavigateToCard() {
       if (primary) {
         setBoxAndFocus(primary, id);
       } else {
-        setFocus(id);
+        // 没有 primary box（orphan 卡，比如 daily / 顶层未索引卡）→ 自己当根 box
+        // 否则 focusedBoxId 还停在旧值，新焦点不在那个 box 的 backbone 里就"消失"了
+        setBoxAndFocus(id, id);
       }
     },
     [setFocus, setBoxAndFocus, cardsQ.data],

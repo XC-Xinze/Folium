@@ -57,17 +57,21 @@ export function EditorAutocomplete({
 
   // 简单定位策略：贴在光标行下方；若离屏底太近则放上面
   const VIEWPORT_H = window.innerHeight;
+  const VIEWPORT_W = window.innerWidth;
+  const POPUP_W = Math.min(320, VIEWPORT_W - 16);
   const POPUP_H_EST = Math.min(280, items.length * 36 + 32);
   const placeAbove = anchorRect.bottom + POPUP_H_EST + 8 > VIEWPORT_H;
-  const top = placeAbove ? anchorRect.top - POPUP_H_EST - 4 : anchorRect.bottom + 4;
+  const top = placeAbove ? Math.max(8, anchorRect.top - POPUP_H_EST - 4) : anchorRect.bottom + 4;
+  // 不让 left 把面板挤出右边
+  const left = Math.min(anchorRect.left, VIEWPORT_W - POPUP_W - 8);
 
   return (
     <div
       className="fixed z-[1200] bg-white dark:bg-[#363a4f] border border-gray-200 dark:border-[#494d64] rounded-lg shadow-2xl overflow-hidden"
       style={{
         top,
-        left: anchorRect.left,
-        width: 320,
+        left: Math.max(8, left),
+        width: POPUP_W,
         maxHeight: POPUP_H_EST,
       }}
       onMouseDown={(e) => e.preventDefault() /* 不要让 textarea 失焦 */}

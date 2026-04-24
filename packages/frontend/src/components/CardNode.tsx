@@ -1,7 +1,7 @@
 import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDownToLine, ArrowUpToLine, Check, GripVertical, Layers, Pencil, Star, Trash2, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpToLine, ArrowLeft, Check, GripVertical, Layers, Pencil, Star, Trash2, X } from 'lucide-react';
 import { setCardDragData } from '../lib/dragCard';
 import { dialog } from '../lib/dialog';
 import { api, type Card } from '../lib/api';
@@ -119,6 +119,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
       qc.invalidateQueries({ queryKey: ['indexes'] });
       qc.invalidateQueries({ queryKey: ['tags'] });
       qc.invalidateQueries({ queryKey: ['linked'] });
+      qc.invalidateQueries({ queryKey: ['backlinks'] });
       setEditing(false);
     } catch (err) {
       dialog.alert((err as Error).message, { title: 'Save failed' });
@@ -267,6 +268,15 @@ export function CardNode({ data, id, selected }: NodeProps) {
     otherBoxLabels.length > 0;
   // markdown 解析非 trivial — 只在内容变化时跑，否则 hover/resize 都会触发整段重新解析
   const html = useMemo(() => (full ? renderMarkdown(full.contentMd) : ''), [full?.contentMd]);
+
+  // Backlinks：只对焦点卡拉，其他卡片不需要 → 别让背景卡片刷一堆请求
+  const backlinksQ = useQuery({
+    queryKey: ['backlinks', cardLuhmannId],
+    queryFn: () => api.getReferencedFrom(cardLuhmannId),
+    enabled: variant === 'focus' && !isGhost,
+  });
+  const backlinks = backlinksQ.data?.hits ?? [];
+  const [backlinksOpen, setBacklinksOpen] = useState(true);
 
   return (
     <div
@@ -477,8 +487,55 @@ export function CardNode({ data, id, selected }: NodeProps) {
             dangerouslySetInnerHTML={{ __html: html }}
           />
 
+          {variant === 'focus' && !isGhost && backlinks.length > 0 && (
+            <div className="px-5 pb-2 pt-2 border-t border-gray-100 dark:border-[#494d64]">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setBacklinksOpen((v) => !v);
+                }}
+                className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-gray-600 dark:hover:text-[#cad3f5]"
+              >
+                <ArrowLeft size={10} />
+                <span>Backlinks · {backlinks.length}</span>
+                <span className="text-gray-300">{backlinksOpen ? '▾' : '▸'}</span>
+              </button>
+              {backlinksOpen && (
+                <ul className="mt-1.5 space-y-1">
+                  {backlinks.slice(0, 8).map((b) => (
+                    <li key={b.sourceId}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(b.sourceId);
+                        }}
+                        className="w-full text-left p-1.5 rounded hover:bg-gray-50 dark:hover:bg-[#494d64]/40 transition-colors"
+                        title={`Open ${b.sourceId}`}
+                      >
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="font-mono text-[10px] font-bold text-accent shrink-0">
+                            {b.sourceId}
+                          </span>
+                          <span className="text-[11px] truncate">{b.sourceTitle || b.sourceId}</span>
+                        </div>
+                        <div className="text-[10px] text-gray-500 dark:text-[#a5adcb] mt-0.5 line-clamp-2">
+                          {b.paragraph}
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                  {backlinks.length > 8 && (
+                    <li className="text-[10px] text-gray-400 px-1.5">
+                      +{backlinks.length - 8} more…
+                    </li>
+                  )}
+                </ul>
+              )}
+            </div>
+          )}
+
           {(tags.length > 0 || full) && !isGhost && (
-            <footer className="px-5 pb-3 pt-2 border-t border-gray-100 space-y-1">
+            <footer className="px-5 pb-3 pt-2 border-t border-gray-100 dark:border-[#494d64] space-y-1">
               {tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {tags.slice(0, 6).map((t) => (

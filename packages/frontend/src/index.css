@@ -9,11 +9,47 @@ body {
   color: #1f2933;
   -webkit-font-smoothing: antialiased;
 }
-/* Dark theme：Catppuccin Mocha */
+
+/* ============================================================
+ * Dark theme: Catppuccin Macchiato（Mocha 太黑，换略亮的 Macchiato）
+ * ============================================================ */
 html.dark body {
-  background: #1e1e2e; /* base */
-  color: #cdd6f4;      /* text */
+  background: #24273a; /* base */
+  color: #cad3f5;      /* text */
 }
+
+/* 全局覆盖常用的 Tailwind gray 工具类。组件没显式写 dark: 也能看 */
+html.dark .bg-white { background-color: #363a4f !important; }       /* surface0 */
+html.dark .bg-gray-50 { background-color: #363a4f !important; }
+html.dark .bg-gray-100 { background-color: #494d64 !important; }    /* surface1 */
+html.dark .bg-gray-200 { background-color: #5b6078 !important; }    /* surface2 */
+
+html.dark .hover\:bg-gray-50:hover { background-color: #363a4f !important; }
+html.dark .hover\:bg-gray-100:hover { background-color: #494d64 !important; }
+html.dark .hover\:bg-white\/5:hover { background-color: rgba(202,211,245,0.05) !important; }
+
+html.dark .text-gray-300 { color: #6e738d !important; }   /* overlay0 */
+html.dark .text-gray-400 { color: #8087a2 !important; }   /* overlay1 */
+html.dark .text-gray-500 { color: #939ab7 !important; }   /* overlay2 */
+html.dark .text-gray-600 { color: #a5adcb !important; }   /* subtext0 */
+html.dark .text-gray-700 { color: #b8c0e0 !important; }   /* subtext1 */
+html.dark .text-ink { color: #cad3f5 !important; }         /* text */
+
+html.dark .hover\:text-ink:hover { color: #f4dbd6 !important; }    /* rosewater on hover */
+html.dark .hover\:text-accent:hover { color: #c6a0f6 !important; } /* mauve on hover */
+
+html.dark .border-gray-100 { border-color: #363a4f !important; }
+html.dark .border-gray-200 { border-color: #494d64 !important; }
+html.dark .border-gray-300 { border-color: #5b6078 !important; }
+
+html.dark .bg-accentSoft { background-color: rgba(198,160,246,0.18) !important; }
+html.dark .text-accent { color: #c6a0f6 !important; }     /* mauve */
+html.dark .border-accent\/40 { border-color: rgba(198,160,246,0.4) !important; }
+
+/* paper（NewCardBar 写作区） */
+html.dark .bg-paper { background-color: #1e2030 !important; } /* mantle */
+html.dark .border-paperEdge { border-color: #363a4f !important; }
+html.dark .placeholder\:text-gray-300::placeholder { color: #6e738d !important; }
 
 /* 卡片正文 markdown 渲染样式 */
 .prose-card h1 { font-size: 1.25rem; font-weight: 800; margin-bottom: 0.75rem; }
@@ -24,18 +60,18 @@ html.dark body {
 .prose-card ul { list-style: disc; }
 .prose-card ol { list-style: decimal; }
 .prose-card code { background: #f1f5f9; padding: 0 4px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; font-size: 0.875em; }
-html.dark .prose-card code { background: #45475a; color: #cdd6f4; } /* surface1 / text */
+html.dark .prose-card code { background: #494d64; color: #cad3f5; }
 .prose-card strong { font-weight: 700; color: #1f2933; }
-html.dark .prose-card strong { color: #f5e0dc; } /* rosewater */
+html.dark .prose-card strong { color: #f4dbd6; } /* rosewater */
 .prose-card .wikilink {
   color: #7c4dff;
   text-decoration: none;
   border-bottom: 1px dotted #7c4dff;
   cursor: pointer;
 }
-html.dark .prose-card .wikilink { color: #cba6f7; border-bottom-color: #cba6f7; } /* mauve */
+html.dark .prose-card .wikilink { color: #c6a0f6; border-bottom-color: #c6a0f6; } /* mauve */
 .prose-card .wikilink:hover { background: #ede9fe; }
-html.dark .prose-card .wikilink:hover { background: #45475a; } /* surface1 */
+html.dark .prose-card .wikilink:hover { background: #494d64; }
 .prose-card img {
   max-width: 100%;
   height: auto;
@@ -47,20 +83,20 @@ html.dark .prose-card .wikilink:hover { background: #45475a; } /* surface1 */
   color: #7c4dff;
   text-decoration: underline;
 }
-html.dark .prose-card a { color: #cba6f7; } /* mauve */
+html.dark .prose-card a { color: #c6a0f6; }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
-html.dark ::-webkit-scrollbar-thumb { background: #45475a; } /* surface1 */
+html.dark ::-webkit-scrollbar-thumb { background: #494d64; }
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* React Flow 在 dark 下的画布样式 */
-html.dark .react-flow__background { background-color: #1e1e2e !important; }
-html.dark .react-flow__minimap { background-color: #181825 !important; }
-html.dark .react-flow__controls { background-color: #181825 !important; }
+html.dark .react-flow__background { background-color: #24273a !important; }
+html.dark .react-flow__minimap { background-color: #1e2030 !important; }
+html.dark .react-flow__controls { background-color: #1e2030 !important; }
 html.dark .react-flow__controls-button {
-  background-color: #313244 !important;
-  border-bottom-color: #45475a !important;
-  fill: #cdd6f4 !important;
+  background-color: #363a4f !important;
+  border-bottom-color: #494d64 !important;
+  fill: #cad3f5 !important;
 }
-html.dark .react-flow__controls-button:hover { background-color: #45475a !important; }
+html.dark .react-flow__controls-button:hover { background-color: #494d64 !important; }

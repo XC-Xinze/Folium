@@ -210,8 +210,8 @@ export function App() {
       <RibbonBar />
       {!leftSidebarCollapsed && (sidebarTab === 'workspaces' ? <WorkspacesSidebar /> : <Sidebar />)}
 
-      <main className="flex-1 flex flex-col bg-[#fafafa] dark:bg-[#1e1e2e] min-w-0">
-        <div className="flex items-center justify-end px-6 pt-4 pb-1 border-b border-gray-100/60 dark:border-[#313244]/60 bg-[#fafafa] dark:bg-[#1e1e2e]">
+      <main className="flex-1 flex flex-col bg-[#fafafa] dark:bg-[#24273a] min-w-0">
+        <div className="flex items-center justify-end px-6 pt-4 pb-1 border-b border-gray-100/60 dark:border-[#363a4f]/60 bg-[#fafafa] dark:bg-[#24273a]">
           <WorkspaceSwitcher />
         </div>
 

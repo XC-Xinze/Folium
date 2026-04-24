@@ -75,7 +75,7 @@ export function SettingsView() {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="border border-gray-200 dark:border-[#313244] rounded-lg p-6 bg-white dark:bg-[#181825] space-y-4">
+    <section className="border border-gray-200 dark:border-[#363a4f] rounded-lg p-6 bg-white dark:bg-[#1e2030] space-y-4">
       <h2 className="text-sm font-bold">{title}</h2>
       {children}
     </section>

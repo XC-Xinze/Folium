@@ -315,6 +315,34 @@ export const api = {
       throw new Error(j.error ?? `${res.status} ${res.statusText}`);
     }
   },
+  // ──── 回收站 ────
+  listTrash: () =>
+    get<{
+      entries: Array<{
+        fileName: string;
+        luhmannId: string;
+        title: string;
+        deletedAt: string;
+        mtime: number;
+      }>;
+    }>(`/trash`),
+  restoreTrash: async (fileName: string): Promise<{ luhmannId: string }> => {
+    const res = await fetch(`${BASE}/trash/${encodeURIComponent(fileName)}/restore`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+  purgeTrashEntry: async (fileName: string): Promise<void> => {
+    await fetch(`${BASE}/trash/${encodeURIComponent(fileName)}`, { method: 'DELETE' });
+  },
+  emptyTrash: async (): Promise<{ purged: number }> => {
+    const res = await fetch(`${BASE}/trash/empty`, { method: 'POST' });
+    return res.json();
+  },
   search: (q: string, limit = 20) =>
     get<{ hits: Array<{ luhmannId: string; title: string; snippet: string; rank: number }> }>(
       `/search?q=${encodeURIComponent(q)}&limit=${limit}`,

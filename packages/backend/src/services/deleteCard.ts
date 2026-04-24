@@ -1,4 +1,4 @@
-import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { readFile, rename, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import matter from 'gray-matter';
 import type Database from 'better-sqlite3';
@@ -33,11 +33,20 @@ export async function deleteVaultCard(
   const card = repo.getById(cardId);
   if (!card) throw new Error(`card not found: ${cardId}`);
 
-  // 1. 删文件
+  // 1. 把 .md 移到 .zettel/trash/，可恢复（不直接 unlink）
+  //    命名带时间戳避免重名：trash/20260424T0930-{id}.md
+  const trashDir = join(config.vaultPath, '.zettel', 'trash');
+  await mkdir(trashDir, { recursive: true });
+  const ts = new Date()
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d+Z$/, 'Z')
+    .slice(0, 15); // 20260424T093030
+  const trashPath = join(trashDir, `${ts}-${cardId}.md`);
   try {
-    await unlink(card.filePath);
+    await rename(card.filePath, trashPath);
   } catch (err) {
-    throw new Error(`无法删除文件: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(`无法移到回收站: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // 2. 清理其他文件的 frontmatter.crossLinks

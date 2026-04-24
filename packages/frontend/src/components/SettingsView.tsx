@@ -2,6 +2,7 @@ import { Moon, Sun, Monitor } from 'lucide-react';
 import { useUIStore, type Theme } from '../store/uiStore';
 import { PluginRegistry } from '../lib/pluginRegistry';
 import { HotkeysPanel } from './HotkeysPanel';
+import { TrashPanel } from './TrashPanel';
 
 export function SettingsView() {
   const setViewMode = useUIStore((s) => s.setViewMode);
@@ -55,6 +56,10 @@ export function SettingsView() {
 
       <Section title="Hotkeys">
         <HotkeysPanel />
+      </Section>
+
+      <Section title="Trash">
+        <TrashPanel />
       </Section>
 
       <Section title="Plugins">

@@ -666,13 +666,37 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     };
   });
 
+  // 跟踪每个 (target, handle) 已经被几条 ws 边占用 → 多条时轮换 handle 避免重叠
+  const targetHandleCount = new Map<string, number>();
+  const sourceHandleCount = new Map<string, number>();
+  const targetRotation = ['left-in', 'top', 'right-in', 'bottom'];
+  const sourceRotation = ['right-out', 'bottom', 'left-out', 'top'];
+
   const edges: Edge[] = rawEdges.map((e) => {
     const src = positions.get(e.source);
     const tgt = positions.get(e.target);
-    const handles =
+    let { sourceHandle, targetHandle } =
       src && tgt
         ? pickHandles(e.kind, src, tgt)
-        : { sourceHandle: 'bottom', targetHandle: 'top' };
+        : { sourceHandle: 'bottom' as string, targetHandle: 'top' as string };
+
+    // ws 边（id 以 ws: 开头）：多条到同一节点时轮换 handle
+    if (e.id.startsWith('ws:')) {
+      const tgtKey = `${e.target}:${targetHandle}`;
+      const tgtUsed = targetHandleCount.get(tgtKey) ?? 0;
+      if (tgtUsed > 0) {
+        targetHandle = targetRotation[tgtUsed % targetRotation.length]!;
+      }
+      targetHandleCount.set(tgtKey, tgtUsed + 1);
+
+      const srcKey = `${e.source}:${sourceHandle}`;
+      const srcUsed = sourceHandleCount.get(srcKey) ?? 0;
+      if (srcUsed > 0) {
+        sourceHandle = sourceRotation[srcUsed % sourceRotation.length]!;
+      }
+      sourceHandleCount.set(srcKey, srcUsed + 1);
+    }
+
     // 焦点卡的连线加粗 + 不透明度满，让用户切焦点时一眼看到关联
     const touchesFocus = e.source === focusedCardId || e.target === focusedCardId;
     const baseStyle = edgeStyles[e.kind];
@@ -683,8 +707,8 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
       id: e.id,
       source: e.source,
       target: e.target,
-      sourceHandle: handles.sourceHandle,
-      targetHandle: handles.targetHandle,
+      sourceHandle,
+      targetHandle,
       type: 'default', // 全部用 bezier，不再用 smoothstep 的硬拐角
       animated: false,
       style,

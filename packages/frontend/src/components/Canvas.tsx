@@ -31,6 +31,8 @@ function CanvasInner({ focusedBoxId, focusedCardId }: Props) {
   const setShowTagRelated = useUIStore((s) => s.setShowTagRelated);
   const showCrossLinks = useUIStore((s) => s.showCrossLinks);
   const setShowCrossLinks = useUIStore((s) => s.setShowCrossLinks);
+  const showWorkspaceLinks = useUIStore((s) => s.showWorkspaceLinks);
+  const setShowWorkspaceLinks = useUIStore((s) => s.setShowWorkspaceLinks);
   const qc = useQueryClient();
 
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
@@ -92,7 +94,7 @@ function CanvasInner({ focusedBoxId, focusedCardId }: Props) {
       showPotential,
       showTagRelated,
       showCrossLinks,
-      workspaceLinks: workspaceLinksQ.data?.links ?? [],
+      workspaceLinks: showWorkspaceLinks ? workspaceLinksQ.data?.links ?? [] : [],
     });
     const anchored = applyAnchorPositions(raw.nodes, raw.edges, positionsQ.data ?? {});
     // 一次性碰撞解算：把自动布局产生的重叠抹掉，但锁定用户手动拖过的位置
@@ -108,6 +110,7 @@ function CanvasInner({ focusedBoxId, focusedCardId }: Props) {
     showPotential,
     showTagRelated,
     showCrossLinks,
+    showWorkspaceLinks,
     workspaceLinksQ.data,
     positionsQ.data,
   ]);
@@ -199,6 +202,13 @@ function CanvasInner({ focusedBoxId, focusedCardId }: Props) {
           active={showPotential}
           onClick={() => setShowPotential(!showPotential)}
           title="Text-similarity potential edges (gray dashed)"
+        />
+        <EdgeToggle
+          color="#a78bfa"
+          label="Temp"
+          active={showWorkspaceLinks}
+          onClick={() => setShowWorkspaceLinks(!showWorkspaceLinks)}
+          title="Workspace temp ghost cards & their links"
         />
       </div>
     </div>

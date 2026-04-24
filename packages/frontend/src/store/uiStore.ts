@@ -30,6 +30,8 @@ interface UIState {
   showTagRelated: boolean;
   /** 是否显示紫色的手动 [[link]] cross-flank 边/节点 */
   showCrossLinks: boolean;
+  /** 是否显示工作区临时卡（temp ghost）作为 potential 叠加 */
+  showWorkspaceLinks: boolean;
   /** Cmd+K 快速跳转面板开/关 */
   quickSwitcherOpen: boolean;
   /** 主题：light/dark 强制；auto 跟随系统 */
@@ -50,6 +52,7 @@ interface UIState {
   setShowPotential: (b: boolean) => void;
   setShowTagRelated: (b: boolean) => void;
   setShowCrossLinks: (b: boolean) => void;
+  setShowWorkspaceLinks: (b: boolean) => void;
   setQuickSwitcherOpen: (b: boolean) => void;
   setTheme: (t: Theme) => void;
   setShortcut: (commandId: string, shortcut: string | null) => void;
@@ -72,6 +75,7 @@ export const useUIStore = create<UIState>()(
       showPotential: true,
       showTagRelated: true,
       showCrossLinks: true,
+      showWorkspaceLinks: true,
       quickSwitcherOpen: false,
       theme: 'auto',
       shortcutOverrides: {},
@@ -97,6 +101,7 @@ export const useUIStore = create<UIState>()(
       setShowPotential: (b) => set({ showPotential: b }),
       setShowTagRelated: (b) => set({ showTagRelated: b }),
       setShowCrossLinks: (b) => set({ showCrossLinks: b }),
+      setShowWorkspaceLinks: (b) => set({ showWorkspaceLinks: b }),
       setQuickSwitcherOpen: (b) => set({ quickSwitcherOpen: b }),
       setTheme: (t) => set({ theme: t }),
       setShortcut: (commandId, shortcut) =>
@@ -120,6 +125,7 @@ export const useUIStore = create<UIState>()(
         showPotential: state.showPotential,
         showTagRelated: state.showTagRelated,
         showCrossLinks: state.showCrossLinks,
+        showWorkspaceLinks: state.showWorkspaceLinks,
         theme: state.theme,
         shortcutOverrides: state.shortcutOverrides,
         ...(state.workspacePanelPinned && {

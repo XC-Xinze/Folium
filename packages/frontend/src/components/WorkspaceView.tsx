@@ -160,18 +160,22 @@ function WorkspaceInner({ workspaceId }: Props) {
     [],
   );
 
-  // —— 自动保存（debounced）
+  // —— 自动保存（debounced）。保存完同步刷新 ws-links-batch，让主画布看到新边
   const saveTimer = useRef<number | null>(null);
   const persist = useCallback(
     (next: Workspace) => {
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
       saveTimer.current = window.setTimeout(() => {
-        api.updateWorkspace(next.id, { nodes: next.nodes, edges: next.edges }).catch((err) =>
-          console.error('save workspace failed', err),
-        );
+        api
+          .updateWorkspace(next.id, { nodes: next.nodes, edges: next.edges })
+          .then(() => {
+            // 主画布的 workspace-links overlay 依赖这个 query
+            qc.invalidateQueries({ queryKey: ['ws-links-batch'] });
+          })
+          .catch((err) => console.error('save workspace failed', err));
       }, 400);
     },
-    [],
+    [qc],
   );
 
   // —— 修改 ws data 的辅助函数

@@ -20,16 +20,22 @@ renderer.link = function (token) {
 };
 
 /**
- * 将 Markdown 渲染为 HTML，并把 [[wikilink]] 转成可点击的 span。
+ * 将 Markdown 渲染为 HTML：
+ *   1. ![[id]] → 嵌入占位 div（待 attachTransclusion 异步填充内容）
+ *   2. [[link]] → 可点击 span
  */
 export function renderMarkdown(md: string, onLink?: (target: string) => void): string {
-  // 先把 [[link]] 替换为带 data-attr 的 span，避免被 marked 当作普通文本
-  const withLinks = md.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target: string, alias?: string) => {
+  // 嵌入语法 ![[id]] 必须先于 [[link]] 处理
+  let processed = md.replace(/!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target: string) => {
+    const safe = target.trim().replace(/"/g, '&quot;');
+    return `<div class="transclude" data-transclude="${safe}"><div class="transclude-loading">Loading [[${safe}]]…</div></div>`;
+  });
+  processed = processed.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target: string, alias?: string) => {
     const display = (alias ?? target).trim();
     const safe = target.trim().replace(/"/g, '&quot;');
     return `<span class="wikilink" data-link="${safe}">${display}</span>`;
   });
-  const html = marked.parse(withLinks, { async: false, renderer }) as string;
+  const html = marked.parse(processed, { async: false, renderer }) as string;
   void onLink;
   return html;
 }
@@ -49,4 +55,67 @@ export function attachWikilinkHandler(
   };
   root.addEventListener('click', onClick);
   return () => root.removeEventListener('click', onClick);
+}
+
+/**
+ * 把 ![[id]] 渲染出来的占位 .transclude div 异步填充实际卡片内容。
+ *   - getCard: 拉一张卡（一般直接传 api.getCard）
+ *   - 防递归：传入 visited Set 拦截嵌入循环
+ *   - 嵌入深度限制 maxDepth，默认 2
+ *
+ * 返回 cleanup（暂时空，没装监听器；保留 API 以后扩展）。
+ */
+export async function attachTransclusion(
+  root: HTMLElement,
+  getCard: (id: string) => Promise<{ luhmannId: string; title: string; contentMd: string } | null>,
+  opts: { visited?: Set<string>; maxDepth?: number; depth?: number } = {},
+): Promise<() => void> {
+  const visited = opts.visited ?? new Set<string>();
+  const maxDepth = opts.maxDepth ?? 2;
+  const depth = opts.depth ?? 0;
+
+  const placeholders = root.querySelectorAll<HTMLDivElement>('div.transclude[data-transclude]');
+  for (const ph of placeholders) {
+    const id = ph.dataset.transclude;
+    if (!id) continue;
+    if (visited.has(id) || depth >= maxDepth) {
+      ph.innerHTML = `<div class="transclude-cycle">↻ embed too deep or cyclic: <code>${id}</code></div>`;
+      continue;
+    }
+    try {
+      const card = await getCard(id);
+      if (!card) {
+        ph.innerHTML = `<div class="transclude-missing">[[${id}]] not found</div>`;
+        continue;
+      }
+      const innerVisited = new Set(visited);
+      innerVisited.add(id);
+      const html = renderMarkdown(card.contentMd);
+      ph.innerHTML = `
+        <div class="transclude-card">
+          <div class="transclude-header">
+            <span class="transclude-id" data-link="${id}">[[${id}]]</span>
+            <span class="transclude-title">${escapeHtml(card.title)}</span>
+          </div>
+          <div class="transclude-body">${html}</div>
+        </div>
+      `;
+      // 递归处理被嵌入卡片自己的 ![[]]
+      const body = ph.querySelector<HTMLElement>('.transclude-body');
+      if (body) {
+        await attachTransclusion(body, getCard, {
+          visited: innerVisited,
+          maxDepth,
+          depth: depth + 1,
+        });
+      }
+    } catch {
+      ph.innerHTML = `<div class="transclude-missing">[[${id}]] failed to load</div>`;
+    }
+  }
+  return () => undefined;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

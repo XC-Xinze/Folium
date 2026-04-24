@@ -6,7 +6,7 @@ import { setCardDragData } from '../lib/dragCard';
 import { dialog } from '../lib/dialog';
 import { api, type Card } from '../lib/api';
 import { countWords, relativeTime } from '../lib/cardStats';
-import { attachWikilinkHandler, renderMarkdown } from '../lib/markdown';
+import { attachTransclusion, attachWikilinkHandler, renderMarkdown } from '../lib/markdown';
 import type { CardNodeData } from '../lib/cardGraph';
 import { NODE_WIDTH } from '../lib/cardGraph';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
@@ -194,6 +194,23 @@ export function CardNode({ data, id, selected }: NodeProps) {
     if (!contentRef.current) return;
     return attachWikilinkHandler(contentRef.current, (target) => navigate(target));
   }, [navigate, full?.luhmannId]);
+
+  // ![[id]] 嵌入：内容 / 渲染完成后异步填充
+  useEffect(() => {
+    if (!contentRef.current || !full) return;
+    let cancelled = false;
+    void attachTransclusion(contentRef.current, async (id) => {
+      if (cancelled) return null;
+      try {
+        return await api.getCard(id);
+      } catch {
+        return null;
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [full?.luhmannId, full?.contentMd]);
 
   // Dark 用 Catppuccin Macchiato：surface0=#363a4f (卡 bg), surface1=#494d64 (border),
   // text=#cad3f5, mauve=#c6a0f6 (focus), green=#a6da95 (tag)

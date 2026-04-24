@@ -85,6 +85,41 @@ html.dark .prose-card .wikilink:hover { background: #494d64; }
 }
 html.dark .prose-card a { color: #c6a0f6; }
 
+/* Transclusion ![[id]]：嵌入卡片的视觉容器 */
+.transclude { margin: 0.5rem 0; }
+.transclude-card {
+  border-left: 3px solid #c4b5fd;
+  background: #faf9ff;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+}
+html.dark .transclude-card {
+  border-left-color: #c6a0f6;
+  background: rgba(198,160,246,0.08);
+}
+.transclude-header {
+  display: flex; align-items: baseline; gap: 0.5rem;
+  font-size: 0.7rem; color: #7c4dff;
+  margin-bottom: 0.25rem;
+}
+html.dark .transclude-header { color: #c6a0f6; }
+.transclude-id { font-family: 'JetBrains Mono', monospace; font-weight: 700; cursor: pointer; }
+.transclude-id:hover { text-decoration: underline; }
+.transclude-title { color: #4b5563; font-weight: 600; }
+html.dark .transclude-title { color: #b8c0e0; }
+.transclude-body { font-size: 0.95em; opacity: 0.9; }
+.transclude-loading,
+.transclude-missing,
+.transclude-cycle {
+  font-size: 0.75rem; color: #9ca3af; font-style: italic;
+  padding: 0.25rem 0.5rem; border-left: 2px dashed #d1d5db;
+}
+html.dark .transclude-loading,
+html.dark .transclude-missing,
+html.dark .transclude-cycle {
+  color: #6e738d; border-left-color: #494d64;
+}
+
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
 html.dark ::-webkit-scrollbar-thumb { background: #494d64; }

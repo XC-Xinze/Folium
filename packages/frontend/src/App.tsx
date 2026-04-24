@@ -212,7 +212,16 @@ export function App() {
       )}
 
       <main className="flex-1 flex flex-col bg-[#fafafa] dark:bg-[#24273a] min-w-0">
-        <div className="flex items-center justify-end px-6 pt-2 pb-1 border-b border-gray-100/60 dark:border-[#363a4f]/60 bg-[#fafafa] dark:bg-[#24273a] shrink-0">
+        <div className="flex items-center gap-2 px-4 pt-2 pb-1 border-b border-gray-100/60 dark:border-[#363a4f]/60 bg-[#fafafa] dark:bg-[#24273a] shrink-0">
+          <button
+            onClick={() => useUIStore.getState().setNewCardOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent text-white text-[12px] font-bold hover:bg-accent/90 shadow-sm"
+            title="New card (⌘N)"
+          >
+            <span className="text-[14px] leading-none">+</span>
+            <span>New card</span>
+          </button>
+          <div className="flex-1" />
           <WorkspaceSwitcher />
         </div>
         {isVaultEmpty ? <EmptyVault /> : <PaneRoot />}

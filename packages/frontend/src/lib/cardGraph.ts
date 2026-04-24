@@ -268,12 +268,19 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     rawEdges.push({ id: `tree:${e.source}->${e.target}`, source: e.source, target: e.target, kind: 'tree' });
   }
 
+  // 焦点卡若在 backbone 外（被 tag-related/cross-flank 拉进来后用户点选了它）→
+  // 把它也纳入 cross/potential 的迭代集合，让"以焦点为中心的所有边"都画出来
+  const radialIds = new Set<string>(backbone.ids);
+  if (!radialIds.has(focusedCardId) && cardMap.has(focusedCardId)) {
+    radialIds.add(focusedCardId);
+  }
+
   // Cross-link 边：双向都画
   //   出边（outbound）：骨干卡的 crossLinks 指向哪些卡 —— 从 fullCards 抽取
   //   入边（inbound / backlinks）：哪些卡的 crossLinks 指向骨干 —— 用 summary 反向扫描
   if (showCrossLinks) {
     // 出边
-    for (const id of backbone.ids) {
+    for (const id of radialIds) {
       const full = fullCards.get(id);
       if (!full) continue;
       // INDEX 卡的 [[link]] 本质是"成员关系"，已经体现在 tree 结构里了；
@@ -298,12 +305,12 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
         }
       }
     }
-    // 入边（backlinks）：扫所有卡的 summary.crossLinks，找指向骨干的
+    // 入边（backlinks）：扫所有卡的 summary.crossLinks，找指向骨干（或外部焦点）的
     for (const c of allCards) {
-      if (backbone.ids.has(c.luhmannId)) continue; // 骨干内部已在出边里处理
+      if (radialIds.has(c.luhmannId)) continue; // 已在出边里处理
       if (c.status === 'INDEX') continue; // INDEX 的指向是"成员关系"，不当 cross
       for (const target of c.crossLinks) {
-        if (!backbone.ids.has(target)) continue;
+        if (!radialIds.has(target)) continue;
         const existsTree = backbone.treeEdges.some(
           (e) =>
             (e.source === c.luhmannId && e.target === target) ||
@@ -393,7 +400,7 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
   // 骨干内部之间的 potential 关系也要画一条灰虚线（之前 continue 跳过了导致 7 看不到 potential）。
   // 优先级：tree > cross > tag > potential。如果这对节点已经有更"硬"的边，就别叠加 potential。
   if (showPotential) {
-    for (const id of backbone.ids) {
+    for (const id of radialIds) {
       const rel = relatedBatch[id];
       if (!rel) continue;
       for (const p of rel.potential) {

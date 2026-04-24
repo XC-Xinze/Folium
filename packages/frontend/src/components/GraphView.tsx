@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   Controls,
+  Handle,
   MiniMap,
+  Position,
   ReactFlow,
   ReactFlowProvider,
   useViewport,
@@ -320,7 +322,7 @@ function GraphInner() {
           id: `${l.kind}:${l.source}->${l.target}`,
           source: l.source,
           target: l.target,
-          type: 'simplebezier',
+          type: 'default',
           style: {
             stroke: baseColor,
             strokeWidth,
@@ -439,6 +441,18 @@ function EdgeToggle({
   );
 }
 
+/** 隐形 handles —— 给 React Flow 一个 anchor，否则 edges 找不到端点不显示 */
+function Anchors() {
+  return (
+    <>
+      <Handle type="source" position={Position.Top} id="t" style={{ opacity: 0, pointerEvents: 'none' }} />
+      <Handle type="target" position={Position.Top} id="t-in" style={{ opacity: 0, pointerEvents: 'none' }} />
+      <Handle type="source" position={Position.Bottom} id="b" style={{ opacity: 0, pointerEvents: 'none' }} />
+      <Handle type="target" position={Position.Bottom} id="b-in" style={{ opacity: 0, pointerEvents: 'none' }} />
+    </>
+  );
+}
+
 /** 单节点：根据 zoom + selected 切渲染密度 */
 function GraphNode({ data }: { data: GraphNodeData }) {
   const { card, isIndex, isSelected } = data;
@@ -460,75 +474,89 @@ function GraphNode({ data }: { data: GraphNodeData }) {
 
   if (level === 'dot') {
     return (
-      <div
-        className={`rounded-full transition-colors ${
-          isIndex ? 'bg-accent' : 'bg-gray-400 dark:bg-[#6e738d]'
-        } ${isSelected ? 'ring-2 ring-accent ring-offset-2' : ''}`}
-        style={{
-          width: isIndex ? 14 : 8,
-          height: isIndex ? 14 : 8,
-          marginLeft: NODE_W / 2 - (isIndex ? 7 : 4),
-          marginTop: NODE_H / 2 - (isIndex ? 7 : 4),
-        }}
-        title={`${card.luhmannId} · ${card.title}`}
-      />
+      <>
+        <Anchors />
+        <div
+          className={`rounded-full transition-colors ${
+            isIndex ? 'bg-accent' : 'bg-gray-400 dark:bg-[#6e738d]'
+          } ${isSelected ? 'ring-2 ring-accent ring-offset-2' : ''}`}
+          style={{
+            width: isIndex ? 14 : 8,
+            height: isIndex ? 14 : 8,
+            marginLeft: NODE_W / 2 - (isIndex ? 7 : 4),
+            marginTop: NODE_H / 2 - (isIndex ? 7 : 4),
+          }}
+          title={`${card.luhmannId} · ${card.title}`}
+        />
+      </>
     );
   }
 
   if (level === 'mini') {
     return (
-      <div
-        className={`rounded-md border ${
-          isSelected
-            ? 'border-accent ring-2 ring-accent/30'
-            : isIndex
-              ? 'border-accent bg-accent/10'
-              : 'border-gray-200 dark:border-[#494d64] bg-white dark:bg-[#363a4f]'
-        } px-2 py-1`}
-        style={{ width: NODE_W }}
-      >
-        <span className={`font-mono text-[10px] font-bold ${isIndex ? 'text-accent' : 'text-gray-500 dark:text-[#a5adcb]'}`}>
-          {card.luhmannId}
-        </span>
-      </div>
+      <>
+        <Anchors />
+        <div
+          className={`rounded-md border ${
+            isSelected
+              ? 'border-accent ring-2 ring-accent/30'
+              : isIndex
+                ? 'border-accent bg-accent/10'
+                : 'border-gray-200 dark:border-[#494d64] bg-white dark:bg-[#363a4f]'
+          } px-2 py-1`}
+          style={{ width: NODE_W }}
+        >
+          <span className={`font-mono text-[10px] font-bold ${isIndex ? 'text-accent' : 'text-gray-500 dark:text-[#a5adcb]'}`}>
+            {card.luhmannId}
+          </span>
+        </div>
+      </>
     );
   }
 
   if (level === 'normal') {
     return (
-      <div
-        className={`rounded-lg border ${
-          isSelected
-            ? 'border-accent border-2 ring-2 ring-accent/30 bg-white dark:bg-[#363a4f]'
-            : isIndex
-              ? 'border-accent bg-accent/10'
-              : 'border-gray-200 dark:border-[#494d64] bg-white dark:bg-[#363a4f]'
-        } px-2 py-1.5 shadow-sm`}
-        style={{ width: NODE_W }}
-      >
-        <div className="flex items-baseline gap-1.5">
-          <span className={`font-mono text-[10px] font-bold ${isIndex ? 'text-accent' : 'text-gray-500 dark:text-[#a5adcb]'}`}>
-            {card.luhmannId}
-          </span>
-          <span className="text-[11px] truncate text-ink dark:text-[#cad3f5]">
-            {card.title || card.luhmannId}
-          </span>
-        </div>
-        {card.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-1">
-            {card.tags.slice(0, 4).map((t) => (
-              <span key={t} className="text-[8px] font-bold text-accent">
-                #{t}
-              </span>
-            ))}
+      <>
+        <Anchors />
+        <div
+          className={`rounded-lg border ${
+            isSelected
+              ? 'border-accent border-2 ring-2 ring-accent/30 bg-white dark:bg-[#363a4f]'
+              : isIndex
+                ? 'border-accent bg-accent/10'
+                : 'border-gray-200 dark:border-[#494d64] bg-white dark:bg-[#363a4f]'
+          } px-2 py-1.5 shadow-sm`}
+          style={{ width: NODE_W }}
+        >
+          <div className="flex items-baseline gap-1.5">
+            <span className={`font-mono text-[10px] font-bold ${isIndex ? 'text-accent' : 'text-gray-500 dark:text-[#a5adcb]'}`}>
+              {card.luhmannId}
+            </span>
+            <span className="text-[11px] truncate text-ink dark:text-[#cad3f5]">
+              {card.title || card.luhmannId}
+            </span>
           </div>
-        )}
-      </div>
+          {card.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {card.tags.slice(0, 4).map((t) => (
+                <span key={t} className="text-[8px] font-bold text-accent">
+                  #{t}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </>
     );
   }
 
   // 'full' —— 选中或大缩放，渲染完整 markdown
-  return <FullCardNode card={card} isIndex={isIndex} isSelected={isSelected} />;
+  return (
+    <>
+      <Anchors />
+      <FullCardNode card={card} isIndex={isIndex} isSelected={isSelected} />
+    </>
+  );
 }
 
 /** 完整卡片节点：拉 contentMd，渲 markdown */

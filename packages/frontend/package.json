@@ -12,6 +12,7 @@
   "dependencies": {
     "@tanstack/react-query": "^5.59.0",
     "@xyflow/react": "^12.3.5",
+    "d3-force": "^3.0.0",
     "dagre": "^0.8.5",
     "framer-motion": "^11.11.0",
     "lucide-react": "^0.451.0",
@@ -21,6 +22,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@types/d3-force": "^3.0.10",
     "@types/dagre": "^0.7.52",
     "@types/react": "^18.3.10",
     "@types/react-dom": "^18.3.0",

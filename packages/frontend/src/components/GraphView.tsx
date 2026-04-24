@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   Controls,
@@ -9,161 +9,153 @@ import {
   type Edge,
   type Node,
 } from '@xyflow/react';
-import dagre from 'dagre';
+import {
+  forceCenter,
+  forceCollide,
+  forceLink,
+  forceManyBody,
+  forceSimulation,
+  type SimulationNodeDatum,
+} from 'd3-force';
 import { useQuery } from '@tanstack/react-query';
-import { api, type CardSummary } from '../lib/api';
+import { api, type Card, type CardSummary } from '../lib/api';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
+import { renderMarkdown } from '../lib/markdown';
 
 /**
- * 全局 Graph 视图：vault 里所有卡片的概览。
- *   - 缩放小：节点是小圆点，只显示 luhmannId
- *   - 缩放中：显示标题
- *   - 缩放大：显示标题 + tag 列表
- *   - 双击节点 → 切回 chain 视图聚焦
+ * 全局 Vault Graph：
+ *   - 力导向布局（d3-force 一次性 settle，不持续跑）
+ *   - 单击：选中此卡，把它"box"内的边加粗（box = 包含该卡的 INDEX）
+ *   - 双击：以这张卡为焦点开新 tab（chain 视图）
+ *   - 缩放分级：dot / 最小 / 中等 / 完整渲染（含 markdown）
+ *   - 选中卡始终展开为完整 markdown，不管 zoom
  */
+
+const NODE_W = 220;
+const NODE_H = 120;
 
 interface GraphNodeData {
   card: CardSummary;
   isIndex: boolean;
+  isSelected: boolean;
+  /** 选中状态 + 当前 zoom，由 GraphView 注入；节点据此切渲染 */
+  zoom: number;
 }
 
-const NODE_W = 180;
-const NODE_H = 60;
-
-function buildGlobalGraph(cards: CardSummary[]): { nodes: Node[]; edges: Edge[] } {
-  if (cards.length === 0) return { nodes: [], edges: [] };
-
-  // ── 1. 构建 dagre 图，按 luhmann 父子关系拉树 ──
-  const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: 'TB', nodesep: 30, ranksep: 60, marginx: 40, marginy: 40 });
-  g.setDefaultEdgeLabel(() => ({}));
-
-  const cardSet = new Set(cards.map((c) => c.luhmannId));
-
-  for (const c of cards) {
-    g.setNode(c.luhmannId, { width: NODE_W, height: NODE_H });
-  }
-
-  // ── 2. tree 边：parent 派生于 luhmannId 编号尾去一层 ──
-  const treeEdges: Edge[] = [];
-  for (const c of cards) {
-    const parent = parentOf(c.luhmannId);
-    if (parent && cardSet.has(parent)) {
-      g.setEdge(parent, c.luhmannId);
-      treeEdges.push({
-        id: `tree:${parent}-${c.luhmannId}`,
-        source: parent,
-        target: c.luhmannId,
-        type: 'smoothstep',
-        style: { stroke: '#cbd5e1', strokeWidth: 1 },
-      });
-    }
-  }
-
-  dagre.layout(g);
-
-  // ── 3. cross-link 边（叠加，不参与布局） ──
-  const crossEdges: Edge[] = [];
-  const seen = new Set<string>();
-  for (const c of cards) {
-    for (const t of c.crossLinks) {
-      if (!cardSet.has(t)) continue;
-      const key = [c.luhmannId, t].sort().join('->');
-      if (seen.has(key)) continue;
-      seen.add(key);
-      crossEdges.push({
-        id: `cross:${c.luhmannId}-${t}`,
-        source: c.luhmannId,
-        target: t,
-        type: 'straight',
-        style: { stroke: '#7c4dff', strokeWidth: 0.8, opacity: 0.4 },
-      });
-    }
-  }
-
-  const nodes: Node[] = cards.map((c) => {
-    const pos = g.node(c.luhmannId);
-    return {
-      id: c.luhmannId,
-      type: 'graphNode',
-      position: { x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2 },
-      data: { card: c, isIndex: c.status === 'INDEX' } satisfies GraphNodeData,
-      width: NODE_W,
-      height: NODE_H,
-    };
-  });
-
-  return { nodes, edges: [...treeEdges, ...crossEdges] };
+interface SimNode extends SimulationNodeDatum {
+  id: string;
+  isIndex: boolean;
+}
+interface SimLink {
+  source: string;
+  target: string;
+  kind: 'tree' | 'cross';
 }
 
 function parentOf(id: string): string | null {
-  if (!id) return null;
-  // luhmann id：交替数字/字母段。剥掉最后一段。
-  // 1a2b3 → 1a2b, 1a2 → 1a, 1a → 1, 1 → null
-  // 注意 daily20260424 这种"非编号"卡 → 没有 parent
-  if (!/^[\da-z]+$/i.test(id)) return null;
-  // 如果末尾是数字，剥掉所有连续数字
-  if (/\d$/.test(id)) {
-    return id.replace(/\d+$/, '') || null;
-  }
-  // 末尾是字母，剥掉所有连续字母
-  if (/[a-z]$/i.test(id)) {
-    return id.replace(/[a-z]+$/i, '') || null;
-  }
+  if (!id || !/^[\da-z]+$/i.test(id)) return null;
+  if (/\d$/.test(id)) return id.replace(/\d+$/, '') || null;
+  if (/[a-z]$/i.test(id)) return id.replace(/[a-z]+$/i, '') || null;
   return null;
 }
 
-/**
- * 节点组件：根据当前 zoom 切显示密度
- */
-function GraphNode({ data }: { data: GraphNodeData }) {
-  const { zoom } = useViewport();
-  const { card, isIndex } = data;
-  // 缩放分级：< 0.5 = dot, < 1.2 = title, >= 1.2 = full
-  const level: 'dot' | 'title' | 'full' = zoom < 0.5 ? 'dot' : zoom < 1.2 ? 'title' : 'full';
+/** 推导每张卡所属的 box 集合（哪些 INDEX 引用了它，或它自己是 INDEX → 算自己的 box） */
+function computeBoxMembership(cards: CardSummary[]): Map<string, Set<string>> {
+  const result = new Map<string, Set<string>>();
+  const ensure = (id: string) => {
+    if (!result.has(id)) result.set(id, new Set());
+    return result.get(id)!;
+  };
+  for (const c of cards) {
+    if (c.status === 'INDEX') {
+      ensure(c.luhmannId).add(c.luhmannId); // INDEX 算自己的 box
+      for (const t of c.crossLinks) ensure(t).add(c.luhmannId);
+    }
+  }
+  // 沿 Folgezettel 父链继承 box（子卡跟父卡共享 box）
+  for (const c of cards) {
+    let cur = c.luhmannId;
+    while (true) {
+      const p = parentOf(cur);
+      if (!p) break;
+      const parentBoxes = result.get(p);
+      if (parentBoxes) for (const b of parentBoxes) ensure(c.luhmannId).add(b);
+      cur = p;
+    }
+  }
+  return result;
+}
 
-  if (level === 'dot') {
-    return (
-      <div
-        className={`rounded-full ${isIndex ? 'bg-accent' : 'bg-gray-400 dark:bg-[#494d64]'}`}
-        style={{ width: 16, height: 16, marginLeft: NODE_W / 2 - 8, marginTop: NODE_H / 2 - 8 }}
-        title={`${card.luhmannId} · ${card.title}`}
-      />
-    );
+/** 跑一次 d3-force 拿稳定布局 */
+function runSimulation(
+  cards: CardSummary[],
+): { positions: Map<string, { x: number; y: number }>; links: SimLink[] } {
+  const cardSet = new Set(cards.map((c) => c.luhmannId));
+  const nodes: SimNode[] = cards.map((c) => ({
+    id: c.luhmannId,
+    isIndex: c.status === 'INDEX',
+  }));
+  const links: SimLink[] = [];
+  const seen = new Set<string>();
+
+  // tree 边（强）
+  for (const c of cards) {
+    const p = parentOf(c.luhmannId);
+    if (p && cardSet.has(p)) {
+      const k = `tree:${p}->${c.luhmannId}`;
+      if (!seen.has(k)) {
+        seen.add(k);
+        links.push({ source: p, target: c.luhmannId, kind: 'tree' });
+      }
+    }
+  }
+  // INDEX → 引用的卡（更强 —— 把 box 内的卡聚拢）
+  for (const c of cards) {
+    if (c.status !== 'INDEX') continue;
+    for (const t of c.crossLinks) {
+      if (!cardSet.has(t)) continue;
+      const k = `idx:${c.luhmannId}->${t}`;
+      if (!seen.has(k)) {
+        seen.add(k);
+        links.push({ source: c.luhmannId, target: t, kind: 'tree' });
+      }
+    }
+  }
+  // cross 边（弱，影响小）
+  for (const c of cards) {
+    if (c.status === 'INDEX') continue;
+    for (const t of c.crossLinks) {
+      if (!cardSet.has(t)) continue;
+      const k = [c.luhmannId, t].sort().join('--');
+      if (seen.has(k)) continue;
+      seen.add(k);
+      links.push({ source: c.luhmannId, target: t, kind: 'cross' });
+    }
   }
 
-  return (
-    <div
-      className={`rounded-lg border ${
-        isIndex
-          ? 'border-accent bg-accent/10'
-          : 'border-gray-200 dark:border-[#494d64] bg-white dark:bg-[#363a4f]'
-      } px-2 py-1 shadow-sm`}
-      style={{ width: NODE_W, minHeight: NODE_H }}
-    >
-      <div className="flex items-baseline gap-1.5">
-        <span
-          className={`font-mono text-[9px] font-bold ${
-            isIndex ? 'text-accent' : 'text-gray-500 dark:text-[#a5adcb]'
-          }`}
-        >
-          {card.luhmannId}
-        </span>
-        <span className="text-[11px] truncate text-ink dark:text-[#cad3f5]">
-          {card.title || card.luhmannId}
-        </span>
-      </div>
-      {level === 'full' && card.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-1">
-          {card.tags.slice(0, 4).map((t) => (
-            <span key={t} className="text-[8px] font-bold text-accent">
-              #{t}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  const sim = forceSimulation(nodes)
+    .force(
+      'link',
+      forceLink<SimNode, SimLink & { source: string | SimNode; target: string | SimNode }>(
+        links as never,
+      )
+        .id((n) => (n as SimNode).id)
+        .distance((l) => ((l as SimLink).kind === 'tree' ? 110 : 220))
+        .strength((l) => ((l as SimLink).kind === 'tree' ? 0.6 : 0.15)),
+    )
+    .force('charge', forceManyBody<SimNode>().strength((n) => (n.isIndex ? -800 : -250)))
+    .force('center', forceCenter(0, 0))
+    .force('collide', forceCollide<SimNode>(NODE_W * 0.55))
+    .stop();
+
+  const TICKS = 320;
+  for (let i = 0; i < TICKS; i++) sim.tick();
+
+  const positions = new Map<string, { x: number; y: number }>();
+  for (const n of nodes) {
+    positions.set(n.id, { x: n.x ?? 0, y: n.y ?? 0 });
+  }
+  return { positions, links };
 }
 
 const nodeTypes = { graphNode: GraphNode };
@@ -171,25 +163,95 @@ const nodeTypes = { graphNode: GraphNode };
 function GraphInner() {
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
   const navigate = useNavigateToCard();
-  const { nodes, edges } = useMemo(() => {
-    if (!cardsQ.data) return { nodes: [] as Node[], edges: [] as Edge[] };
-    return buildGlobalGraph(cardsQ.data.cards);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // 让 nodes 内部知道当前 zoom；用 ref 避免每次 zoom 都触发重 layout
+  const viewport = useViewport();
+
+  const { positions, links, boxes } = useMemo(() => {
+    if (!cardsQ.data) {
+      return {
+        positions: new Map<string, { x: number; y: number }>(),
+        links: [] as SimLink[],
+        boxes: new Map<string, Set<string>>(),
+      };
+    }
+    const sim = runSimulation(cardsQ.data.cards);
+    const boxes = computeBoxMembership(cardsQ.data.cards);
+    return { positions: sim.positions, links: sim.links, boxes };
   }, [cardsQ.data]);
 
-  if (cardsQ.isLoading) {
+  // 选中卡的 box 集合 —— 同 box 内任意两点的边加粗
+  const selectedBoxes: Set<string> = selectedId
+    ? boxes.get(selectedId) ?? new Set<string>()
+    : new Set<string>();
+
+  const nodes: Node[] = useMemo(() => {
+    if (!cardsQ.data) return [];
+    return cardsQ.data.cards.map((c) => {
+      const pos = positions.get(c.luhmannId) ?? { x: 0, y: 0 };
+      return {
+        id: c.luhmannId,
+        type: 'graphNode',
+        position: { x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2 },
+        data: {
+          card: c,
+          isIndex: c.status === 'INDEX',
+          isSelected: selectedId === c.luhmannId,
+          zoom: viewport.zoom,
+        } satisfies GraphNodeData,
+        width: NODE_W,
+        height: NODE_H,
+      };
+    });
+  }, [cardsQ.data, positions, selectedId, viewport.zoom]);
+
+  const edges: Edge[] = useMemo(() => {
+    return links.map((l) => {
+      const sourceBoxes = boxes.get(l.source) ?? new Set<string>();
+      const targetBoxes = boxes.get(l.target) ?? new Set<string>();
+      // 是否在选中卡的 box 内（source 和 target 都在 selectedBoxes 中的某个 box）
+      const inSelectedBox = selectedId
+        ? [...selectedBoxes].some((b) => sourceBoxes.has(b) && targetBoxes.has(b))
+        : false;
+      const isCross = l.kind === 'cross';
+      return {
+        id: `${l.kind}:${l.source}->${l.target}`,
+        source: l.source,
+        target: l.target,
+        type: 'straight',
+        style: {
+          stroke: inSelectedBox
+            ? isCross
+              ? '#7c4dff'
+              : '#1f2937'
+            : isCross
+              ? '#7c4dff'
+              : '#cbd5e1',
+          strokeWidth: inSelectedBox ? 2.4 : isCross ? 0.8 : 1,
+          opacity: selectedId
+            ? inSelectedBox
+              ? 1
+              : 0.15
+            : isCross
+              ? 0.4
+              : 0.7,
+        },
+      };
+    });
+  }, [links, boxes, selectedId, selectedBoxes]);
+
+  if (cardsQ.isLoading)
     return (
       <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">
         Loading vault…
       </div>
     );
-  }
-  if (!cardsQ.data?.cards.length) {
+  if (!cardsQ.data?.cards.length)
     return (
       <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">
         Vault is empty.
       </div>
     );
-  }
 
   return (
     <div className="w-full h-full relative">
@@ -197,13 +259,18 @@ function GraphInner() {
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        onNodeClick={(e, node) => {
+          e.stopPropagation();
+          setSelectedId((cur) => (cur === node.id ? null : node.id));
+        }}
         onNodeDoubleClick={(_e, node) => navigate(node.id)}
+        onPaneClick={() => setSelectedId(null)}
         fitView
-        fitViewOptions={{ padding: 0.15, maxZoom: 1.5, minZoom: 0.1 }}
+        fitViewOptions={{ padding: 0.15, maxZoom: 1.2, minZoom: 0.1 }}
         minZoom={0.05}
-        maxZoom={2.5}
+        maxZoom={4}
         proOptions={{ hideAttribution: true }}
-        nodesDraggable={false}
+        nodesDraggable
       >
         <Background id="graph-bg" gap={32} size={1} color="#e5e7eb" />
         <Controls position="bottom-right" showInteractive={false} />
@@ -212,9 +279,153 @@ function GraphInner() {
 
       <div className="absolute top-4 left-4 z-10 px-3 py-1.5 bg-white/95 dark:bg-[#363a4f]/95 backdrop-blur-sm rounded-full shadow-md border border-gray-200 dark:border-[#494d64]">
         <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-[#a5adcb]">
-          Vault graph · {cardsQ.data.cards.length} cards · scroll to zoom · double-click to focus
+          Vault graph · {cardsQ.data.cards.length} cards · click to focus · double-click to open · zoom in for content
         </span>
       </div>
+    </div>
+  );
+}
+
+/** 单节点：根据 zoom + selected 切渲染密度 */
+function GraphNode({ data }: { data: GraphNodeData }) {
+  const { card, isIndex, isSelected, zoom } = data;
+  // 缩放分级
+  const level: 'dot' | 'mini' | 'normal' | 'full' =
+    isSelected || zoom >= 2.0
+      ? 'full'
+      : zoom < 0.4
+        ? 'dot'
+        : zoom < 1.0
+          ? 'mini'
+          : 'normal';
+
+  if (level === 'dot') {
+    return (
+      <div
+        className={`rounded-full transition-colors ${
+          isIndex ? 'bg-accent' : 'bg-gray-400 dark:bg-[#6e738d]'
+        } ${isSelected ? 'ring-2 ring-accent ring-offset-2' : ''}`}
+        style={{
+          width: isIndex ? 14 : 8,
+          height: isIndex ? 14 : 8,
+          marginLeft: NODE_W / 2 - (isIndex ? 7 : 4),
+          marginTop: NODE_H / 2 - (isIndex ? 7 : 4),
+        }}
+        title={`${card.luhmannId} · ${card.title}`}
+      />
+    );
+  }
+
+  if (level === 'mini') {
+    return (
+      <div
+        className={`rounded-md border ${
+          isSelected
+            ? 'border-accent ring-2 ring-accent/30'
+            : isIndex
+              ? 'border-accent bg-accent/10'
+              : 'border-gray-200 dark:border-[#494d64] bg-white dark:bg-[#363a4f]'
+        } px-2 py-1`}
+        style={{ width: NODE_W }}
+      >
+        <span className={`font-mono text-[10px] font-bold ${isIndex ? 'text-accent' : 'text-gray-500 dark:text-[#a5adcb]'}`}>
+          {card.luhmannId}
+        </span>
+      </div>
+    );
+  }
+
+  if (level === 'normal') {
+    return (
+      <div
+        className={`rounded-lg border ${
+          isSelected
+            ? 'border-accent border-2 ring-2 ring-accent/30 bg-white dark:bg-[#363a4f]'
+            : isIndex
+              ? 'border-accent bg-accent/10'
+              : 'border-gray-200 dark:border-[#494d64] bg-white dark:bg-[#363a4f]'
+        } px-2 py-1.5 shadow-sm`}
+        style={{ width: NODE_W }}
+      >
+        <div className="flex items-baseline gap-1.5">
+          <span className={`font-mono text-[10px] font-bold ${isIndex ? 'text-accent' : 'text-gray-500 dark:text-[#a5adcb]'}`}>
+            {card.luhmannId}
+          </span>
+          <span className="text-[11px] truncate text-ink dark:text-[#cad3f5]">
+            {card.title || card.luhmannId}
+          </span>
+        </div>
+        {card.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {card.tags.slice(0, 4).map((t) => (
+              <span key={t} className="text-[8px] font-bold text-accent">
+                #{t}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // 'full' —— 选中或大缩放，渲染完整 markdown
+  return <FullCardNode card={card} isIndex={isIndex} isSelected={isSelected} />;
+}
+
+/** 完整卡片节点：拉 contentMd，渲 markdown */
+function FullCardNode({
+  card,
+  isIndex,
+  isSelected,
+}: {
+  card: CardSummary;
+  isIndex: boolean;
+  isSelected: boolean;
+}) {
+  const fullQ = useQuery({
+    queryKey: ['card', card.luhmannId],
+    queryFn: () => api.getCard(card.luhmannId),
+  });
+  const html = useMemo(
+    () => (fullQ.data ? renderMarkdown(fullQ.data.contentMd) : ''),
+    [fullQ.data?.contentMd],
+  );
+  const ref = useRef<HTMLDivElement>(null);
+  // 用 fullCard 的尺寸覆盖默认 NODE_W/H
+  return (
+    <div
+      ref={ref}
+      className={`rounded-xl border shadow-md ${
+        isSelected
+          ? 'border-accent border-2 ring-2 ring-accent/30'
+          : isIndex
+            ? 'border-accent'
+            : 'border-gray-200 dark:border-[#494d64]'
+      } bg-white dark:bg-[#363a4f] p-3 overflow-hidden`}
+      style={{ width: 360, maxHeight: 380 }}
+    >
+      <div className="flex items-baseline gap-2 mb-1.5">
+        <span className={`font-mono text-[10px] font-bold ${isIndex ? 'text-accent' : 'text-gray-500 dark:text-[#a5adcb]'}`}>
+          {card.luhmannId}
+        </span>
+        <span className="text-[12px] font-bold truncate text-ink dark:text-[#cad3f5]">
+          {card.title || card.luhmannId}
+        </span>
+      </div>
+      <div
+        className="prose-card text-[11px] text-ink dark:text-[#cad3f5] overflow-y-auto"
+        style={{ maxHeight: 320 }}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {card.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-gray-100 dark:border-[#494d64]">
+          {card.tags.slice(0, 8).map((t) => (
+            <span key={t} className="text-[9px] font-bold text-accent">
+              #{t}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -10,6 +10,16 @@ function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * 构造匹配 `#tagName` 的精确正则。
+ *   - 前面不能是 tag 字符（CJK / word），避免吃 "x#tag" 这种乱情况
+ *   - 后面用 lookahead 保证不跟 tag 字符；这样 "#牛逼" 末尾即使是 CJK 也能正确截断
+ *     （\b 对 CJK 失效——CJK 算非 word，相邻非 word 没有 word boundary）
+ */
+function buildTagRe(name: string): RegExp {
+  return new RegExp(`(?<![一-龥\\w])#${escapeRe(name)}(?![一-龥\\w-])`, 'gi');
+}
+
 export async function renameTag(
   db: Database.Database,
   repo: CardRepository,
@@ -21,7 +31,7 @@ export async function renameTag(
   if (!oldLower || !newLower) throw new Error('tag 名不能为空');
   if (oldLower === newLower) return { filesUpdated: 0, oldName: oldLower, newName: newLower };
 
-  const tagRe = new RegExp(`(?<![一-龥\\w])#${escapeRe(oldLower)}\\b`, 'gi');
+  const tagRe = buildTagRe(oldLower);
 
   let filesUpdated = 0;
   for await (const file of walkMd(config.vaultPath)) {
@@ -82,7 +92,7 @@ export async function deleteTag(
   const lower = name.toLowerCase().trim();
   if (!lower) throw new Error('tag 名不能为空');
 
-  const tagRe = new RegExp(`(?<![一-龥\\w])#${escapeRe(lower)}\\b`, 'gi');
+  const tagRe = buildTagRe(lower);
 
   let filesUpdated = 0;
   for await (const file of walkMd(config.vaultPath)) {

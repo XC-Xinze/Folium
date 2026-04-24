@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   Controls,
@@ -15,6 +15,7 @@ import {
   forceLink,
   forceManyBody,
   forceSimulation,
+  type Simulation,
   type SimulationNodeDatum,
 } from 'd3-force';
 import { useQuery } from '@tanstack/react-query';
@@ -45,10 +46,11 @@ interface SimNode extends SimulationNodeDatum {
   id: string;
   isIndex: boolean;
 }
+type LinkKind = 'hierarchy' | 'link' | 'tag' | 'box';
 interface SimLink {
   source: string;
   target: string;
-  kind: 'tree' | 'cross';
+  kind: LinkKind;
 }
 
 function parentOf(id: string): string | null {
@@ -85,97 +87,171 @@ function computeBoxMembership(cards: CardSummary[]): Map<string, Set<string>> {
   return result;
 }
 
-/** 跑一次 d3-force 拿稳定布局 */
-function runSimulation(
-  cards: CardSummary[],
-): { positions: Map<string, { x: number; y: number }>; links: SimLink[] } {
+/** 给定卡片，构建 sim 节点 + 链接（不跑 sim） */
+function buildSimGraph(cards: CardSummary[]): { simNodes: SimNode[]; links: SimLink[] } {
   const cardSet = new Set(cards.map((c) => c.luhmannId));
-  const nodes: SimNode[] = cards.map((c) => ({
+  const simNodes: SimNode[] = cards.map((c) => ({
     id: c.luhmannId,
     isIndex: c.status === 'INDEX',
   }));
   const links: SimLink[] = [];
   const seen = new Set<string>();
+  void cardSet;
 
-  // tree 边（强）
+  // hierarchy 边（强，决定布局 —— Folgezettel 父子 + INDEX→member）
   for (const c of cards) {
     const p = parentOf(c.luhmannId);
     if (p && cardSet.has(p)) {
-      const k = `tree:${p}->${c.luhmannId}`;
+      const k = `h:${p}->${c.luhmannId}`;
       if (!seen.has(k)) {
         seen.add(k);
-        links.push({ source: p, target: c.luhmannId, kind: 'tree' });
+        links.push({ source: p, target: c.luhmannId, kind: 'hierarchy' });
       }
     }
   }
-  // INDEX → 引用的卡（更强 —— 把 box 内的卡聚拢）
   for (const c of cards) {
     if (c.status !== 'INDEX') continue;
     for (const t of c.crossLinks) {
       if (!cardSet.has(t)) continue;
-      const k = `idx:${c.luhmannId}->${t}`;
+      const k = `h:${c.luhmannId}->${t}`;
       if (!seen.has(k)) {
         seen.add(k);
-        links.push({ source: c.luhmannId, target: t, kind: 'tree' });
+        links.push({ source: c.luhmannId, target: t, kind: 'hierarchy' });
       }
     }
   }
-  // cross 边（弱，影响小）
+  // link 边（手动 [[link]]，弱布局影响）
   for (const c of cards) {
     if (c.status === 'INDEX') continue;
     for (const t of c.crossLinks) {
       if (!cardSet.has(t)) continue;
-      const k = [c.luhmannId, t].sort().join('--');
+      const k = [c.luhmannId, t].sort().join('|link');
       if (seen.has(k)) continue;
       seen.add(k);
-      links.push({ source: c.luhmannId, target: t, kind: 'cross' });
+      links.push({ source: c.luhmannId, target: t, kind: 'link' });
+    }
+  }
+  // tag 边：每对卡若有共享 tag → 一条 tag 边（去重）
+  // 用倒排索引避免 O(n²)：每个 tag 下的卡两两连
+  const tagToCards = new Map<string, string[]>();
+  for (const c of cards) {
+    for (const t of c.tags) {
+      if (!tagToCards.has(t)) tagToCards.set(t, []);
+      tagToCards.get(t)!.push(c.luhmannId);
+    }
+  }
+  for (const [tag, ids] of tagToCards) {
+    // 跳过过于宽泛的 tag（>20 张卡）—— 否则会画一大片密网
+    if (ids.length > 20) continue;
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const k = [ids[i]!, ids[j]!].sort().join('|tag');
+        if (seen.has(k)) continue;
+        seen.add(k);
+        links.push({ source: ids[i]!, target: ids[j]!, kind: 'tag' });
+      }
+    }
+    void tag;
+  }
+  // box 边：同一 INDEX 引用的成员之间互连（兄弟）
+  for (const c of cards) {
+    if (c.status !== 'INDEX') continue;
+    const members = c.crossLinks.filter((t) => cardSet.has(t));
+    for (let i = 0; i < members.length; i++) {
+      for (let j = i + 1; j < members.length; j++) {
+        const k = [members[i]!, members[j]!].sort().join('|box');
+        if (seen.has(k)) continue;
+        seen.add(k);
+        links.push({ source: members[i]!, target: members[j]!, kind: 'box' });
+      }
     }
   }
 
-  const sim = forceSimulation(nodes)
+  return { simNodes, links };
+}
+
+/** 工厂：建一个 d3-force 模拟实例（不自动 tick，调用方控制） */
+function makeSimulation(simNodes: SimNode[], links: SimLink[]): Simulation<SimNode, SimLink> {
+  const linkDistance = (k: LinkKind) =>
+    k === 'hierarchy' ? 180 : k === 'box' ? 220 : 300;
+  const linkStrength = (k: LinkKind) =>
+    k === 'hierarchy' ? 0.7 : k === 'box' ? 0.15 : 0.05;
+
+  const sim = forceSimulation(simNodes)
     .force(
       'link',
       forceLink<SimNode, SimLink & { source: string | SimNode; target: string | SimNode }>(
         links as never,
       )
         .id((n) => (n as SimNode).id)
-        .distance((l) => ((l as SimLink).kind === 'tree' ? 180 : 320))
-        .strength((l) => ((l as SimLink).kind === 'tree' ? 0.7 : 0.1)),
+        .distance((l) => linkDistance((l as SimLink).kind))
+        .strength((l) => linkStrength((l as SimLink).kind)),
     )
     .force('charge', forceManyBody<SimNode>().strength((n) => (n.isIndex ? -1500 : -500)))
     .force('center', forceCenter(0, 0))
-    .force('collide', forceCollide<SimNode>(NODE_W * 0.7))
-    .stop();
-
-  // 跑足够 ticks 让布局 settle —— 力越强需要的 ticks 越多
-  const TICKS = 400;
-  for (let i = 0; i < TICKS; i++) sim.tick();
-
-  const positions = new Map<string, { x: number; y: number }>();
-  for (const n of nodes) {
-    positions.set(n.id, { x: n.x ?? 0, y: n.y ?? 0 });
-  }
-  return { positions, links };
+    .force('collide', forceCollide<SimNode>(NODE_W * 0.7));
+  return sim as unknown as Simulation<SimNode, SimLink>;
 }
 
 const nodeTypes = { graphNode: GraphNode };
+
+interface EdgeToggles {
+  hierarchy: boolean;
+  link: boolean;
+  tag: boolean;
+  box: boolean;
+}
+const DEFAULT_TOGGLES: EdgeToggles = {
+  hierarchy: true,
+  link: true,
+  tag: false, // 默认关，避免一打开 graph 满屏密网
+  box: false,
+};
 
 function GraphInner() {
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
   const navigate = useNavigateToCard();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [toggles, setToggles] = useState<EdgeToggles>(DEFAULT_TOGGLES);
+  const flip = (k: keyof EdgeToggles) => setToggles((s) => ({ ...s, [k]: !s[k] }));
 
-  const { positions, links, boxes } = useMemo(() => {
-    if (!cardsQ.data) {
-      return {
-        positions: new Map<string, { x: number; y: number }>(),
-        links: [] as SimLink[],
-        boxes: new Map<string, Set<string>>(),
-      };
-    }
-    const sim = runSimulation(cardsQ.data.cards);
-    const boxes = computeBoxMembership(cardsQ.data.cards);
-    return { positions: sim.positions, links: sim.links, boxes };
+  // 连续力模拟：sim 实例存 ref，每 tick 把 positions 拷到 React state 触发 re-render。
+  // 用户拖节点 → 把该节点 fx/fy 钉死，sim 继续跑让其他节点适应；松开 → 清 fx/fy 让物理接管。
+  const simRef = useRef<Simulation<SimNode, SimLink> | null>(null);
+  const simNodesRef = useRef<Map<string, SimNode>>(new Map());
+  const [positions, setPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
+  const [links, setLinks] = useState<SimLink[]>([]);
+  const boxes = useMemo(
+    () => (cardsQ.data ? computeBoxMembership(cardsQ.data.cards) : new Map<string, Set<string>>()),
+    [cardsQ.data],
+  );
+
+  // 卡片列表变 → 重建 sim
+  useEffect(() => {
+    if (!cardsQ.data) return;
+    const { simNodes, links: newLinks } = buildSimGraph(cardsQ.data.cards);
+    const map = new Map<string, SimNode>();
+    for (const n of simNodes) map.set(n.id, n);
+    simNodesRef.current = map;
+    const sim = makeSimulation(simNodes, newLinks);
+    setLinks(newLinks);
+
+    let frame = 0;
+    sim.on('tick', () => {
+      // 节流：每 2 帧推一次到 React，避免 60fps 重渲压垮
+      frame++;
+      if (frame % 2 !== 0 && sim.alpha() > 0.05) return;
+      const next = new Map<string, { x: number; y: number }>();
+      for (const n of simNodes) next.set(n.id, { x: n.x ?? 0, y: n.y ?? 0 });
+      setPositions(next);
+    });
+
+    simRef.current = sim;
+    return () => {
+      sim.stop();
+      simRef.current = null;
+    };
   }, [cardsQ.data]);
 
   // 选中卡的 box 集合 —— 同 box 内任意两点的边加粗
@@ -205,39 +281,52 @@ function GraphInner() {
   }, [cardsQ.data, positions, selectedId]);
 
   const edges: Edge[] = useMemo(() => {
-    return links.map((l) => {
-      const sourceBoxes = boxes.get(l.source) ?? new Set<string>();
-      const targetBoxes = boxes.get(l.target) ?? new Set<string>();
-      // 是否在选中卡的 box 内（source 和 target 都在 selectedBoxes 中的某个 box）
-      const inSelectedBox = selectedId
-        ? [...selectedBoxes].some((b) => sourceBoxes.has(b) && targetBoxes.has(b))
-        : false;
-      const isCross = l.kind === 'cross';
-      return {
-        id: `${l.kind}:${l.source}->${l.target}`,
-        source: l.source,
-        target: l.target,
-        type: 'simplebezier', // 比 straight 更"力导向"的曲线感
-        style: {
-          stroke: inSelectedBox
-            ? isCross
-              ? '#7c4dff'
-              : '#1f2937'
-            : isCross
-              ? '#7c4dff'
-              : '#cbd5e1',
-          strokeWidth: inSelectedBox ? 2.4 : isCross ? 0.8 : 1,
-          opacity: selectedId
+    const colorByKind: Record<LinkKind, string> = {
+      hierarchy: '#94a3b8', // gray
+      link: '#7c4dff', // 紫
+      tag: '#10b981', // 绿
+      box: '#f59e0b', // 橙
+    };
+    return links
+      .filter((l) => toggles[l.kind])
+      .map((l) => {
+        const sourceBoxes = boxes.get(l.source) ?? new Set<string>();
+        const targetBoxes = boxes.get(l.target) ?? new Set<string>();
+        const inSelectedBox = selectedId
+          ? [...selectedBoxes].some((b) => sourceBoxes.has(b) && targetBoxes.has(b))
+          : false;
+        const touchesHovered = hoveredId
+          ? l.source === hoveredId || l.target === hoveredId
+          : false;
+        const baseColor = colorByKind[l.kind];
+        // 优先级：hover > selected box > 默认
+        const opacity = hoveredId
+          ? touchesHovered
+            ? 1
+            : 0.08
+          : selectedId
             ? inSelectedBox
               ? 1
-              : 0.12
-            : isCross
-              ? 0.4
-              : 0.7,
-        },
-      };
-    });
-  }, [links, boxes, selectedId, selectedBoxes]);
+              : 0.1
+            : l.kind === 'hierarchy'
+              ? 0.7
+              : 0.35;
+        const strokeWidth = touchesHovered || inSelectedBox ? 2.4 : l.kind === 'hierarchy' ? 1 : 0.7;
+        return {
+          id: `${l.kind}:${l.source}->${l.target}`,
+          source: l.source,
+          target: l.target,
+          type: 'simplebezier',
+          style: {
+            stroke: baseColor,
+            strokeWidth,
+            opacity,
+            strokeDasharray: l.kind === 'box' ? '4 3' : undefined,
+            transition: 'opacity 120ms, stroke-width 120ms',
+          },
+        };
+      });
+  }, [links, boxes, selectedId, selectedBoxes, toggles, hoveredId]);
 
   if (cardsQ.isLoading)
     return (
@@ -264,6 +353,33 @@ function GraphInner() {
         }}
         onNodeDoubleClick={(_e, node) => navigate(node.id)}
         onPaneClick={() => setSelectedId(null)}
+        onNodeMouseEnter={(_e, node) => setHoveredId(node.id)}
+        onNodeMouseLeave={() => setHoveredId(null)}
+        onNodeDragStart={(_e, node) => {
+          // 钉死该节点位置 + 加热模拟（让相邻节点重新平衡）
+          const sn = simNodesRef.current.get(node.id);
+          if (sn) {
+            sn.fx = node.position.x + NODE_W / 2;
+            sn.fy = node.position.y + NODE_H / 2;
+          }
+          simRef.current?.alphaTarget(0.3).restart();
+        }}
+        onNodeDrag={(_e, node) => {
+          const sn = simNodesRef.current.get(node.id);
+          if (sn) {
+            sn.fx = node.position.x + NODE_W / 2;
+            sn.fy = node.position.y + NODE_H / 2;
+          }
+        }}
+        onNodeDragStop={(_e, node) => {
+          // 释放固定 → 物理接管，过几秒衰减回静止
+          const sn = simNodesRef.current.get(node.id);
+          if (sn) {
+            sn.fx = null;
+            sn.fy = null;
+          }
+          simRef.current?.alphaTarget(0);
+        }}
         fitView
         fitViewOptions={{ padding: 0.15, maxZoom: 1.2, minZoom: 0.1 }}
         minZoom={0.05}
@@ -276,12 +392,46 @@ function GraphInner() {
         <MiniMap pannable zoomable position="top-right" maskColor="rgba(0,0,0,0.04)" />
       </ReactFlow>
 
-      <div className="absolute top-4 left-4 z-10 px-3 py-1.5 bg-white/95 dark:bg-[#363a4f]/95 backdrop-blur-sm rounded-full shadow-md border border-gray-200 dark:border-[#494d64]">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-[#a5adcb]">
-          Vault graph · {cardsQ.data.cards.length} cards · single-click = focus + show content · double-click = open
+      <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 px-2 py-1.5 bg-white/95 dark:bg-[#363a4f]/95 backdrop-blur-sm rounded-full shadow-md border border-gray-200 dark:border-[#494d64]">
+        <EdgeToggle color="#94a3b8" label="Hierarchy" active={toggles.hierarchy} onClick={() => flip('hierarchy')} />
+        <EdgeToggle color="#7c4dff" label="Link" active={toggles.link} onClick={() => flip('link')} />
+        <EdgeToggle color="#10b981" label="Tag" active={toggles.tag} onClick={() => flip('tag')} />
+        <EdgeToggle color="#f59e0b" label="Box" active={toggles.box} onClick={() => flip('box')} />
+        <span className="ml-1 text-[10px] text-gray-400 dark:text-[#a5adcb]">
+          {cardsQ.data.cards.length} cards
         </span>
       </div>
     </div>
+  );
+}
+
+function EdgeToggle({
+  color,
+  label,
+  active,
+  onClick,
+}: {
+  color: string;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${
+        active ? 'text-gray-700 dark:text-[#cad3f5]' : 'text-gray-300 dark:text-gray-600'
+      }`}
+    >
+      <span
+        className="w-2 h-2 rounded-full transition-all"
+        style={{
+          backgroundColor: active ? color : 'transparent',
+          border: `1.5px solid ${active ? color : '#d1d5db'}`,
+        }}
+      />
+      {label}
+    </button>
   );
 }
 

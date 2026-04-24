@@ -1,20 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Tag } from 'lucide-react';
+import { FileText, Search, Tag } from 'lucide-react';
 import { api, type CardSummary } from '../lib/api';
 import { fuzzyScore } from '../lib/fuzzy';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
 import { useUIStore } from '../store/uiStore';
 
 interface Hit {
-  kind: 'card' | 'tag';
+  kind: 'card' | 'tag' | 'content';
   /** sort key (higher = better) */
   score: number;
   card?: CardSummary;
   tag?: { name: string; count: number };
+  /** content 命中：snippet 已经带 ⟨高亮⟩ 标记 */
+  content?: { luhmannId: string; title: string; snippet: string };
 }
 
 const MAX_HITS = 30;
+
+/** FTS5 snippet 用 ⟨⟩ 包裹命中词 → HTML <mark>，注意先 escape XSS */
+function highlightSnippet(s: string): string {
+  const escaped = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return escaped
+    .replace(/⟨/g, '<mark class="bg-yellow-200 dark:bg-yellow-600/40 text-inherit">')
+    .replace(/⟩/g, '</mark>');
+}
 
 export function QuickSwitcher() {
   const open = useUIStore((s) => s.quickSwitcherOpen);
@@ -29,6 +39,12 @@ export function QuickSwitcher() {
 
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
   const tagsQ = useQuery({ queryKey: ['tags'], queryFn: api.listTags });
+  // FTS 内容搜索：只在 query 长度 ≥ 2 时跑
+  const searchQ = useQuery({
+    queryKey: ['search', query],
+    queryFn: () => api.search(query, 15),
+    enabled: open && query.trim().length >= 2,
+  });
 
   // 打开时聚焦 + 重置（全局 Cmd+K 由 lib/commands 统一管理）
   useEffect(() => {
@@ -63,10 +79,24 @@ export function QuickSwitcher() {
       const score = fuzzyScore(q, t.name);
       if (score > 0) tagHits.push({ kind: 'tag', score, tag: t });
     }
-    return [...cardHits, ...tagHits]
-      .sort((a, b) => b.score - a.score)
-      .slice(0, MAX_HITS);
-  }, [query, cardsQ.data, tagsQ.data]);
+    // 内容命中（FTS5）：去重 —— 已经在 cardHits 里的 luhmannId 不再重复列出
+    const cardIdsAlreadyShown = new Set(cardHits.map((h) => h.card!.luhmannId));
+    const contentHits: Hit[] = [];
+    for (const h of searchQ.data?.hits ?? []) {
+      if (cardIdsAlreadyShown.has(h.luhmannId)) continue;
+      contentHits.push({
+        kind: 'content',
+        // FTS rank 越小越好，做归一化让它跟 fuzzy 在一个量级（fuzzy 最高 1000）
+        score: 100,
+        content: h,
+      });
+    }
+    return [
+      ...cardHits.sort((a, b) => b.score - a.score),
+      ...tagHits.sort((a, b) => b.score - a.score),
+      ...contentHits, // 内容命中放最后，FTS 已经按相关性排过
+    ].slice(0, MAX_HITS);
+  }, [query, cardsQ.data, tagsQ.data, searchQ.data]);
 
   // query 变化时重置选中索引
   useEffect(() => {
@@ -88,6 +118,8 @@ export function QuickSwitcher() {
       navigate(hit.card.luhmannId);
     } else if (hit.kind === 'tag' && hit.tag) {
       setFocusTag(hit.tag.name);
+    } else if (hit.kind === 'content' && hit.content) {
+      navigate(hit.content.luhmannId);
     }
     close();
   };
@@ -136,53 +168,79 @@ export function QuickSwitcher() {
               No matches
             </div>
           ) : (
-            hits.map((h, i) => (
-              <button
-                key={h.kind === 'card' ? `c:${h.card!.luhmannId}` : `t:${h.tag!.name}`}
-                data-idx={i}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  acceptHit(h);
-                }}
-                onMouseEnter={() => setActiveIdx(i)}
-                className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors ${
-                  i === activeIdx ? 'bg-accentSoft' : 'hover:bg-gray-50'
-                }`}
-              >
-                {h.kind === 'card' ? (
-                  <>
-                    <span
-                      className={`shrink-0 font-mono text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                        h.card!.status === 'INDEX'
-                          ? 'bg-accent text-white'
-                          : 'bg-gray-100 text-gray-700'
-                      }`}
-                    >
-                      {h.card!.luhmannId}
-                    </span>
-                    <span className="flex-1 text-[13px] truncate">
-                      {h.card!.title || h.card!.luhmannId}
-                    </span>
-                    {h.card!.tags.slice(0, 3).map((t) => (
+            hits.map((h, i) => {
+              const key =
+                h.kind === 'card'
+                  ? `c:${h.card!.luhmannId}`
+                  : h.kind === 'tag'
+                    ? `t:${h.tag!.name}`
+                    : `f:${h.content!.luhmannId}`;
+              return (
+                <button
+                  key={key}
+                  data-idx={i}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    acceptHit(h);
+                  }}
+                  onMouseEnter={() => setActiveIdx(i)}
+                  className={`w-full flex items-start gap-3 px-4 py-2 text-left transition-colors ${
+                    i === activeIdx ? 'bg-accentSoft' : 'hover:bg-gray-50'
+                  }`}
+                >
+                  {h.kind === 'card' ? (
+                    <>
                       <span
-                        key={t}
-                        className="shrink-0 text-[9px] font-bold text-gray-400"
+                        className={`shrink-0 font-mono text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                          h.card!.status === 'INDEX'
+                            ? 'bg-accent text-white'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}
                       >
-                        #{t}
+                        {h.card!.luhmannId}
                       </span>
-                    ))}
-                  </>
-                ) : (
-                  <>
-                    <Tag size={12} className="shrink-0 text-accent" />
-                    <span className="flex-1 text-[13px] font-bold">#{h.tag!.name}</span>
-                    <span className="shrink-0 text-[10px] text-gray-400">
-                      {h.tag!.count} cards
-                    </span>
-                  </>
-                )}
-              </button>
-            ))
+                      <span className="flex-1 text-[13px] truncate">
+                        {h.card!.title || h.card!.luhmannId}
+                      </span>
+                      {h.card!.tags.slice(0, 3).map((t) => (
+                        <span key={t} className="shrink-0 text-[9px] font-bold text-gray-400">
+                          #{t}
+                        </span>
+                      ))}
+                    </>
+                  ) : h.kind === 'tag' ? (
+                    <>
+                      <Tag size={12} className="shrink-0 text-accent mt-1" />
+                      <span className="flex-1 text-[13px] font-bold">#{h.tag!.name}</span>
+                      <span className="shrink-0 text-[10px] text-gray-400">
+                        {h.tag!.count} cards
+                      </span>
+                    </>
+                  ) : (
+                    /* content match: 全文搜索命中 */
+                    <>
+                      <FileText size={12} className="shrink-0 text-gray-400 mt-1" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[10px] font-bold text-gray-500">
+                            {h.content!.luhmannId}
+                          </span>
+                          <span className="text-[12px] truncate">
+                            {h.content!.title || h.content!.luhmannId}
+                          </span>
+                        </div>
+                        <div
+                          className="text-[11px] text-gray-500 mt-0.5 truncate"
+                          dangerouslySetInnerHTML={{
+                            __html: highlightSnippet(h.content!.snippet),
+                          }}
+                        />
+                      </div>
+                    </>
+                  )}
+                </button>
+              );
+            })
           )}
         </div>
 

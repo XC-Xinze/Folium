@@ -315,6 +315,10 @@ export const api = {
       throw new Error(j.error ?? `${res.status} ${res.statusText}`);
     }
   },
+  search: (q: string, limit = 20) =>
+    get<{ hits: Array<{ luhmannId: string; title: string; snippet: string; rank: number }> }>(
+      `/search?q=${encodeURIComponent(q)}&limit=${limit}`,
+    ),
   listStarred: () => get<{ ids: string[] }>(`/starred`),
   star: async (id: string): Promise<void> => {
     await fetch(`${BASE}/starred/${encodeURIComponent(id)}`, { method: 'PUT' });

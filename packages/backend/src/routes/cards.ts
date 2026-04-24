@@ -79,6 +79,55 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
     return out;
   });
 
+  /**
+   * 全文搜索：FTS5 + BM25 排名 + snippet 高亮
+   *   ?q=关键词 (URL 编码)
+   *   ?limit=20 (默认 20)
+   * 返回 { hits: [{luhmannId, title, snippet, rank}] }
+   */
+  app.get<{ Querystring: { q?: string; limit?: string } }>('/search', async (req) => {
+    const q = (req.query.q ?? '').trim();
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit ?? 20)));
+    if (!q || q.length < 2) return { hits: [] };
+    // 把 query 拆词，每个词加引号避免 FTS5 语法保留字
+    const ftsQuery = q
+      .replace(/["()*:^]/g, ' ')
+      .split(/\s+/)
+      .filter((t) => t.length >= 1)
+      .map((t) => `"${t}"`)
+      .join(' OR ');
+    if (!ftsQuery) return { hits: [] };
+    try {
+      const rows = db
+        .prepare(
+          `SELECT
+            luhmann_id,
+            snippet(cards_fts, 2, '⟨', '⟩', '…', 16) AS snippet,
+            bm25(cards_fts) AS rank
+          FROM cards_fts
+          WHERE cards_fts MATCH ?
+          ORDER BY rank
+          LIMIT ?`,
+        )
+        .all(ftsQuery, limit) as { luhmann_id: string; snippet: string; rank: number }[];
+      const hits = rows
+        .map((r) => {
+          const c = repo.getById(r.luhmann_id);
+          if (!c) return null;
+          return {
+            luhmannId: c.luhmannId,
+            title: c.title,
+            snippet: r.snippet,
+            rank: Number(r.rank.toFixed(3)),
+          };
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null);
+      return { hits };
+    } catch {
+      return { hits: [] };
+    }
+  });
+
   app.get('/tags', async () => {
     // 直接从 card_tags 聚合，避免 tags 表残留孤儿名
     // （rename / delete 会让 card_tags 同步，但 tags 主表可能留死项 → count=0 的幽灵 tag）

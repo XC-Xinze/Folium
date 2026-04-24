@@ -10,6 +10,21 @@ import { persist } from 'zustand/middleware';
 
 export type TabKind = 'card' | 'graph' | 'tag' | 'settings' | 'workspace';
 
+/** 卡片 tab 的边类型显示开关 —— 每个 tab 独立 */
+export interface CardDisplayFlags {
+  potential: boolean;
+  tag: boolean;
+  cross: boolean;
+  workspaceLinks: boolean;
+}
+
+export const DEFAULT_CARD_FLAGS: CardDisplayFlags = {
+  potential: true,
+  tag: true,
+  cross: true,
+  workspaceLinks: true,
+};
+
 export interface Tab {
   /** tab 自己的 id（与内容无关，用于身份标识） */
   id: string;
@@ -21,6 +36,8 @@ export interface Tab {
   cardFocusId?: string;
   tagName?: string;
   workspaceId?: string;
+  /** 仅 kind='card' 用：四个边类型开关。缺省走 DEFAULT_CARD_FLAGS */
+  cardFlags?: Partial<CardDisplayFlags>;
 }
 
 export interface LeafPane {

@@ -353,11 +353,22 @@ function TabIcon({ tab }: { tab: Tab }) {
 }
 
 function TabContent({ tab, paneId }: { tab: Tab; paneId: string }) {
-  void paneId;
+  const updateTab = usePaneStore((s) => s.updateTab);
   switch (tab.kind) {
     case 'card':
       if (tab.cardBoxId && tab.cardFocusId) {
-        return <Canvas focusedBoxId={tab.cardBoxId} focusedCardId={tab.cardFocusId} />;
+        return (
+          <Canvas
+            focusedBoxId={tab.cardBoxId}
+            focusedCardId={tab.cardFocusId}
+            flags={tab.cardFlags}
+            onFlagChange={(key, value) =>
+              updateTab(paneId, tab.id, {
+                cardFlags: { ...(tab.cardFlags ?? {}), [key]: value },
+              })
+            }
+          />
+        );
       }
       return <Hint>Card tab missing payload.</Hint>;
     case 'graph':

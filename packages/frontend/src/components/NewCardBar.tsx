@@ -68,19 +68,15 @@ function nextTopLevelId(existing: Set<string>): string {
   return String(n);
 }
 
-export function NewCardBar() {
+interface NewCardBarProps {
+  /** 创建成功后回调（一般用于关闭包它的 modal） */
+  onCreated?: () => void;
+}
+
+export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
   const focusedId = useUIStore((s) => s.focusedCardId);
   const focusedBoxId = useUIStore((s) => s.focusedBoxId);
   const qc = useQueryClient();
-  // 收/展开状态：默认收起，避免输入框常驻吃掉垂直空间。状态持久化到 localStorage。
-  const [expanded, setExpanded] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem('zk-new-card-expanded') === '1';
-  });
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem('zk-new-card-expanded', expanded ? '1' : '0');
-  }, [expanded]);
 
   const [luhmannId, setLuhmannId] = useState('');
   const [title, setTitle] = useState('');
@@ -187,6 +183,7 @@ export function NewCardBar() {
       setContent('');
       setStatus('ATOMIC');
       setEditingId(false); // 重新交还给自动推算
+      onCreated?.();
     },
   });
 
@@ -292,25 +289,10 @@ export function NewCardBar() {
     ? `Auto-suggested as a child of ${focusedId}. Click to override.`
     : 'Auto-suggested as a new top-level card. Click to override.';
 
-  if (!expanded) {
-    return (
-      <div className="px-6 pt-2 pb-2 shrink-0">
-        <button
-          onClick={() => setExpanded(true)}
-          className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold text-gray-500 hover:text-accent rounded-full border border-dashed border-gray-300 hover:border-accent/50 transition-colors"
-          title="Expand new-card editor"
-        >
-          <PenLine size={11} />
-          <span>New card</span>
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="px-6 pt-5 pb-4 shrink-0">
+    <div className="px-2 pt-2 pb-2 shrink-0">
       <div
-        className={`relative max-w-3xl mx-auto bg-paper rounded-2xl transition-all duration-200
+        className={`relative w-full bg-paper rounded-2xl transition-all duration-200
           ${focused
             ? 'shadow-paper ring-1 ring-accent/25 border border-accent/30'
             : 'shadow-sm border border-paperEdge hover:border-accent/20 hover:shadow-paper'}
@@ -331,13 +313,6 @@ export function NewCardBar() {
             <PenLine size={11} />
             <span>New card</span>
           </div>
-          <button
-            onClick={() => setExpanded(false)}
-            className="px-2 py-0.5 text-[14px] leading-none text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
-            title="Collapse"
-          >
-            −
-          </button>
         </div>
 
         {/* Main editor */}

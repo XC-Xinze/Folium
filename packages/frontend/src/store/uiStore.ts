@@ -36,6 +36,8 @@ interface UIState {
   quickSwitcherOpen: boolean;
   /** 设置弹窗开/关（Obsidian 风：模态而非 tab） */
   settingsOpen: boolean;
+  /** 新建卡片弹窗开/关 */
+  newCardOpen: boolean;
   /** 主题：light/dark 强制；auto 跟随系统 */
   theme: Theme;
   /** 用户自定义的快捷键映射：commandId → "Mod+Shift+K" 这种字符串 */
@@ -57,6 +59,7 @@ interface UIState {
   setShowWorkspaceLinks: (b: boolean) => void;
   setQuickSwitcherOpen: (b: boolean) => void;
   setSettingsOpen: (b: boolean) => void;
+  setNewCardOpen: (b: boolean) => void;
   setTheme: (t: Theme) => void;
   setShortcut: (commandId: string, shortcut: string | null) => void;
 }
@@ -81,6 +84,7 @@ export const useUIStore = create<UIState>()(
       showWorkspaceLinks: true,
       quickSwitcherOpen: false,
       settingsOpen: false,
+      newCardOpen: false,
       theme: 'auto',
       shortcutOverrides: {},
       setFocus: (id) =>
@@ -108,6 +112,7 @@ export const useUIStore = create<UIState>()(
       setShowWorkspaceLinks: (b) => set({ showWorkspaceLinks: b }),
       setQuickSwitcherOpen: (b) => set({ quickSwitcherOpen: b }),
       setSettingsOpen: (b) => set({ settingsOpen: b }),
+      setNewCardOpen: (b) => set({ newCardOpen: b }),
       setTheme: (t) => set({ theme: t }),
       setShortcut: (commandId, shortcut) =>
         set((s) => {

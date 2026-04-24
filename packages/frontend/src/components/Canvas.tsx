@@ -15,24 +15,31 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Card, type PositionMap } from '../lib/api';
 import { CardNode } from './CardNode';
 import { applyAnchorPositions, buildGraph, computeBackbone, resolveCollisions } from '../lib/cardGraph';
-import { useUIStore } from '../store/uiStore';
+import { DEFAULT_CARD_FLAGS, type CardDisplayFlags } from '../store/paneStore';
 
 const nodeTypes = { card: CardNode };
 
 interface Props {
   focusedBoxId: string;
   focusedCardId: string;
+  /** 每个 tab 自己持有这四个开关 —— 无值就回退到 DEFAULT_CARD_FLAGS */
+  flags?: Partial<CardDisplayFlags>;
+  /** 切换某一项时回写到 tab payload（PaneRoot 通过 updateTab 实现） */
+  onFlagChange?: (key: keyof CardDisplayFlags, value: boolean) => void;
 }
 
-function CanvasInner({ focusedBoxId, focusedCardId }: Props) {
-  const showPotential = useUIStore((s) => s.showPotential);
-  const setShowPotential = useUIStore((s) => s.setShowPotential);
-  const showTagRelated = useUIStore((s) => s.showTagRelated);
-  const setShowTagRelated = useUIStore((s) => s.setShowTagRelated);
-  const showCrossLinks = useUIStore((s) => s.showCrossLinks);
-  const setShowCrossLinks = useUIStore((s) => s.setShowCrossLinks);
-  const showWorkspaceLinks = useUIStore((s) => s.showWorkspaceLinks);
-  const setShowWorkspaceLinks = useUIStore((s) => s.setShowWorkspaceLinks);
+function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange }: Props) {
+  const merged = { ...DEFAULT_CARD_FLAGS, ...(flags ?? {}) };
+  const showPotential = merged.potential;
+  const showTagRelated = merged.tag;
+  const showCrossLinks = merged.cross;
+  const showWorkspaceLinks = merged.workspaceLinks;
+  // 没接 onFlagChange 的兜底：原地状态（用于 Canvas 被非 tab 场景用时不挂掉）
+  const setFlag = (k: keyof CardDisplayFlags, v: boolean) => onFlagChange?.(k, v);
+  const setShowPotential = (v: boolean) => setFlag('potential', v);
+  const setShowTagRelated = (v: boolean) => setFlag('tag', v);
+  const setShowCrossLinks = (v: boolean) => setFlag('cross', v);
+  const setShowWorkspaceLinks = (v: boolean) => setFlag('workspaceLinks', v);
   const qc = useQueryClient();
 
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });

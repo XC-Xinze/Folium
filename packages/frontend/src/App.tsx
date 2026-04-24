@@ -6,7 +6,7 @@ import { WorkspacesSidebar } from './components/WorkspacesSidebar';
 import { Dialog } from './components/Dialog';
 import { QuickSwitcher } from './components/QuickSwitcher';
 import { SettingsModal } from './components/SettingsModal';
-import { NewCardBar } from './components/NewCardBar';
+import { CreateCardModal } from './components/CreateCardModal';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { EmptyVault } from './components/EmptyVault';
 import { PaneRoot } from './components/PaneRoot';
@@ -139,6 +139,13 @@ export function App() {
         run: () => toggleLeftSidebar(),
       }),
       registerCommand({
+        id: 'card.new',
+        title: 'Create new card',
+        defaultShortcut: 'Mod+n',
+        group: 'Card',
+        run: () => useUIStore.getState().setNewCardOpen(true),
+      }),
+      registerCommand({
         id: 'view.settings',
         title: 'Open settings',
         defaultShortcut: 'Mod+,',
@@ -208,12 +215,12 @@ export function App() {
         <div className="flex items-center justify-end px-6 pt-2 pb-1 border-b border-gray-100/60 dark:border-[#363a4f]/60 bg-[#fafafa] dark:bg-[#24273a] shrink-0">
           <WorkspaceSwitcher />
         </div>
-        <NewCardBar />
         {isVaultEmpty ? <EmptyVault /> : <PaneRoot />}
       </main>
       <Dialog />
       <QuickSwitcher />
       <SettingsModal />
+      <CreateCardModal />
     </div>
   );
 }

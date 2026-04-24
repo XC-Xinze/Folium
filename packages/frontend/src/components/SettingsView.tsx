@@ -1,6 +1,8 @@
-import { Moon, Sun, Monitor } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Moon, Sun, Monitor, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
 import { useUIStore, type Theme } from '../store/uiStore';
 import { PluginRegistry } from '../lib/pluginRegistry';
+import { listLoadedPlugins, reloadPlugins, type LoadedPlugin } from '../lib/pluginLoader';
 import { HotkeysPanel } from './HotkeysPanel';
 import { TrashPanel } from './TrashPanel';
 
@@ -63,10 +65,10 @@ export function SettingsView() {
       </Section>
 
       <Section title="Plugins">
-        <p className="text-[12px] text-gray-500 dark:text-gray-400">
-          {PluginRegistry.commands.list().length} commands · {PluginRegistry.sidebarItems.list().length} sidebar items · {panels.length} settings panels
+        <PluginsPanel />
+        <p className="text-[11px] text-gray-400 dark:text-gray-500">
+          {PluginRegistry.commands.list().length} commands · {PluginRegistry.sidebarItems.list().length} sidebar items · {panels.length} settings panels registered
         </p>
-        <p className="text-[11px] text-gray-400 dark:text-gray-500">Third-party plugin loading lands in V2.</p>
       </Section>
 
       {panels.map((p) => (
@@ -74,6 +76,64 @@ export function SettingsView() {
           <p.Component />
         </Section>
       ))}
+    </div>
+  );
+}
+
+function PluginsPanel() {
+  const [plugins, setPlugins] = useState<LoadedPlugin[]>(() => listLoadedPlugins());
+  const [reloading, setReloading] = useState(false);
+  // 切回这个面板时刷一下显示（启动加载可能还没完）
+  useEffect(() => {
+    setPlugins(listLoadedPlugins());
+  }, []);
+  const onReload = async () => {
+    setReloading(true);
+    try {
+      const next = await reloadPlugins();
+      setPlugins(next);
+    } finally {
+      setReloading(false);
+    }
+  };
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-[12px] text-gray-500 dark:text-gray-400">
+          Drop <code className="text-[11px] px-1 rounded bg-gray-100 dark:bg-gray-800">.js</code> files into{' '}
+          <code className="text-[11px] px-1 rounded bg-gray-100 dark:bg-gray-800">~/your-vault/.zettel/plugins/</code> and reload.
+        </p>
+        <button
+          onClick={onReload}
+          disabled={reloading}
+          className="text-[11px] font-bold flex items-center gap-1.5 px-2.5 py-1 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40"
+        >
+          <RefreshCw size={11} className={reloading ? 'animate-spin' : ''} />
+          Reload
+        </button>
+      </div>
+      {plugins.length === 0 ? (
+        <p className="text-[11px] text-gray-400">No plugins loaded.</p>
+      ) : (
+        <ul className="space-y-1">
+          {plugins.map((p) => (
+            <li
+              key={p.name}
+              className="flex items-center gap-2 text-[12px] px-2 py-1.5 rounded bg-gray-50 dark:bg-gray-800/50"
+            >
+              {p.ok ? (
+                <CheckCircle size={12} className="text-emerald-500 shrink-0" />
+              ) : (
+                <XCircle size={12} className="text-red-500 shrink-0" />
+              )}
+              <code className="font-mono text-[11px]">{p.name}</code>
+              {!p.ok && p.error && (
+                <span className="text-[11px] text-red-500 truncate">{p.error}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -24,6 +24,7 @@ import { useUIStore } from './store/uiStore';
 import { api } from './lib/api';
 import { dialog } from './lib/dialog';
 import { registerCommand, useGlobalCommands } from './lib/commands';
+import { loadAllPlugins } from './lib/pluginLoader';
 
 export function App() {
   const focusedId = useUIStore((s) => s.focusedCardId);
@@ -39,6 +40,11 @@ export function App() {
   const setBoxAndFocus = useUIStore((s) => s.setBoxAndFocus);
   const viewMode = useUIStore((s) => s.viewMode);
   const theme = useUIStore((s) => s.theme);
+
+  // 启动时加载用户插件（一次性；reload 走设置页按钮）
+  useEffect(() => {
+    void loadAllPlugins().catch((err) => console.error('plugin load failed', err));
+  }, []);
 
   // 主题应用：把 .dark class 加到 <html> 上，auto 模式跟随 prefers-color-scheme
   useEffect(() => {

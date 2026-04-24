@@ -15,6 +15,7 @@ import { positionRoutes } from './routes/positions.js';
 import { workspaceRoutes } from './routes/workspaces.js';
 import { starredRoutes } from './routes/starred.js';
 import { trashRoutes } from './routes/trash.js';
+import { pluginRoutes } from './routes/plugins.js';
 import { hooks } from './hooks.js';
 
 async function main() {
@@ -59,6 +60,7 @@ async function main() {
   await app.register(workspaceRoutes, { prefix: '/api' });
   await app.register(starredRoutes, { prefix: '/api' });
   await app.register(trashRoutes, { prefix: '/api' });
+  await app.register(pluginRoutes, { prefix: '/api' });
 
   app.get('/api/health', async () => ({
     ok: true,

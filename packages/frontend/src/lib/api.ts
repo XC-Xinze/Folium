@@ -366,6 +366,13 @@ export const api = {
     }
     return res.json();
   },
+  listPlugins: () =>
+    get<{ plugins: Array<{ name: string; size: number; mtime: number }> }>(`/plugins`),
+  getPluginSource: async (name: string): Promise<string> => {
+    const res = await fetch(`${BASE}/plugins/${encodeURIComponent(name)}`);
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.text();
+  },
   uploadAttachment: async (
     file: File,
   ): Promise<{ filename: string; relativePath: string; url: string; mimetype: string; size: number }> => {

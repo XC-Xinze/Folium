@@ -258,6 +258,11 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
   for (const id of backbone.ids) {
     addNode(id, id === focusedCardId ? 'focus' : 'tree');
   }
+  // 焦点卡可能不在 backbone（用户在 i0 box 里点选了外部 tag-related 拉进来的卡）—— 也要补一个节点。
+  // 否则后面 cross / tag / potential 边以它为 source/target 的全部找不到端点，被 React Flow 丢掉。
+  if (!backbone.ids.has(focusedCardId) && cardMap.has(focusedCardId)) {
+    addNode(focusedCardId, 'focus');
+  }
   // 骨干 tree 边
   for (const e of backbone.treeEdges) {
     rawEdges.push({ id: `tree:${e.source}->${e.target}`, source: e.source, target: e.target, kind: 'tree' });

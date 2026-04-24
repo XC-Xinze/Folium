@@ -40,10 +40,27 @@ export function CardNode({ data, id, selected }: NodeProps) {
   });
   const full: Card | null = isGhost ? (card as Card) : (fullQ.data ?? null);
   const navigate = useNavigateToCard();
-  const setFocus = useUIStore((s) => s.setFocus);
   // 旧 setFocusTag 改成开 tag tab
   const _openTagTab = (name: string) =>
     usePaneStoreImported.getState().openTab({ kind: 'tag', title: `#${name}`, tagName: name });
+
+  // 单击 CardNode → 更新当前 active tab 的 cardFocusId（不开新 tab，只在本 box 内换焦点）
+  const setFocus = (cardId: string) => {
+    const { root, activeLeafId, updateTab } = usePaneStoreImported.getState();
+    const findLeaf = (n: typeof root): typeof root | null => {
+      if (n.kind === 'leaf') return n.id === activeLeafId ? n : null;
+      for (const c of n.children) {
+        const r = findLeaf(c);
+        if (r) return r;
+      }
+      return null;
+    };
+    const leaf = findLeaf(root);
+    if (!leaf || leaf.kind !== 'leaf' || !leaf.activeTabId) return;
+    const activeTab = leaf.tabs.find((t) => t.id === leaf.activeTabId);
+    if (!activeTab || activeTab.kind !== 'card') return;
+    updateTab(leaf.id, leaf.activeTabId, { cardFocusId: cardId });
+  };
   const qc = useQueryClient();
   const starredQ = useQuery({ queryKey: ['starred'], queryFn: api.listStarred });
   const isStarred = !!starredQ.data?.ids.includes(cardLuhmannId);

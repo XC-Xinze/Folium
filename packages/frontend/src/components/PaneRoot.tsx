@@ -1,8 +1,10 @@
 import { lazy, Suspense, useCallback, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, GripVertical, Network, Settings, SplitSquareHorizontal, SplitSquareVertical, Tag, X, XSquare } from 'lucide-react';
+import { ChevronDown, GripVertical, Network, Plus, Settings, SplitSquareHorizontal, SplitSquareVertical, Tag, X, XSquare } from 'lucide-react';
 import { Canvas } from './Canvas';
 import { usePaneStore, type LeafPane, type Pane, type SplitPane, type Tab } from '../store/paneStore';
 import { useIsMobile } from '../lib/useIsMobile';
+import { TabContextMenu } from './TabContextMenu';
+import { useUIStore as useUIStoreMod } from '../store/uiStore';
 
 /** 在 pane 树里找当前 active leaf */
 function findActiveLeaf(node: Pane, id: string): LeafPane | null {
@@ -272,6 +274,7 @@ function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
   const isMobile = useIsMobile();
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ tabId: string; x: number; y: number } | null>(null);
   // 唯一 leaf 不能关；split 的孩子可以关
   const isOnlyLeaf = root.kind === 'leaf' && root.id === pane.id;
   const closePane = () => {
@@ -328,6 +331,10 @@ function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
               moveTab(data.fromPaneId, data.tabId, pane.id, i);
             }}
             onClick={() => setActiveTab(pane.id, tab.id)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setContextMenu({ tabId: tab.id, x: e.clientX, y: e.clientY });
+            }}
             onAuxClick={(e) => {
               // 中键关 tab —— 浏览器 tab 通用习惯
               if (e.button === 1) {
@@ -363,6 +370,14 @@ function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
         );
       })}
       <div className="flex-1" />
+      {/* + 新 tab：开一张空 graph 还是空 card 都不合适，所以触发"新建卡片"弹窗 */}
+      <button
+        onClick={() => useUIStoreMod.getState().setNewCardOpen(true)}
+        className="px-2 text-gray-400 hover:text-ink dark:hover:text-[#cad3f5] hover:bg-gray-100 dark:hover:bg-[#363a4f]"
+        title="New card (⌘N)"
+      >
+        <Plus size={12} />
+      </button>
       {pane.tabs.length > 0 && !isMobile && (
         <>
           <button
@@ -390,6 +405,15 @@ function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
         >
           <XSquare size={12} />
         </button>
+      )}
+      {contextMenu && (
+        <TabContextMenu
+          pane={pane}
+          tabId={contextMenu.tabId}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </div>
   );
@@ -465,20 +489,54 @@ function EmptyTabHint({ paneId }: { paneId: string }) {
   const openTabIn = usePaneStore((s) => s.openTabIn);
   return (
     <div className="h-full flex items-center justify-center text-sm text-gray-400 p-6">
-      <div className="text-center space-y-2">
-        <div>Empty pane.</div>
-        <div className="text-[11px]">
-          Click a card in the sidebar, or{' '}
-          <button
-            className="underline hover:text-accent"
+      <div className="max-w-sm w-full text-center space-y-4">
+        <div className="text-[13px] text-gray-500 dark:text-gray-400">No tab open in this pane</div>
+        <div className="grid grid-cols-2 gap-2">
+          <ActionTile
+            label="New card"
+            shortcut="⌘N"
+            onClick={() => useUIStoreMod.getState().setNewCardOpen(true)}
+          />
+          <ActionTile
+            label="Quick switcher"
+            shortcut="⌘K"
+            onClick={() => useUIStoreMod.getState().setQuickSwitcherOpen(true)}
+          />
+          <ActionTile
+            label="Graph view"
+            shortcut="⌘G"
             onClick={() => openTabIn(paneId, { kind: 'graph', title: 'Graph' })}
-          >
-            open the graph
-          </button>
-          .
+          />
+          <ActionTile
+            label="Command palette"
+            shortcut="⌘P"
+            onClick={() => useUIStoreMod.getState().setCommandPaletteOpen(true)}
+          />
         </div>
       </div>
     </div>
+  );
+}
+
+function ActionTile({
+  label,
+  shortcut,
+  onClick,
+}: {
+  label: string;
+  shortcut: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-gray-200 dark:border-[#363a4f] hover:border-accent hover:bg-accentSoft dark:hover:bg-accent/10 transition-colors text-gray-700 dark:text-[#cad3f5]"
+    >
+      <span className="text-[12px] font-bold">{label}</span>
+      <kbd className="text-[10px] font-mono text-gray-400 border border-gray-200 dark:border-[#363a4f] rounded px-1.5 py-0.5">
+        {shortcut}
+      </kbd>
+    </button>
   );
 }
 

@@ -324,7 +324,7 @@ export const usePaneStore = create<PaneStore>()(
         // 把关掉的 tab 推进 closedHistory（不存 id，恢复时重发）
         const { id: _ignored, ...closingSpec } = closing;
         void _ignored;
-        const nextHistory = [closingSpec, ...closedHistory].slice(0, CLOSED_STACK_MAX);
+        const nextHistory = [closingSpec, ...(closedHistory ?? [])].slice(0, CLOSED_STACK_MAX);
 
         if (remaining.length === 0) {
           const onlyLeaf = root.kind === 'leaf' && root.id === paneId;
@@ -654,12 +654,15 @@ export const usePaneStore = create<PaneStore>()(
         activeLeafId: s.activeLeafId,
         closedHistory: s.closedHistory,
       }),
-      // hydrate 后保证 activeLeafId 仍然指向有效 leaf
+      // hydrate 后保证 activeLeafId 仍然指向有效 leaf；老版本可能没 closedHistory
       onRehydrateStorage: () => (state) => {
         if (!state) return;
         const leaf = findLeaf(state.root, state.activeLeafId);
         if (!leaf) {
           state.activeLeafId = findFirstLeaf(state.root).id;
+        }
+        if (!Array.isArray(state.closedHistory)) {
+          state.closedHistory = [];
         }
       },
     },

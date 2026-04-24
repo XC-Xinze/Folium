@@ -31,7 +31,6 @@ import {
 import { randomUUID } from '../lib/uuid';
 import { api, type Workspace, type WorkspaceEdge, type WorkspaceNode } from '../lib/api';
 import { dialog } from '../lib/dialog';
-import { useUIStore } from '../store/uiStore';
 import { CardNode } from './CardNode';
 import { WorkspaceNoteNode } from './WorkspaceNoteNode';
 import { WorkspaceTempNode } from './WorkspaceTempNode';

@@ -24,9 +24,15 @@ export function CardNode({ data, id, selected }: NodeProps) {
   // 因为 workspace 里节点 id 是 workspace 本地 uuid，不是 luhmannId
   const cardLuhmannId = card.luhmannId;
   const isGhost = !!nodeData.ghostFromWorkspace;
-  const [full, setFull] = useState<Card | null>(
-    'contentMd' in card ? (card as Card) : null,
-  );
+  // 用 useQuery 订阅卡片内容；这样 tag 改名 / 删除等操作 invalidate ['card', id] 时
+  // 这里会自动 refetch，不会一直拿初次加载的 stale 副本
+  const fullQ = useQuery({
+    queryKey: ['card', cardLuhmannId],
+    queryFn: () => api.getCard(cardLuhmannId),
+    enabled: !isGhost,
+    initialData: 'contentMd' in card ? (card as Card) : undefined,
+  });
+  const full: Card | null = isGhost ? (card as Card) : (fullQ.data ?? null);
   const navigate = useNavigateToCard();
   const setFocus = useUIStore((s) => s.setFocus);
   const setFocusTag = useUIStore((s) => s.setFocusTag);
@@ -105,11 +111,11 @@ export function CardNode({ data, id, selected }: NodeProps) {
         tags: tagsList,
         status: draftStatus,
       });
-      setFull(updated);
+      // 写完先把这张卡的 query 内容直接替换掉，再 invalidate 让其他视图统一刷
+      qc.setQueryData(['card', cardLuhmannId], updated);
       qc.invalidateQueries({ queryKey: ['cards'] });
       qc.invalidateQueries({ queryKey: ['indexes'] });
       qc.invalidateQueries({ queryKey: ['tags'] });
-      qc.invalidateQueries({ queryKey: ['card'] });
       qc.invalidateQueries({ queryKey: ['linked'] });
       setEditing(false);
     } catch (err) {
@@ -181,21 +187,6 @@ export function CardNode({ data, id, selected }: NodeProps) {
       setPromoting(false);
     }
   };
-
-  // 摘要 → 按需拉取完整正文（ghost 节点已带内容，跳过）
-  useEffect(() => {
-    if (full || isGhost) return;
-    let cancelled = false;
-    api
-      .getCard(cardLuhmannId)
-      .then((c) => {
-        if (!cancelled) setFull(c);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [cardLuhmannId, full, isGhost]);
 
   useEffect(() => {
     if (!contentRef.current) return;

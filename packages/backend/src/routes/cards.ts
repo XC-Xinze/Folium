@@ -80,11 +80,13 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.get('/tags', async () => {
+    // 直接从 card_tags 聚合，避免 tags 表残留孤儿名
+    // （rename / delete 会让 card_tags 同步，但 tags 主表可能留死项 → count=0 的幽灵 tag）
     const rows = db
       .prepare(
-        `SELECT t.name, COUNT(ct.luhmann_id) as count
-         FROM tags t LEFT JOIN card_tags ct ON ct.tag = t.name
-         GROUP BY t.name ORDER BY count DESC`,
+        `SELECT tag AS name, COUNT(*) as count
+         FROM card_tags
+         GROUP BY tag ORDER BY count DESC`,
       )
       .all() as { name: string; count: number }[];
     return { tags: rows };

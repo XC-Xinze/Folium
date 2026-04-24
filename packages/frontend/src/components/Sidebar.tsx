@@ -147,11 +147,15 @@ export function Sidebar() {
         {(tagsQ.data?.tags ?? []).length === 0 ? (
           <div className="text-[11px] text-gray-400 px-3 py-1.5">No tags yet</div>
         ) : (
-          <div className="flex flex-wrap gap-1.5 px-1">
-            {(tagsQ.data?.tags ?? [])
+          <ChunkedList
+            items={(tagsQ.data?.tags ?? [])
               .slice()
-              .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
-              .map((t) => (
+              .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))}
+            initial={40}
+            step={40}
+            label="tags"
+            wrapper={(children) => <div className="flex flex-wrap gap-1.5 px-1">{children}</div>}
+            render={(t) => (
                 <span
                   key={t.name}
                   className={`group/chip inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-[11px] font-semibold transition-colors ${
@@ -222,8 +226,8 @@ export function Sidebar() {
                     <X size={10} />
                   </button>
                 </span>
-              ))}
-          </div>
+            )}
+          />
         )}
       </Section>
 
@@ -257,42 +261,86 @@ export function Sidebar() {
           <div className="text-[10px] text-gray-400 px-1 mb-1.5 italic leading-relaxed">
             Top-level cards not yet referenced by any INDEX
           </div>
-          {orphans.map((c) => (
-            <div
-              key={c.luhmannId}
-              className={`group flex items-center gap-2 px-2 py-1 rounded-md hover:bg-gray-50 cursor-grab active:cursor-grabbing ${
-                focusedId === c.luhmannId ? 'bg-accentSoft' : ''
-              }`}
-              draggable
-              onDragStart={(e) => setCardDragData(e, { luhmannId: c.luhmannId, title: c.title })}
-              onClick={() => navigate(c.luhmannId)}
-              title="Drag to workspace"
-            >
-              <span className="font-mono text-[10px] text-gray-500 w-10 shrink-0">{c.luhmannId}</span>
-              <span className="text-[12px] truncate flex-1 min-w-0">{c.title}</span>
-              {c.status === 'INDEX' && (
-                <span className="text-[8px] font-bold text-accent shrink-0">IDX</span>
-              )}
-              <button
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  const ok = await dialog.confirm(`Delete ${c.luhmannId}?`, {
-                    title: 'Delete card',
-                    confirmLabel: 'Delete',
-                    variant: 'danger',
-                  });
-                  if (ok) deleteMut.mutate(c.luhmannId);
-                }}
-                className="p-0.5 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                title="Delete"
+          <ChunkedList
+            items={orphans}
+            initial={50}
+            step={50}
+            label="orphans"
+            render={(c) => (
+              <div
+                key={c.luhmannId}
+                className={`group flex items-center gap-2 px-2 py-1 rounded-md hover:bg-gray-50 cursor-grab active:cursor-grabbing ${
+                  focusedId === c.luhmannId ? 'bg-accentSoft' : ''
+                }`}
+                draggable
+                onDragStart={(e) => setCardDragData(e, { luhmannId: c.luhmannId, title: c.title })}
+                onClick={() => navigate(c.luhmannId)}
+                title="Drag to workspace"
               >
-                <Trash2 size={11} />
-              </button>
-            </div>
-          ))}
+                <span className="font-mono text-[10px] text-gray-500 w-10 shrink-0">{c.luhmannId}</span>
+                <span className="text-[12px] truncate flex-1 min-w-0">{c.title}</span>
+                {c.status === 'INDEX' && (
+                  <span className="text-[8px] font-bold text-accent shrink-0">IDX</span>
+                )}
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    const ok = await dialog.confirm(`Delete ${c.luhmannId}?`, {
+                      title: 'Delete card',
+                      confirmLabel: 'Delete',
+                      variant: 'danger',
+                    });
+                    if (ok) deleteMut.mutate(c.luhmannId);
+                  }}
+                  className="p-0.5 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                  title="Delete"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            )}
+          />
         </Section>
       )}
     </aside>
+  );
+}
+
+/**
+ * 简易"分块加载"列表：先渲染 initial 个，再点 "show more" 加载下一批。
+ * 比 react-window 类的虚拟化简单粗暴但够用——侧栏滚动场景不需要复杂的窗口管理。
+ */
+function ChunkedList<T>({
+  items,
+  initial,
+  step,
+  label,
+  render,
+  wrapper,
+}: {
+  items: T[];
+  initial: number;
+  step: number;
+  label: string;
+  render: (item: T, index: number) => React.ReactNode;
+  wrapper?: (children: React.ReactNode) => React.ReactNode;
+}) {
+  const [shown, setShown] = useState(initial);
+  const visible = items.slice(0, shown);
+  const remaining = items.length - shown;
+  const list = visible.map((it, i) => render(it, i));
+  return (
+    <>
+      {wrapper ? wrapper(list) : list}
+      {remaining > 0 && (
+        <button
+          onClick={() => setShown((s) => s + step)}
+          className="w-full mt-1.5 text-[10px] text-accent hover:underline px-1 py-1 text-left"
+        >
+          + show {Math.min(step, remaining)} more {label} ({remaining} hidden)
+        </button>
+      )}
+    </>
   );
 }
 

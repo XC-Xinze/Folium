@@ -9,6 +9,7 @@ import { QuickSwitcher } from './components/QuickSwitcher';
 import { NewCardBar } from './components/NewCardBar';
 import { Splitter } from './components/Splitter';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
+import { EmptyVault } from './components/EmptyVault';
 
 // 懒加载 — 不在主 bundle 里拖慢首屏；切到 tag/workspace/settings 时才加载
 const SettingsView = lazy(() =>
@@ -190,6 +191,8 @@ export function App() {
           <Suspense fallback={<div className="h-full flex items-center justify-center text-sm text-gray-400">Loading tag view…</div>}>
             <TagView tag={focusedTag} />
           </Suspense>
+        ) : cardsQ.data && cardsQ.data.cards.length === 0 ? (
+          <EmptyVault />
         ) : focusedBoxId && focusedId ? (
           <Canvas focusedBoxId={focusedBoxId} focusedCardId={focusedId} />
         ) : (

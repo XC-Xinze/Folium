@@ -366,6 +366,25 @@ export const api = {
     }
     return res.json();
   },
+  createCard: async (body: {
+    luhmannId: string;
+    title: string;
+    content?: string;
+    tags?: string[];
+    crossLinks?: string[];
+    status?: 'ATOMIC' | 'INDEX';
+  }): Promise<{ luhmannId: string }> => {
+    const res = await fetch(`${BASE}/cards`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
   exportCardUrl: (id: string) => `${BASE}/export/card/${encodeURIComponent(id)}`,
   exportSubtreeUrl: (id: string) => `${BASE}/export/subtree/${encodeURIComponent(id)}`,
   exportVaultUrl: () => `${BASE}/export/vault`,

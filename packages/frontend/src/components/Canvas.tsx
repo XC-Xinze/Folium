@@ -16,6 +16,7 @@ import { api, type Card, type PositionMap } from '../lib/api';
 import { CardNode } from './CardNode';
 import { applyAnchorPositions, buildGraph, computeBackbone, resolveCollisions } from '../lib/cardGraph';
 import { useUIStore } from '../store/uiStore';
+import { BacklinksPopover } from './BacklinksPopover';
 
 const nodeTypes = { card: CardNode };
 
@@ -176,6 +177,11 @@ function CanvasInner({ focusedBoxId, focusedCardId }: Props) {
         <Controls position="bottom-right" showInteractive={false} />
         <MiniMap pannable zoomable position="top-right" maskColor="rgba(0,0,0,0.05)" />
       </ReactFlow>
+
+      {/* 反链气泡，右上角（避开 MiniMap：放到画布顶部偏右内侧） */}
+      <div className="absolute top-4 right-[260px] z-10">
+        <BacklinksPopover focusedCardId={focusedCardId} />
+      </div>
 
       {/* 边类型开关，左上角 */}
       <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 px-2 py-1.5 bg-white/95 backdrop-blur-sm rounded-full shadow-md border border-gray-200">

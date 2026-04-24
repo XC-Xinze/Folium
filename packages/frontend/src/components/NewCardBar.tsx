@@ -74,6 +74,7 @@ export function NewCardBar() {
   const qc = useQueryClient();
 
   const [luhmannId, setLuhmannId] = useState('');
+  const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [status, setStatus] = useState<Status>('ATOMIC');
   const [uploading, setUploading] = useState(false);
@@ -158,6 +159,7 @@ export function NewCardBar() {
       if (status === 'INDEX') setBoxAndFocus(newId);
       else setFocus(newId);
       setLuhmannId('');
+      setTitle('');
       setContent('');
       setStatus('ATOMIC');
       setEditingId(false); // 重新交还给自动推算
@@ -217,10 +219,12 @@ export function NewCardBar() {
 
   const submit = () => {
     if (!luhmannId.trim() || !content.trim()) return;
-    const title = deriveTitle(content) || `Card ${luhmannId.trim()}`;
+    // 优先用显式标题；空时回退到 content 第一行；都没有就给个兜底
+    const finalTitle =
+      title.trim() || deriveTitle(content) || `Card ${luhmannId.trim()}`;
     mutation.mutate({
       luhmannId: luhmannId.trim(),
-      title,
+      title: finalTitle,
       content,
       status,
     });
@@ -292,6 +296,14 @@ export function NewCardBar() {
 
         {/* Main editor */}
         <div className="pl-7 pr-5 pb-3 relative">
+          {/* 显式标题输入；空时 submit 会自动从正文首行推 */}
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onFocus={() => setFocused(true)}
+            placeholder="Title (optional — derived from first line if blank)"
+            className="w-full bg-transparent border-0 outline-none text-[16px] font-bold text-ink placeholder:text-gray-300 placeholder:font-normal py-1"
+          />
           <textarea
             ref={taRef}
             value={content}

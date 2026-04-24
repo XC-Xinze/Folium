@@ -166,8 +166,14 @@ export function Sidebar() {
                         defaultValue: t.name,
                         confirmLabel: 'Rename',
                       });
-                      if (newName?.trim() && newName.trim() !== t.name) {
-                        renameTagMut.mutate({ oldName: t.name, newName: newName.trim() });
+                      if (!newName?.trim() || newName.trim() === t.name) return;
+                      try {
+                        await renameTagMut.mutateAsync({
+                          oldName: t.name,
+                          newName: newName.trim(),
+                        });
+                      } catch (err) {
+                        dialog.alert((err as Error).message, { title: 'Rename failed' });
                       }
                     }}
                     className="inline-flex items-center gap-1"
@@ -184,6 +190,7 @@ export function Sidebar() {
                   <button
                     onClick={async (e) => {
                       e.stopPropagation();
+                      e.preventDefault();
                       const ok = await dialog.confirm(
                         `Delete tag #${t.name} from ${t.count} card${t.count === 1 ? '' : 's'}?`,
                         {
@@ -194,16 +201,21 @@ export function Sidebar() {
                           variant: 'danger',
                         },
                       );
-                      if (ok) deleteTagMut.mutate(t.name);
+                      if (!ok) return;
+                      try {
+                        await deleteTagMut.mutateAsync(t.name);
+                      } catch (err) {
+                        dialog.alert((err as Error).message, { title: 'Delete failed' });
+                      }
                     }}
-                    className={`opacity-0 group-hover/chip:opacity-100 transition-opacity rounded-full p-0.5 ${
+                    className={`rounded-full p-0.5 transition-colors ${
                       focusedTag === t.name
-                        ? 'hover:bg-white/20'
-                        : 'hover:bg-red-100 hover:text-red-500'
+                        ? 'text-white/70 hover:bg-white/20 hover:text-white'
+                        : 'text-gray-400 hover:bg-red-100 hover:text-red-500'
                     }`}
                     title={`Delete tag #${t.name}`}
                   >
-                    <X size={9} />
+                    <X size={10} />
                   </button>
                 </span>
               ))}

@@ -234,8 +234,12 @@ function GraphInner() {
     const map = new Map<string, SimNode>();
     for (const n of simNodes) map.set(n.id, n);
     simNodesRef.current = map;
+    // 重要：d3-force 会就地把每个 link 的 source/target 替换成 SimNode 对象引用，
+    // 我们存进 React state 的副本必须独立，否则 edges useMemo 拿到的 source/target
+    // 不再是 id 字符串，React Flow 找不到节点 → 边全消失。
+    const linksForReact: SimLink[] = newLinks.map((l) => ({ ...l }));
     const sim = makeSimulation(simNodes, newLinks);
-    setLinks(newLinks);
+    setLinks(linksForReact);
 
     let frame = 0;
     sim.on('tick', () => {

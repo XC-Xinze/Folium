@@ -11,6 +11,9 @@ import type { CardNodeData } from '../lib/cardGraph';
 import { NODE_WIDTH } from '../lib/cardGraph';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
 import { useUIStore } from '../store/uiStore';
+import { applyTrigger, detectTrigger, formatInsertion, type Trigger } from '../lib/editorAutocomplete';
+import { fuzzyScore } from '../lib/fuzzy';
+import { EditorAutocomplete, type AutocompleteItem } from './EditorAutocomplete';
 
 export function CardNode({ data, id, selected }: NodeProps) {
   const nodeData = data as unknown as CardNodeData;
@@ -42,6 +45,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
   const starredQ = useQuery({ queryKey: ['starred'], queryFn: api.listStarred });
   const isStarred = !!starredQ.data?.ids.includes(cardLuhmannId);
   const contentRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [promoting, setPromoting] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
@@ -49,6 +53,12 @@ export function CardNode({ data, id, selected }: NodeProps) {
   const [draftTags, setDraftTags] = useState('');
   const [draftStatus, setDraftStatus] = useState<'ATOMIC' | 'INDEX'>('ATOMIC');
   const [hovered, setHovered] = useState(false);
+  // Autocomplete 状态：编辑模式下用
+  const [trigger, setTrigger] = useState<Trigger | null>(null);
+  const [acIdx, setAcIdx] = useState(0);
+  const [anchorRect, setAnchorRect] = useState<{ top: number; left: number; bottom: number } | null>(
+    null,
+  );
   // 实时尺寸：拖动时跟随光标更新，松开时持久化
   const [w, setW] = useState<number | undefined>(savedW);
   const [h, setH] = useState<number | undefined>(savedH);
@@ -278,6 +288,71 @@ export function CardNode({ data, id, selected }: NodeProps) {
   const backlinks = backlinksQ.data?.hits ?? [];
   const [backlinksOpen, setBacklinksOpen] = useState(true);
 
+  // Autocomplete 候选：编辑模式下，依据 trigger 类型从 cards / tags 里筛
+  const allCardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards, enabled: editing });
+  const allTagsQ = useQuery({ queryKey: ['tags'], queryFn: api.listTags, enabled: editing });
+  const acItems: AutocompleteItem[] = useMemo(() => {
+    if (!trigger) return [];
+    const q = trigger.query.toLowerCase();
+    if (trigger.kind === 'tag') {
+      const tags = allTagsQ.data?.tags ?? [];
+      return tags
+        .map((t) => ({
+          item: { label: t.name, hint: `${t.count}`, value: t.name } as AutocompleteItem,
+          score: q ? Math.max(fuzzyScore(q, t.name), 0) : 500 - t.count, // 空 query → 高频在前
+        }))
+        .filter((x) => !q || x.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 12)
+        .map((x) => x.item);
+    }
+    // wikilink / transclusion
+    const cards = allCardsQ.data?.cards ?? [];
+    return cards
+      .map((c) => ({
+        item: {
+          label: c.title || c.luhmannId,
+          hint: c.status === 'INDEX' ? 'INDEX' : '',
+          value: c.luhmannId,
+        } as AutocompleteItem,
+        score: q
+          ? Math.max(fuzzyScore(q, c.luhmannId), fuzzyScore(q, c.title))
+          : 1000 - c.sortKey.length, // 空 query → 短 sortKey 在前
+      }))
+      .filter((x) => !q || x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 12)
+      .map((x) => x.item);
+  }, [trigger, allCardsQ.data, allTagsQ.data]);
+
+  // 检测 textarea 当前光标位置 → 更新 trigger
+  const refreshTrigger = (textarea: HTMLTextAreaElement) => {
+    const t = detectTrigger(textarea.value, textarea.selectionStart);
+    setTrigger(t);
+    setAcIdx(0);
+    if (t) {
+      const rect = textarea.getBoundingClientRect();
+      // 简单定位：放在 textarea 下方左侧。精确光标位置太复杂，先这样。
+      setAnchorRect({ top: rect.top, left: rect.left, bottom: rect.bottom });
+    } else {
+      setAnchorRect(null);
+    }
+  };
+
+  const acceptAutocomplete = (item: AutocompleteItem) => {
+    if (!trigger || !textareaRef.current) return;
+    const ta = textareaRef.current;
+    const replacement = formatInsertion(trigger.kind, item.value);
+    const out = applyTrigger(ta.value, trigger, replacement, ta.selectionStart);
+    setDraftContent(out.text);
+    setTrigger(null);
+    // 把光标放到插入末尾
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(out.caret, out.caret);
+    });
+  };
+
   return (
     <div
       onMouseEnter={() => setHovered(true)}
@@ -419,11 +494,52 @@ export function CardNode({ data, id, selected }: NodeProps) {
             </select>
           </div>
           <textarea
+            ref={textareaRef}
             value={draftContent}
-            onChange={(e) => setDraftContent(e.target.value)}
-            placeholder="Markdown body — supports [[link]] and #tag"
+            onChange={(e) => {
+              setDraftContent(e.target.value);
+              refreshTrigger(e.target);
+            }}
+            onKeyUp={(e) => refreshTrigger(e.currentTarget)}
+            onClick={(e) => refreshTrigger(e.currentTarget)}
+            onKeyDown={(e) => {
+              // 仅当 autocomplete 打开且有候选时，拦截导航键
+              if (trigger && acItems.length > 0) {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setAcIdx((i) => Math.min(i + 1, acItems.length - 1));
+                  return;
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setAcIdx((i) => Math.max(i - 1, 0));
+                  return;
+                }
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                  e.preventDefault();
+                  const sel = acItems[acIdx];
+                  if (sel) acceptAutocomplete(sel);
+                  return;
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setTrigger(null);
+                  return;
+                }
+              }
+            }}
+            placeholder="Markdown body — [[link, ![[embed, #tag with autocomplete"
             className="w-full text-[12px] font-mono px-2 py-1 border border-gray-200 rounded focus:border-accent outline-none resize-y"
             rows={8}
+          />
+          <EditorAutocomplete
+            open={!!trigger && acItems.length > 0}
+            kind={trigger?.kind ?? null}
+            items={acItems}
+            activeIdx={acIdx}
+            setActiveIdx={setAcIdx}
+            onAccept={acceptAutocomplete}
+            anchorRect={anchorRect}
           />
           <input
             value={draftTags}

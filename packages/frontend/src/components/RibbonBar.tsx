@@ -1,4 +1,4 @@
-import { FolderTree, PanelLeftClose, PanelLeftOpen, Settings, Sparkles } from 'lucide-react';
+import { FolderTree, PanelLeftClose, PanelLeftOpen, Search, Settings, Sparkles } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
 
 /**
@@ -15,6 +15,7 @@ export function RibbonBar() {
   const setSidebarTab = useUIStore((s) => s.setSidebarTab);
   const setViewMode = useUIStore((s) => s.setViewMode);
   const viewMode = useUIStore((s) => s.viewMode);
+  const setQuickSwitcherOpen = useUIStore((s) => s.setQuickSwitcherOpen);
 
   const onTabClick = (t: 'vault' | 'workspaces') => {
     if (collapsed) {
@@ -37,6 +38,12 @@ export function RibbonBar() {
       />
 
       <div className="w-6 border-t border-gray-300 my-1" />
+
+      <IconButton
+        icon={<Search size={16} />}
+        onClick={() => setQuickSwitcherOpen(true)}
+        title="Quick switcher (⌘K)"
+      />
 
       <IconButton
         icon={<FolderTree size={16} />}

@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { WorkspacesSidebar } from './components/WorkspacesSidebar';
 import { Canvas } from './components/Canvas';
 import { Dialog } from './components/Dialog';
+import { QuickSwitcher } from './components/QuickSwitcher';
 import { NewCardBar } from './components/NewCardBar';
 import { SettingsView } from './components/SettingsView';
 import { Splitter } from './components/Splitter';
@@ -166,6 +167,7 @@ export function App() {
         )}
       </main>
       <Dialog />
+      <QuickSwitcher />
     </div>
   );
 }

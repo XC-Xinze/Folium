@@ -28,6 +28,8 @@ interface UIState {
   showTagRelated: boolean;
   /** 是否显示紫色的手动 [[link]] cross-flank 边/节点 */
   showCrossLinks: boolean;
+  /** Cmd+K 快速跳转面板开/关 */
+  quickSwitcherOpen: boolean;
   setFocus: (id: string | null) => void;
   setBoxAndFocus: (boxId: string, cardId?: string) => void;
   setFocusTag: (tag: string | null) => void;
@@ -42,6 +44,7 @@ interface UIState {
   setShowPotential: (b: boolean) => void;
   setShowTagRelated: (b: boolean) => void;
   setShowCrossLinks: (b: boolean) => void;
+  setQuickSwitcherOpen: (b: boolean) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -61,6 +64,7 @@ export const useUIStore = create<UIState>()(
       showPotential: true,
       showTagRelated: true,
       showCrossLinks: true,
+      quickSwitcherOpen: false,
       setFocus: (id) =>
         set({ focusedCardId: id, viewMode: 'chain', focusedTag: null }),
       setBoxAndFocus: (boxId, cardId) =>
@@ -83,6 +87,7 @@ export const useUIStore = create<UIState>()(
       setShowPotential: (b) => set({ showPotential: b }),
       setShowTagRelated: (b) => set({ showTagRelated: b }),
       setShowCrossLinks: (b) => set({ showCrossLinks: b }),
+      setQuickSwitcherOpen: (b) => set({ quickSwitcherOpen: b }),
     }),
     {
       name: 'zettel-ui',

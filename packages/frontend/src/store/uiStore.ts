@@ -34,6 +34,8 @@ interface UIState {
   quickSwitcherOpen: boolean;
   /** 主题：light/dark 强制；auto 跟随系统 */
   theme: Theme;
+  /** 用户自定义的快捷键映射：commandId → "Mod+Shift+K" 这种字符串 */
+  shortcutOverrides: Record<string, string>;
   setFocus: (id: string | null) => void;
   setBoxAndFocus: (boxId: string, cardId?: string) => void;
   setFocusTag: (tag: string | null) => void;
@@ -50,6 +52,7 @@ interface UIState {
   setShowCrossLinks: (b: boolean) => void;
   setQuickSwitcherOpen: (b: boolean) => void;
   setTheme: (t: Theme) => void;
+  setShortcut: (commandId: string, shortcut: string | null) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -71,6 +74,7 @@ export const useUIStore = create<UIState>()(
       showCrossLinks: true,
       quickSwitcherOpen: false,
       theme: 'auto',
+      shortcutOverrides: {},
       setFocus: (id) =>
         set({ focusedCardId: id, viewMode: 'chain', focusedTag: null }),
       setBoxAndFocus: (boxId, cardId) =>
@@ -95,6 +99,13 @@ export const useUIStore = create<UIState>()(
       setShowCrossLinks: (b) => set({ showCrossLinks: b }),
       setQuickSwitcherOpen: (b) => set({ quickSwitcherOpen: b }),
       setTheme: (t) => set({ theme: t }),
+      setShortcut: (commandId, shortcut) =>
+        set((s) => {
+          const next = { ...s.shortcutOverrides };
+          if (shortcut == null) delete next[commandId];
+          else next[commandId] = shortcut;
+          return { shortcutOverrides: next };
+        }),
     }),
     {
       name: 'zettel-ui',
@@ -110,6 +121,7 @@ export const useUIStore = create<UIState>()(
         showTagRelated: state.showTagRelated,
         showCrossLinks: state.showCrossLinks,
         theme: state.theme,
+        shortcutOverrides: state.shortcutOverrides,
         ...(state.workspacePanelPinned && {
           focusedWorkspaceId: state.focusedWorkspaceId,
         }),

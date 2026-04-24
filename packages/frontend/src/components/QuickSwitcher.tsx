@@ -30,19 +30,7 @@ export function QuickSwitcher() {
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
   const tagsQ = useQuery({ queryKey: ['tags'], queryFn: api.listTags });
 
-  // 全局快捷键：Cmd+K / Ctrl+K 唤起
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setOpen(!open);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, setOpen]);
-
-  // 打开时聚焦 + 重置
+  // 打开时聚焦 + 重置（全局 Cmd+K 由 lib/commands 统一管理）
   useEffect(() => {
     if (open) {
       setQuery('');

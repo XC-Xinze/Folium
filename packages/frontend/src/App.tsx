@@ -15,6 +15,7 @@ import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { useUIStore } from './store/uiStore';
 import { api } from './lib/api';
 import { dialog } from './lib/dialog';
+import { registerCommand, useGlobalCommands } from './lib/commands';
 
 export function App() {
   const focusedId = useUIStore((s) => s.focusedCardId);
@@ -58,44 +59,91 @@ export function App() {
     if (first) setBoxAndFocus(first);
   }, [focusedId, indexesQ.data, cardsQ.data, setBoxAndFocus]);
 
-  // Global Delete / Cmd+Backspace deletes the currently focused card
+  // 全局命令系统：注册 built-in 命令 + 启动唯一的 keydown 监听
   const qc = useQueryClient();
+  const setQuickSwitcherOpen = useUIStore((s) => s.setQuickSwitcherOpen);
+  const setViewMode = useUIStore((s) => s.setViewMode);
+  const toggleLeftSidebar = useUIStore((s) => s.toggleLeftSidebar);
+
+  // 注册命令——组件挂载/卸载时进出注册表。focusedId / qc 变化时重新注册
+  // 让闭包捕获最新值。
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      // Skip when typing in input / textarea / contentEditable
-      if (target) {
-        const tag = target.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
-      }
-      const isDelete = e.key === 'Delete' || ((e.metaKey || e.ctrlKey) && e.key === 'Backspace');
-      if (!isDelete) return;
-      if (!focusedId) return;
-      e.preventDefault();
-      void (async () => {
-        const ok = await dialog.confirm(`Delete ${focusedId}?`, {
-          title: 'Delete card',
-          description:
-            'The .md file will be removed and references from other cards cleaned up.',
-          confirmLabel: 'Delete',
-          variant: 'danger',
-        });
-        if (!ok) return;
-        try {
-          await api.deleteCard(focusedId);
-          qc.invalidateQueries({ queryKey: ['cards'] });
-          qc.invalidateQueries({ queryKey: ['indexes'] });
-          qc.invalidateQueries({ queryKey: ['positions'] });
-          qc.invalidateQueries({ queryKey: ['tags'] });
-          qc.invalidateQueries({ queryKey: ['workspaces'] });
-        } catch (err) {
-          dialog.alert((err as Error).message, { title: 'Delete failed' });
-        }
-      })();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [focusedId, qc]);
+    const cleanups = [
+      registerCommand({
+        id: 'card.delete',
+        title: 'Delete focused card',
+        defaultShortcut: 'Mod+Backspace',
+        group: 'Card',
+        run: () => {
+          if (!focusedId) return;
+          void (async () => {
+            const ok = await dialog.confirm(`Delete ${focusedId}?`, {
+              title: 'Delete card',
+              description:
+                'The .md file will be removed and references from other cards cleaned up.',
+              confirmLabel: 'Delete',
+              variant: 'danger',
+            });
+            if (!ok) return;
+            try {
+              await api.deleteCard(focusedId);
+              qc.invalidateQueries({ queryKey: ['cards'] });
+              qc.invalidateQueries({ queryKey: ['indexes'] });
+              qc.invalidateQueries({ queryKey: ['positions'] });
+              qc.invalidateQueries({ queryKey: ['tags'] });
+              qc.invalidateQueries({ queryKey: ['workspaces'] });
+            } catch (err) {
+              dialog.alert((err as Error).message, { title: 'Delete failed' });
+            }
+          })();
+        },
+      }),
+      registerCommand({
+        id: 'app.quickSwitcher',
+        title: 'Open quick switcher',
+        defaultShortcut: 'Mod+k',
+        group: 'Navigation',
+        allowInInput: true, // ⌘K 即使在输入框里也要响应
+        run: () => setQuickSwitcherOpen(true),
+      }),
+      registerCommand({
+        id: 'app.dailyNote',
+        title: "Open today's daily note",
+        defaultShortcut: 'Mod+Shift+d',
+        group: 'Navigation',
+        run: async () => {
+          try {
+            const { luhmannId, created } = await api.openOrCreateDaily();
+            if (created) {
+              qc.invalidateQueries({ queryKey: ['cards'] });
+              qc.invalidateQueries({ queryKey: ['indexes'] });
+              qc.invalidateQueries({ queryKey: ['tags'] });
+            }
+            useUIStore.getState().setBoxAndFocus(luhmannId, luhmannId);
+          } catch (err) {
+            dialog.alert((err as Error).message, { title: 'Daily note failed' });
+          }
+        },
+      }),
+      registerCommand({
+        id: 'view.toggleSidebar',
+        title: 'Toggle left sidebar',
+        defaultShortcut: 'Mod+b',
+        group: 'View',
+        run: () => toggleLeftSidebar(),
+      }),
+      registerCommand({
+        id: 'view.settings',
+        title: 'Open settings',
+        defaultShortcut: 'Mod+,',
+        group: 'View',
+        run: () => setViewMode('settings'),
+      }),
+    ];
+    return () => cleanups.forEach((fn) => fn());
+  }, [focusedId, qc, setQuickSwitcherOpen, setViewMode, toggleLeftSidebar]);
+
+  useGlobalCommands();
 
   void focusedBoxId;
 

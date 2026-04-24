@@ -1,6 +1,7 @@
 import { Moon, Sun, Monitor } from 'lucide-react';
 import { useUIStore, type Theme } from '../store/uiStore';
 import { PluginRegistry } from '../lib/pluginRegistry';
+import { HotkeysPanel } from './HotkeysPanel';
 
 export function SettingsView() {
   const setViewMode = useUIStore((s) => s.setViewMode);
@@ -50,6 +51,10 @@ export function SettingsView() {
         <Field label="Vault path" hint="Configured via the VAULT_PATH env var when the backend starts">
           <code className="text-[12px] bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded">{`(env: VAULT_PATH)`}</code>
         </Field>
+      </Section>
+
+      <Section title="Hotkeys">
+        <HotkeysPanel />
       </Section>
 
       <Section title="Plugins">

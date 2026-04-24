@@ -26,9 +26,13 @@ interface Props {
   flags?: Partial<CardDisplayFlags>;
   /** 切换某一项时回写到 tab payload（PaneRoot 通过 updateTab 实现） */
   onFlagChange?: (key: keyof CardDisplayFlags, value: boolean) => void;
+  /** 当前 tab 的探索深度（点了几层外部卡）—— 用于 UI 提示 */
+  focusDepth?: number;
 }
 
-function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange }: Props) {
+const MAX_FOCUS_DEPTH = 3;
+
+function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDepth = 0 }: Props) {
   const merged = { ...DEFAULT_CARD_FLAGS, ...(flags ?? {}) };
   const showPotential = merged.potential;
   const showTagRelated = merged.tag;
@@ -244,6 +248,55 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange }: Props
           title="Workspace temp ghost cards & their links"
         />
       </div>
+
+      {/* 探索深度指示 + 加到工作区 —— 右上角 */}
+      <div className="absolute top-4 right-12 z-10 flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-[#363a4f] rounded-full shadow-md border border-gray-200 dark:border-[#494d64]">
+        <FocusDepthBadge depth={focusDepth} max={MAX_FOCUS_DEPTH} />
+        <button
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = 'copy';
+            // 复用现有的 card drag 协议
+            e.dataTransfer.setData(
+              'application/x-zk-card',
+              JSON.stringify({ luhmannId: focusedCardId, title: '' }),
+            );
+          }}
+          className="text-[10px] font-bold flex items-center gap-1 px-2 py-0.5 rounded-full bg-accentSoft text-accent hover:bg-accent hover:text-white transition-colors cursor-grab active:cursor-grabbing"
+          title="Drag onto a workspace tab to add this card"
+        >
+          + Workspace
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FocusDepthBadge({ depth, max }: { depth: number; max: number }) {
+  const atMax = depth >= max;
+  // 渐变色：0 灰、1 蓝、2 黄、3 橙
+  const color = depth === 0
+    ? 'text-gray-400'
+    : depth === 1
+      ? 'text-sky-500'
+      : depth === 2
+        ? 'text-amber-500'
+        : 'text-orange-600';
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-0.5">
+        {Array.from({ length: max }, (_, i) => (
+          <span
+            key={i}
+            className={`block w-1.5 h-1.5 rounded-full ${
+              i < depth ? color.replace('text-', 'bg-') : 'bg-gray-200 dark:bg-[#494d64]'
+            }`}
+          />
+        ))}
+      </div>
+      <span className={`text-[10px] font-bold uppercase tracking-widest ${color}`}>
+        {atMax ? 'Next ext → switch box' : `Depth ${depth}/${max}`}
+      </span>
     </div>
   );
 }

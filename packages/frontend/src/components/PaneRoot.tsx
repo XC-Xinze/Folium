@@ -456,6 +456,7 @@ function TabContent({ tab, paneId }: { tab: Tab; paneId: string }) {
             focusedBoxId={tab.cardBoxId}
             focusedCardId={tab.cardFocusId}
             flags={tab.cardFlags}
+            focusDepth={tab.cardFocusDepth}
             onFlagChange={(key, value) =>
               updateTab(paneId, tab.id, {
                 cardFlags: { ...(tab.cardFlags ?? {}), [key]: value },

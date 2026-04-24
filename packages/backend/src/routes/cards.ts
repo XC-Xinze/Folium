@@ -8,7 +8,7 @@ import { demoteCard, promoteCard } from '../services/promote.js';
 import { deleteVaultCard } from '../services/deleteCard.js';
 import { parseCardFile } from '../vault/parser.js';
 import { updateCardFile, writeNewCard } from '../vault/writer.js';
-import { renameTag } from '../services/renameTag.js';
+import { deleteTag, renameTag } from '../services/renameTag.js';
 
 export const cardRoutes: FastifyPluginAsync = async (app) => {
   const db = getDb();
@@ -197,6 +197,16 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
       }
     },
   );
+
+  app.delete<{ Params: { tag: string } }>('/tags/:tag', async (req, reply) => {
+    try {
+      const result = await deleteTag(db, repo, decodeURIComponent(req.params.tag));
+      return result;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.code(400).send({ error: 'delete_failed', message: msg });
+    }
+  });
 
   app.delete<{ Params: { id: string } }>('/cards/:id', async (req, reply) => {
     try {

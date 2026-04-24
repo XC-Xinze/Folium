@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, ChevronRight, FileQuestion, FolderTree, Star, Tag, Trash2 } from 'lucide-react';
+import { CalendarDays, ChevronRight, FileQuestion, FolderTree, Star, Tag, Trash2, X } from 'lucide-react';
 import { api, type CardSummary, type IndexNode } from '../lib/api';
 import { dialog } from '../lib/dialog';
 import { useUIStore } from '../store/uiStore';
@@ -32,6 +32,13 @@ export function Sidebar() {
   const renameTagMut = useMutation({
     mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>
       api.renameTag(oldName, newName),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tags'] });
+      qc.invalidateQueries({ queryKey: ['cards'] });
+    },
+  });
+  const deleteTagMut = useMutation({
+    mutationFn: (name: string) => api.deleteTag(name),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tags'] });
       qc.invalidateQueries({ queryKey: ['cards'] });
@@ -137,32 +144,64 @@ export function Sidebar() {
               .slice()
               .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
               .map((t) => (
-                <button
+                <span
                   key={t.name}
-                  onClick={() => setFocusTag(t.name)}
-                  onContextMenu={async (e) => {
-                    e.preventDefault();
-                    const newName = await dialog.prompt(`Rename #${t.name} to:`, {
-                      title: 'Rename tag',
-                      defaultValue: t.name,
-                      confirmLabel: 'Rename',
-                    });
-                    if (newName?.trim() && newName.trim() !== t.name) {
-                      renameTagMut.mutate({ oldName: t.name, newName: newName.trim() });
-                    }
-                  }}
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold transition-colors ${
+                  className={`group/chip inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-[11px] font-semibold transition-colors ${
                     focusedTag === t.name
                       ? 'bg-accent text-white'
                       : 'bg-gray-100 text-gray-600 hover:bg-accentSoft hover:text-accent'
                   }`}
                   title={`#${t.name} · ${t.count} cards · right-click to rename`}
                 >
-                  <span>#{t.name}</span>
-                  <span className={`text-[9px] tabular-nums ${focusedTag === t.name ? 'text-white/70' : 'text-gray-400'}`}>
-                    {t.count}
-                  </span>
-                </button>
+                  <button
+                    onClick={() => setFocusTag(t.name)}
+                    onContextMenu={async (e) => {
+                      e.preventDefault();
+                      const newName = await dialog.prompt(`Rename #${t.name} to:`, {
+                        title: 'Rename tag',
+                        defaultValue: t.name,
+                        confirmLabel: 'Rename',
+                      });
+                      if (newName?.trim() && newName.trim() !== t.name) {
+                        renameTagMut.mutate({ oldName: t.name, newName: newName.trim() });
+                      }
+                    }}
+                    className="inline-flex items-center gap-1"
+                  >
+                    <span>#{t.name}</span>
+                    <span
+                      className={`text-[9px] tabular-nums ${
+                        focusedTag === t.name ? 'text-white/70' : 'text-gray-400'
+                      }`}
+                    >
+                      {t.count}
+                    </span>
+                  </button>
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const ok = await dialog.confirm(
+                        `Delete tag #${t.name} from ${t.count} card${t.count === 1 ? '' : 's'}?`,
+                        {
+                          title: 'Delete tag',
+                          description:
+                            'The tag is removed from frontmatter and inline #tag of every card. Cards themselves are kept.',
+                          confirmLabel: 'Delete',
+                          variant: 'danger',
+                        },
+                      );
+                      if (ok) deleteTagMut.mutate(t.name);
+                    }}
+                    className={`opacity-0 group-hover/chip:opacity-100 transition-opacity rounded-full p-0.5 ${
+                      focusedTag === t.name
+                        ? 'hover:bg-white/20'
+                        : 'hover:bg-red-100 hover:text-red-500'
+                    }`}
+                    title={`Delete tag #${t.name}`}
+                  >
+                    <X size={9} />
+                  </button>
+                </span>
               ))}
           </div>
         )}

@@ -20,6 +20,9 @@ const TagView = lazy(() =>
 const WorkspaceView = lazy(() =>
   import('./components/WorkspaceView').then((m) => ({ default: m.WorkspaceView })),
 );
+const GraphView = lazy(() =>
+  import('./components/GraphView').then((m) => ({ default: m.GraphView })),
+);
 import { useUIStore } from './store/uiStore';
 import { api } from './lib/api';
 import { dialog } from './lib/dialog';
@@ -179,7 +182,11 @@ export function App() {
     >
       <NewCardBar />
       <div className="flex-1 relative min-h-0">
-        {viewMode === 'tag' && focusedTag ? (
+        {viewMode === 'graph' ? (
+          <Suspense fallback={<div className="h-full flex items-center justify-center text-sm text-gray-400">Loading graph…</div>}>
+            <GraphView />
+          </Suspense>
+        ) : viewMode === 'tag' && focusedTag ? (
           <Suspense fallback={<div className="h-full flex items-center justify-center text-sm text-gray-400">Loading tag view…</div>}>
             <TagView tag={focusedTag} />
           </Suspense>

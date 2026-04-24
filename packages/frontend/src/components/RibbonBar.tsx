@@ -1,4 +1,4 @@
-import { CalendarDays, FolderTree, PanelLeftClose, PanelLeftOpen, Search, Settings, Sparkles } from 'lucide-react';
+import { CalendarDays, FolderTree, Network, PanelLeftClose, PanelLeftOpen, Search, Settings, Sparkles } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { dialog } from '../lib/dialog';
@@ -82,6 +82,13 @@ export function RibbonBar() {
         active={!collapsed && tab === 'workspaces'}
         onClick={() => onTabClick('workspaces')}
         title="Workspaces"
+      />
+
+      <IconButton
+        icon={<Network size={16} />}
+        active={viewMode === 'graph'}
+        onClick={() => setViewMode(viewMode === 'graph' ? 'chain' : 'graph')}
+        title="Vault graph (zoom to navigate)"
       />
 
       <div className="flex-1" />

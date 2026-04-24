@@ -38,8 +38,7 @@ interface GraphNodeData {
   card: CardSummary;
   isIndex: boolean;
   isSelected: boolean;
-  /** 选中状态 + 当前 zoom，由 GraphView 注入；节点据此切渲染 */
-  zoom: number;
+  // zoom 不放进 data —— 节点自己用 useViewport 读，避免每次 zoom 重建 nodes 数组
 }
 
 interface SimNode extends SimulationNodeDatum {
@@ -140,15 +139,16 @@ function runSimulation(
         links as never,
       )
         .id((n) => (n as SimNode).id)
-        .distance((l) => ((l as SimLink).kind === 'tree' ? 110 : 220))
-        .strength((l) => ((l as SimLink).kind === 'tree' ? 0.6 : 0.15)),
+        .distance((l) => ((l as SimLink).kind === 'tree' ? 180 : 320))
+        .strength((l) => ((l as SimLink).kind === 'tree' ? 0.7 : 0.1)),
     )
-    .force('charge', forceManyBody<SimNode>().strength((n) => (n.isIndex ? -800 : -250)))
+    .force('charge', forceManyBody<SimNode>().strength((n) => (n.isIndex ? -1500 : -500)))
     .force('center', forceCenter(0, 0))
-    .force('collide', forceCollide<SimNode>(NODE_W * 0.55))
+    .force('collide', forceCollide<SimNode>(NODE_W * 0.7))
     .stop();
 
-  const TICKS = 320;
+  // 跑足够 ticks 让布局 settle —— 力越强需要的 ticks 越多
+  const TICKS = 400;
   for (let i = 0; i < TICKS; i++) sim.tick();
 
   const positions = new Map<string, { x: number; y: number }>();
@@ -164,8 +164,6 @@ function GraphInner() {
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
   const navigate = useNavigateToCard();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // 让 nodes 内部知道当前 zoom；用 ref 避免每次 zoom 都触发重 layout
-  const viewport = useViewport();
 
   const { positions, links, boxes } = useMemo(() => {
     if (!cardsQ.data) {
@@ -185,6 +183,8 @@ function GraphInner() {
     ? boxes.get(selectedId) ?? new Set<string>()
     : new Set<string>();
 
+  // nodes 数组只在卡片列表 / positions / selectedId 变时重建。
+  // 不再依赖 viewport.zoom —— GraphNode 自己读 zoom，避免每次 zoom 整个数组重建。
   const nodes: Node[] = useMemo(() => {
     if (!cardsQ.data) return [];
     return cardsQ.data.cards.map((c) => {
@@ -197,13 +197,12 @@ function GraphInner() {
           card: c,
           isIndex: c.status === 'INDEX',
           isSelected: selectedId === c.luhmannId,
-          zoom: viewport.zoom,
         } satisfies GraphNodeData,
         width: NODE_W,
         height: NODE_H,
       };
     });
-  }, [cardsQ.data, positions, selectedId, viewport.zoom]);
+  }, [cardsQ.data, positions, selectedId]);
 
   const edges: Edge[] = useMemo(() => {
     return links.map((l) => {
@@ -218,7 +217,7 @@ function GraphInner() {
         id: `${l.kind}:${l.source}->${l.target}`,
         source: l.source,
         target: l.target,
-        type: 'straight',
+        type: 'simplebezier', // 比 straight 更"力导向"的曲线感
         style: {
           stroke: inSelectedBox
             ? isCross
@@ -231,7 +230,7 @@ function GraphInner() {
           opacity: selectedId
             ? inSelectedBox
               ? 1
-              : 0.15
+              : 0.12
             : isCross
               ? 0.4
               : 0.7,
@@ -279,7 +278,7 @@ function GraphInner() {
 
       <div className="absolute top-4 left-4 z-10 px-3 py-1.5 bg-white/95 dark:bg-[#363a4f]/95 backdrop-blur-sm rounded-full shadow-md border border-gray-200 dark:border-[#494d64]">
         <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-[#a5adcb]">
-          Vault graph · {cardsQ.data.cards.length} cards · click to focus · double-click to open · zoom in for content
+          Vault graph · {cardsQ.data.cards.length} cards · single-click = focus + show content · double-click = open
         </span>
       </div>
     </div>
@@ -288,14 +287,20 @@ function GraphInner() {
 
 /** 单节点：根据 zoom + selected 切渲染密度 */
 function GraphNode({ data }: { data: GraphNodeData }) {
-  const { card, isIndex, isSelected, zoom } = data;
-  // 缩放分级
-  const level: 'dot' | 'mini' | 'normal' | 'full' =
-    isSelected || zoom >= 2.0
+  const { card, isIndex, isSelected } = data;
+  // 在节点内部读 zoom：每张卡只在自己 level 跨阈值时 re-render，
+  // 不会因为 zoom 微变就整个数组重建
+  const { zoom } = useViewport();
+  // 缩放分级：
+  //   选中卡始终 full（一键看 markdown，不用使劲缩放）
+  //   非选中：低 zoom dot/mini/normal，zoom >= 1.5 才 full（避免 28 张卡同时拉 markdown）
+  const level: 'dot' | 'mini' | 'normal' | 'full' = isSelected
+    ? 'full'
+    : zoom >= 1.5
       ? 'full'
-      : zoom < 0.4
+      : zoom < 0.3
         ? 'dot'
-        : zoom < 1.0
+        : zoom < 0.7
           ? 'mini'
           : 'normal';
 

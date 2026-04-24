@@ -69,11 +69,19 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange }: Props
     return [...bb.ids];
   }, [cardsQ.data, boxQ.data, fullCards, focusedBoxId]);
 
+  // 焦点卡若是从外部 tag-related 拉进来的（不在 backbone 里），单独把它加进 relatedBatch
+  // 否则它的 tagRelated 拿不到 → buildGraph 退化成"所有 backbone 卡两两连"
+  const relatedIds = useMemo(() => {
+    const set = new Set(backboneIds);
+    if (focusedCardId) set.add(focusedCardId);
+    return [...set];
+  }, [backboneIds, focusedCardId]);
+
   // tag-related 是 first-class（默认显示），不受 showPotential 影响——所以总要拉
   const relatedBatchQ = useQuery({
-    queryKey: ['related-batch', backboneIds],
-    queryFn: () => api.relatedBatch(backboneIds, 3),
-    enabled: backboneIds.length > 0,
+    queryKey: ['related-batch', relatedIds],
+    queryFn: () => api.relatedBatch(relatedIds, 3),
+    enabled: relatedIds.length > 0,
   });
 
   // 工作区里涉及 backbone 卡片的边：作为 potential 风格的叠加显示在画布上

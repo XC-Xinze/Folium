@@ -4,12 +4,15 @@ import { CalendarDays, ChevronRight, FileQuestion, FolderTree, Star, Tag, Trash2
 import { api, type CardSummary, type IndexNode } from '../lib/api';
 import { dialog } from '../lib/dialog';
 import { useUIStore } from '../store/uiStore';
+import { usePaneStore } from '../store/paneStore';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
 import { setCardDragData } from '../lib/dragCard';
 
 export function Sidebar() {
   const navigate = useNavigateToCard();
-  const setFocusTag = useUIStore((s) => s.setFocusTag);
+  const openTabFromStore = usePaneStore((s) => s.openTab);
+  const openTagInPane = (name: string, opts?: { newTab?: boolean; splitDirection?: 'horizontal' }) =>
+    openTabFromStore({ kind: 'tag', title: `#${name}`, tagName: name }, opts);
   const focusedId = useUIStore((s) => s.focusedCardId);
   const focusedBoxId = useUIStore((s) => s.focusedBoxId);
   const focusedTag = useUIStore((s) => s.focusedTag);
@@ -166,7 +169,7 @@ export function Sidebar() {
                   title={`#${t.name} · ${t.count} cards · right-click to rename`}
                 >
                   <button
-                    onClick={() => setFocusTag(t.name)}
+                    onClick={(e) => openTagInPane(t.name, modifiersToOpts(e))}
                     onContextMenu={async (e) => {
                       e.preventDefault();
                       const newName = await dialog.prompt(`Rename #${t.name} to:`, {

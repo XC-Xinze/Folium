@@ -9,7 +9,8 @@ import { SearchReplacePanel } from './SearchReplacePanel';
 import { ExportPanel } from './ExportPanel';
 
 export function SettingsView() {
-  const setViewMode = useUIStore((s) => s.setViewMode);
+  // 在 modal 模式下，"返回"只需要关弹窗；其他场景由模态外层处理
+  const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
   const theme = useUIStore((s) => s.theme);
   const setTheme = useUIStore((s) => s.setTheme);
 
@@ -20,10 +21,10 @@ export function SettingsView() {
       <header className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Settings</h1>
         <button
-          onClick={() => setViewMode('chain')}
+          onClick={() => setSettingsOpen(false)}
           className="text-[11px] text-gray-500 dark:text-gray-400 hover:text-ink dark:hover:text-gray-100"
         >
-          ← Back to reading
+          Close
         </button>
       </header>
 

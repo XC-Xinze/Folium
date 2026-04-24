@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { WorkspacesSidebar } from './components/WorkspacesSidebar';
 import { Dialog } from './components/Dialog';
 import { QuickSwitcher } from './components/QuickSwitcher';
+import { SettingsModal } from './components/SettingsModal';
 import { NewCardBar } from './components/NewCardBar';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { EmptyVault } from './components/EmptyVault';
@@ -142,8 +143,7 @@ export function App() {
         title: 'Open settings',
         defaultShortcut: 'Mod+,',
         group: 'View',
-        run: () =>
-          usePaneStore.getState().openTab({ kind: 'settings', title: 'Settings' }),
+        run: () => useUIStore.getState().setSettingsOpen(true),
       }),
       registerCommand({
         id: 'view.graph',
@@ -213,6 +213,7 @@ export function App() {
       </main>
       <Dialog />
       <QuickSwitcher />
+      <SettingsModal />
     </div>
   );
 }

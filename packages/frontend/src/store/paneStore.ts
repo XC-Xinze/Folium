@@ -66,6 +66,8 @@ interface PaneActions {
   reorderTab: (paneId: string, fromIdx: number, toIdx: number) => void;
   /** 在 tab 上更新 payload —— 用于 box/focus 切换不开新 tab */
   updateTab: (paneId: string, tabId: string, patch: Partial<Tab>) => void;
+  /** 强制关掉一个 pane（无视它有几个 tab）—— 唯一 leaf 时退化成空 leaf */
+  removeEmptyPane: (paneId: string) => void;
   /** 重置成单 pane 单空 tab */
   reset: () => void;
 }
@@ -359,6 +361,20 @@ export const usePaneStore = create<PaneStore>()(
                 }
               : n,
           ),
+        });
+      },
+
+      removeEmptyPane: (paneId) => {
+        const { root, activeLeafId } = get();
+        // 唯一 leaf —— 不能真删，清空 tabs 即可
+        if (root.kind === 'leaf' && root.id === paneId) {
+          set({ root: { ...root, tabs: [], activeTabId: null } });
+          return;
+        }
+        const { root: nextRoot, nextActive } = removeLeaf(root, paneId);
+        set({
+          root: nextRoot,
+          activeLeafId: activeLeafId === paneId ? nextActive : activeLeafId,
         });
       },
 

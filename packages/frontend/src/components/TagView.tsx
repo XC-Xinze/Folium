@@ -11,7 +11,7 @@ import {
   type Edge,
   type Node,
 } from '@xyflow/react';
-import { ArrowLeft, Tag } from 'lucide-react';
+import { Tag } from 'lucide-react';
 import { api, type PositionMap } from '../lib/api';
 import { useUIStore } from '../store/uiStore';
 import { CardNode } from './CardNode';
@@ -33,7 +33,8 @@ export function TagView(props: Props) {
 }
 
 function TagViewInner({ tag }: Props) {
-  const setFocusTag = useUIStore((s) => s.setFocusTag);
+  // pane 模式下"返回"没意义 —— 关 tab 即可。把按钮藏起来，免得困惑用户。
+  void useUIStore;
   const q = useQuery({ queryKey: ['tag-cards', tag], queryFn: () => api.getCardsByTag(tag) });
 
   const scope = `tag:${tag}`;
@@ -80,15 +81,8 @@ function TagViewInner({ tag }: Props) {
 
   return (
     <div className="w-full h-full relative bg-[#fafafa]">
-      {/* Top chip + back button, floating over the canvas */}
+      {/* Top chip — 关闭走 tab 的 X */}
       <div className="absolute top-4 left-4 z-10 flex items-center gap-3 bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-md border border-gray-200">
-        <button
-          onClick={() => setFocusTag(null)}
-          className="p-1 rounded hover:bg-gray-100 text-gray-500"
-          title="Back"
-        >
-          <ArrowLeft size={14} />
-        </button>
         <div className="flex items-center gap-1.5 px-2 py-0.5 bg-accentSoft rounded-full">
           <Tag size={11} className="text-accent" />
           <span className="text-[12px] font-bold text-accent">#{tag}</span>

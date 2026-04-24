@@ -19,6 +19,7 @@ export function RibbonBar() {
   const toggleLeftSidebar = useUIStore((s) => s.toggleLeftSidebar);
   const setSidebarTab = useUIStore((s) => s.setSidebarTab);
   const setQuickSwitcherOpen = useUIStore((s) => s.setQuickSwitcherOpen);
+  const settingsOpen = useUIStore((s) => s.settingsOpen);
   const openTab = usePaneStore((s) => s.openTab);
   // 当前 active tab 是 graph / settings → 高亮对应按钮
   const root = usePaneStore((s) => s.root);
@@ -112,9 +113,9 @@ export function RibbonBar() {
 
       <IconButton
         icon={<Settings size={16} />}
-        active={activeTabKind === 'settings'}
-        onClick={() => openTab({ kind: 'settings', title: 'Settings' })}
-        title="Settings"
+        active={settingsOpen}
+        onClick={() => useUIStore.getState().setSettingsOpen(!settingsOpen)}
+        title="Settings (⌘,)"
       />
     </div>
   );

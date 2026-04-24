@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useRef, type ReactNode } from 'react';
-import { ChevronDown, GripVertical, Network, Settings, SplitSquareHorizontal, SplitSquareVertical, Tag, X } from 'lucide-react';
+import { ChevronDown, GripVertical, Network, Settings, SplitSquareHorizontal, SplitSquareVertical, Tag, X, XSquare } from 'lucide-react';
 import { Canvas } from './Canvas';
 import { usePaneStore, type LeafPane, type Pane, type SplitPane, type Tab } from '../store/paneStore';
 
@@ -128,7 +128,21 @@ function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
   const closeTab = usePaneStore((s) => s.closeTab);
   const splitPane = usePaneStore((s) => s.splitPane);
   const reorderTab = usePaneStore((s) => s.reorderTab);
+  const root = usePaneStore((s) => s.root);
   const dragIdxRef = useRef<number | null>(null);
+  // 唯一 leaf 不能关；split 的孩子可以关
+  const isOnlyLeaf = root.kind === 'leaf' && root.id === pane.id;
+  // 关空 pane：直接走 closeTab(_, '__phantom__') 走不通 —— 改用 setRoot via removeLeaf
+  // 简化：派一个虚拟 tabId 给 closeTab —— 它会走"找不到 tab 直接 return"
+  // 真正关：fake 一个 tab 然后立刻关掉。或者用一个专门的 closePane action。
+  const closePane = () => {
+    // 直接调 closeTab on 'sentinel' 不会触发删除。我们走"先确保 tabs 列表有内容才关"
+    // 简单做法：如果还有 tab，逐个关；如果没 tab，调用 closeTab on 一个不存在的 id（无 op）
+    // 实际上 closeTab 在 tabs 为 0 时不会进 remaining 分支 —— 它直接 return（findIndex < 0）
+    // 所以我们需要一个新的"closePane"动作。临时做法：先 push 个空 tab 再关它。
+    // 改：直接调用一个新方法 removeEmptyPane（下面在 store 里加）
+    usePaneStore.getState().removeEmptyPane(pane.id);
+  };
 
   return (
     <div
@@ -204,6 +218,16 @@ function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
             <SplitSquareVertical size={12} />
           </button>
         </>
+      )}
+      {/* 关闭整个 pane（仅在不是唯一 leaf 时显示） */}
+      {!isOnlyLeaf && (
+        <button
+          onClick={closePane}
+          className="px-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+          title="Close this pane"
+        >
+          <XSquare size={12} />
+        </button>
       )}
     </div>
   );

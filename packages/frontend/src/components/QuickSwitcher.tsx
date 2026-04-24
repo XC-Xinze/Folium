@@ -5,6 +5,7 @@ import { api, type CardSummary } from '../lib/api';
 import { fuzzyScore } from '../lib/fuzzy';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
 import { useUIStore } from '../store/uiStore';
+import { usePaneStore } from '../store/paneStore';
 
 interface Hit {
   kind: 'card' | 'tag' | 'content';
@@ -29,7 +30,7 @@ function highlightSnippet(s: string): string {
 export function QuickSwitcher() {
   const open = useUIStore((s) => s.quickSwitcherOpen);
   const setOpen = useUIStore((s) => s.setQuickSwitcherOpen);
-  const setFocusTag = useUIStore((s) => s.setFocusTag);
+  const openPaneTab = usePaneStore((s) => s.openTab);
   const navigate = useNavigateToCard();
 
   const [query, setQuery] = useState('');
@@ -123,7 +124,7 @@ export function QuickSwitcher() {
     if (hit.kind === 'card' && hit.card) {
       navigate(hit.card.luhmannId);
     } else if (hit.kind === 'tag' && hit.tag) {
-      setFocusTag(hit.tag.name);
+      openPaneTab({ kind: 'tag', title: `#${hit.tag.name}`, tagName: hit.tag.name });
     } else if (hit.kind === 'content' && hit.content) {
       navigate(hit.content.luhmannId);
     }

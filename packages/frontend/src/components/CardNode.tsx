@@ -11,6 +11,7 @@ import type { CardNodeData } from '../lib/cardGraph';
 import { NODE_WIDTH } from '../lib/cardGraph';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
 import { useUIStore } from '../store/uiStore';
+import { usePaneStore as usePaneStoreImported } from '../store/paneStore';
 import { applyTrigger, detectTrigger, formatInsertion, type Trigger } from '../lib/editorAutocomplete';
 import { fuzzyScore } from '../lib/fuzzy';
 import { EditorAutocomplete, type AutocompleteItem } from './EditorAutocomplete';
@@ -40,7 +41,9 @@ export function CardNode({ data, id, selected }: NodeProps) {
   const full: Card | null = isGhost ? (card as Card) : (fullQ.data ?? null);
   const navigate = useNavigateToCard();
   const setFocus = useUIStore((s) => s.setFocus);
-  const setFocusTag = useUIStore((s) => s.setFocusTag);
+  // 旧 setFocusTag 改成开 tag tab
+  const _openTagTab = (name: string) =>
+    usePaneStoreImported.getState().openTab({ kind: 'tag', title: `#${name}`, tagName: name });
   const qc = useQueryClient();
   const starredQ = useQuery({ queryKey: ['starred'], queryFn: api.listStarred });
   const isStarred = !!starredQ.data?.ids.includes(cardLuhmannId);
@@ -725,7 +728,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
                       key={t}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setFocusTag(t);
+                        _openTagTab(t);
                       }}
                       className="text-[9px] font-bold text-accent hover:underline cursor-pointer"
                       title={`Show all cards tagged #${t}`}

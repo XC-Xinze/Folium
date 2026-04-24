@@ -249,13 +249,25 @@ export const usePaneStore = create<PaneStore>()(
         }
 
         const newTab = makeTab(spec);
-        const replace = !opts?.newTab && leaf.tabs.length === 1 && leaf.tabs[0]?.id === leaf.activeTabId;
+        // Obsidian 风的"smart open"：
+        //   - 显式 newTab=true → 永远新建
+        //   - 同类型 active tab 存在 → 替换它（看 card→点 card 不会一直叠 tab）
+        //   - 不同类型（card↔workspace 等）→ 新建（避免一点 workspace 就把 card 顶掉）
+        //   - 没 active tab → 新建（空 pane 第一张）
+        const activeTab = leaf.tabs.find((t) => t.id === leaf.activeTabId);
+        const sameKind = activeTab && activeTab.kind === spec.kind;
+        const replace = !opts?.newTab && !!sameKind;
 
         set({
           root: mapTree(root, (n) => {
             if (n.kind !== 'leaf' || n.id !== leaf.id) return n;
             if (replace) {
-              return { ...n, tabs: [newTab], activeTabId: newTab.id };
+              // 替换 active 那张 tab；其他 tab 保留
+              return {
+                ...n,
+                tabs: n.tabs.map((t) => (t.id === activeTab!.id ? newTab : t)),
+                activeTabId: newTab.id,
+              };
             }
             return { ...n, tabs: [...n.tabs, newTab], activeTabId: newTab.id };
           }),

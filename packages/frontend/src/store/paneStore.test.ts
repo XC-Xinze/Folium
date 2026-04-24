@@ -109,6 +109,34 @@ describe('paneStore', () => {
     }
   });
 
+  it('smart open: different kind opens new tab, same kind replaces active', () => {
+    const st = usePaneStore.getState();
+    // 1) 看 card A
+    st.openTab({ kind: 'card', title: 'A', cardBoxId: '1', cardFocusId: '1' });
+    // 2) 点 workspace W → 不同 kind → 应该新 tab，A 还在
+    st.openTab({ kind: 'workspace', title: 'W', workspaceId: 'w1' });
+    let s = usePaneStore.getState();
+    if (s.root.kind === 'leaf') {
+      expect(s.root.tabs).toHaveLength(2);
+      expect(s.root.tabs.map((t) => t.kind)).toEqual(['card', 'workspace']);
+      expect(s.root.activeTabId).toBe(s.root.tabs[1]!.id); // active 在 workspace
+    }
+    // 3) 点 workspace V → 同 kind → 替换当前 active workspace
+    st.openTab({ kind: 'workspace', title: 'V', workspaceId: 'w2' });
+    s = usePaneStore.getState();
+    if (s.root.kind === 'leaf') {
+      expect(s.root.tabs).toHaveLength(2); // A 还在，W 被 V 替换
+      expect(s.root.tabs.map((t) => t.title)).toEqual(['A', 'V']);
+    }
+    // 4) 点回 card A —— 已存在同 payload → 激活，不新建
+    st.openTab({ kind: 'card', title: 'A', cardBoxId: '1', cardFocusId: '1' });
+    s = usePaneStore.getState();
+    if (s.root.kind === 'leaf') {
+      expect(s.root.tabs).toHaveLength(2);
+      expect(s.root.activeTabId).toBe(s.root.tabs[0]!.id); // active 切回 A
+    }
+  });
+
   it('moveTab moves between panes', () => {
     const st = usePaneStore.getState();
     st.openTab({ kind: 'card', title: 'A', cardBoxId: '1', cardFocusId: '1' });

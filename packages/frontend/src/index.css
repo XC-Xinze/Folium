@@ -9,6 +9,10 @@ body {
   color: #1f2933;
   -webkit-font-smoothing: antialiased;
 }
+html.dark body {
+  background: #0f1419;
+  color: #d1d5db;
+}
 
 /* 卡片正文 markdown 渲染样式 */
 .prose-card h1 { font-size: 1.25rem; font-weight: 800; margin-bottom: 0.75rem; }
@@ -19,14 +23,18 @@ body {
 .prose-card ul { list-style: disc; }
 .prose-card ol { list-style: decimal; }
 .prose-card code { background: #f1f5f9; padding: 0 4px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; font-size: 0.875em; }
+html.dark .prose-card code { background: #1f2937; color: #e5e7eb; }
 .prose-card strong { font-weight: 700; color: #1f2933; }
+html.dark .prose-card strong { color: #f3f4f6; }
 .prose-card .wikilink {
   color: #7c4dff;
   text-decoration: none;
   border-bottom: 1px dotted #7c4dff;
   cursor: pointer;
 }
+html.dark .prose-card .wikilink { color: #a78bfa; border-bottom-color: #a78bfa; }
 .prose-card .wikilink:hover { background: #ede9fe; }
+html.dark .prose-card .wikilink:hover { background: #312e81; }
 .prose-card img {
   max-width: 100%;
   height: auto;
@@ -38,7 +46,9 @@ body {
   color: #7c4dff;
   text-decoration: underline;
 }
+html.dark .prose-card a { color: #a78bfa; }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+html.dark ::-webkit-scrollbar-thumb { background: #4b5563; }
 ::-webkit-scrollbar-track { background: transparent; }

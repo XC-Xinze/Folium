@@ -29,6 +29,23 @@ export function App() {
   const sidebarTab = useUIStore((s) => s.sidebarTab);
   const setBoxAndFocus = useUIStore((s) => s.setBoxAndFocus);
   const viewMode = useUIStore((s) => s.viewMode);
+  const theme = useUIStore((s) => s.theme);
+
+  // 主题应用：把 .dark class 加到 <html> 上，auto 模式跟随 prefers-color-scheme
+  useEffect(() => {
+    const root = document.documentElement;
+    const apply = () => {
+      const dark =
+        theme === 'dark' ||
+        (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      root.classList.toggle('dark', dark);
+    };
+    apply();
+    if (theme !== 'auto') return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    media.addEventListener('change', apply);
+    return () => media.removeEventListener('change', apply);
+  }, [theme]);
 
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
   const indexesQ = useQuery({ queryKey: ['indexes'], queryFn: api.listIndexes });
@@ -145,8 +162,8 @@ export function App() {
       <RibbonBar />
       {!leftSidebarCollapsed && (sidebarTab === 'workspaces' ? <WorkspacesSidebar /> : <Sidebar />)}
 
-      <main className="flex-1 flex flex-col bg-[#fafafa] min-w-0">
-        <div className="flex items-center justify-end px-6 pt-4 pb-1 border-b border-gray-100/60 bg-[#fafafa]">
+      <main className="flex-1 flex flex-col bg-[#fafafa] dark:bg-[#0f1419] min-w-0">
+        <div className="flex items-center justify-end px-6 pt-4 pb-1 border-b border-gray-100/60 dark:border-gray-800/60 bg-[#fafafa] dark:bg-[#0f1419]">
           <WorkspaceSwitcher />
         </div>
 

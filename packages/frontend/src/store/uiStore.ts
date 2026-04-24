@@ -7,6 +7,8 @@ export type SidebarTab = 'vault' | 'workspaces';
 
 export type WorkspacePanelPosition = 'right' | 'left' | 'top' | 'bottom';
 
+export type Theme = 'light' | 'dark' | 'auto';
+
 interface UIState {
   focusedBoxId: string | null;
   focusedCardId: string | null;
@@ -30,6 +32,8 @@ interface UIState {
   showCrossLinks: boolean;
   /** Cmd+K 快速跳转面板开/关 */
   quickSwitcherOpen: boolean;
+  /** 主题：light/dark 强制；auto 跟随系统 */
+  theme: Theme;
   setFocus: (id: string | null) => void;
   setBoxAndFocus: (boxId: string, cardId?: string) => void;
   setFocusTag: (tag: string | null) => void;
@@ -45,6 +49,7 @@ interface UIState {
   setShowTagRelated: (b: boolean) => void;
   setShowCrossLinks: (b: boolean) => void;
   setQuickSwitcherOpen: (b: boolean) => void;
+  setTheme: (t: Theme) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -65,6 +70,7 @@ export const useUIStore = create<UIState>()(
       showTagRelated: true,
       showCrossLinks: true,
       quickSwitcherOpen: false,
+      theme: 'auto',
       setFocus: (id) =>
         set({ focusedCardId: id, viewMode: 'chain', focusedTag: null }),
       setBoxAndFocus: (boxId, cardId) =>
@@ -88,6 +94,7 @@ export const useUIStore = create<UIState>()(
       setShowTagRelated: (b) => set({ showTagRelated: b }),
       setShowCrossLinks: (b) => set({ showCrossLinks: b }),
       setQuickSwitcherOpen: (b) => set({ quickSwitcherOpen: b }),
+      setTheme: (t) => set({ theme: t }),
     }),
     {
       name: 'zettel-ui',
@@ -102,6 +109,7 @@ export const useUIStore = create<UIState>()(
         showPotential: state.showPotential,
         showTagRelated: state.showTagRelated,
         showCrossLinks: state.showCrossLinks,
+        theme: state.theme,
         ...(state.workspacePanelPinned && {
           focusedWorkspaceId: state.focusedWorkspaceId,
         }),

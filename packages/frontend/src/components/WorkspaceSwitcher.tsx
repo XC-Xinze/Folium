@@ -2,14 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, Plus, Sparkles } from 'lucide-react';
 import { api, type WorkspaceNode } from '../lib/api';
+import { dialog } from '../lib/dialog';
 import { useUIStore } from '../store/uiStore';
 import { isCardDrag, readCardDragData } from '../lib/dragCard';
 import { randomUUID } from '../lib/uuid';
 
 /**
- * 主区顶部的 workspace 快速切换器 —— 总是可见，不需要滚 sidebar。
- *   - 显示当前 workspace 名（或 "Vault"）
- *   - 点击展开下拉，列出所有 + 新建
+ * Quick workspace switcher in the top of the main area — always visible.
+ *   - shows current workspace name (or "Vault")
+ *   - click to expand the dropdown with all workspaces + create
  */
 export function WorkspaceSwitcher() {
   const focusedWorkspaceId = useUIStore((s) => s.focusedWorkspaceId);
@@ -29,7 +30,7 @@ export function WorkspaceSwitcher() {
     },
   });
 
-  // 点击外部关闭
+  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -44,7 +45,7 @@ export function WorkspaceSwitcher() {
   const current = list.find((w) => w.id === focusedWorkspaceId);
   const label = current ? current.name : 'Vault';
 
-  // 拖卡到 switcher 上 → 加到当前 workspace（或弹下拉让用户选）
+  // Drag a card onto the switcher → add to current workspace (or open dropdown to choose)
   const [dragOver, setDragOver] = useState(false);
   const onDragOver = (e: React.DragEvent) => {
     if (!isCardDrag(e)) return;
@@ -59,14 +60,14 @@ export function WorkspaceSwitcher() {
     const payload = readCardDragData(e);
     if (!payload) return;
     if (!current) {
-      setOpen(true); // 没有当前 workspace，弹下拉让用户选/建一个
+      setOpen(true); // No current workspace — open dropdown so user can pick/create one
       return;
     }
-    // 加到当前 workspace
+    // Add to current workspace
     const ws = await api.getWorkspace(current.id);
     if (!ws) return;
     if (ws.nodes.some((n) => n.kind === 'card' && n.cardId === payload.luhmannId)) {
-      return; // 已在
+      return; // already there
     }
     const newNode: WorkspaceNode = {
       kind: 'card',
@@ -100,7 +101,7 @@ export function WorkspaceSwitcher() {
               ? 'bg-accentSoft text-accent border-accent/40'
               : 'bg-white text-ink border-gray-200 hover:border-accent/30'
         }`}
-        title={current ? '点击切换 / 拖卡到这里加入' : '切换 workspace'}
+        title={current ? 'Click to switch · drop a card to add it' : 'Switch workspace'}
       >
         <Sparkles size={12} className={current ? 'text-accent' : 'text-gray-400'} />
         <span className="max-w-[160px] truncate">{label}</span>
@@ -118,12 +119,12 @@ export function WorkspaceSwitcher() {
               !current ? 'bg-gray-100 text-ink' : 'hover:bg-gray-50 text-gray-700'
             }`}
           >
-            ← 返回 Vault
+            ← Back to Vault
           </button>
           <div className="border-t border-gray-100" />
           <div className="max-h-64 overflow-y-auto">
             {list.length === 0 && (
-              <div className="text-[11px] text-gray-400 px-3 py-3 italic">还没有工作区</div>
+              <div className="text-[11px] text-gray-400 px-3 py-3 italic">No workspaces yet</div>
             )}
             {list.map((ws) => (
               <button
@@ -138,22 +139,26 @@ export function WorkspaceSwitcher() {
               >
                 <span className="text-[12px] truncate">{ws.name}</span>
                 <span className="text-[10px] text-gray-400 ml-2 shrink-0">
-                  {ws.nodes.length} 节点
+                  {ws.nodes.length} nodes
                 </span>
               </button>
             ))}
           </div>
           <div className="border-t border-gray-100" />
           <button
-            onClick={() => {
-              const name = window.prompt('工作区名称：', '新工作区');
+            onClick={async () => {
+              const name = await dialog.prompt('Workspace name', {
+                title: 'New workspace',
+                defaultValue: 'New workspace',
+                confirmLabel: 'Create',
+              });
               if (name?.trim()) createMut.mutate(name.trim());
             }}
             disabled={createMut.isPending}
             className="w-full flex items-center gap-1.5 px-3 py-2 text-[12px] font-bold text-accent hover:bg-accentSoft transition-colors disabled:opacity-50"
           >
             <Plus size={12} />
-            新工作区
+            New workspace
           </button>
         </div>
       )}

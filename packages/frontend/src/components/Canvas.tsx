@@ -14,7 +14,7 @@ import '@xyflow/react/dist/style.css';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Card, type PositionMap } from '../lib/api';
 import { CardNode } from './CardNode';
-import { applyAnchorPositions, buildGraph, computeBackbone } from '../lib/cardGraph';
+import { applyAnchorPositions, buildGraph, computeBackbone, resolveCollisions } from '../lib/cardGraph';
 import { useUIStore } from '../store/uiStore';
 
 const nodeTypes = { card: CardNode };
@@ -27,6 +27,10 @@ interface Props {
 function CanvasInner({ focusedBoxId, focusedCardId }: Props) {
   const showPotential = useUIStore((s) => s.showPotential);
   const setShowPotential = useUIStore((s) => s.setShowPotential);
+  const showTagRelated = useUIStore((s) => s.showTagRelated);
+  const setShowTagRelated = useUIStore((s) => s.setShowTagRelated);
+  const showCrossLinks = useUIStore((s) => s.showCrossLinks);
+  const setShowCrossLinks = useUIStore((s) => s.setShowCrossLinks);
   const qc = useQueryClient();
 
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
@@ -56,10 +60,18 @@ function CanvasInner({ focusedBoxId, focusedCardId }: Props) {
     return [...bb.ids];
   }, [cardsQ.data, boxQ.data, fullCards, focusedBoxId]);
 
+  // tag-related 是 first-class（默认显示），不受 showPotential 影响——所以总要拉
   const relatedBatchQ = useQuery({
     queryKey: ['related-batch', backboneIds],
     queryFn: () => api.relatedBatch(backboneIds, 3),
-    enabled: showPotential && backboneIds.length > 0,
+    enabled: backboneIds.length > 0,
+  });
+
+  // 工作区里涉及 backbone 卡片的边：作为 potential 风格的叠加显示在画布上
+  const workspaceLinksQ = useQuery({
+    queryKey: ['ws-links-batch', backboneIds],
+    queryFn: () => api.workspaceLinksBatch(backboneIds),
+    enabled: backboneIds.length > 0,
   });
 
   // 位置按 box 隔离：不同 box 即使是同一张卡，也有各自独立的位置
@@ -78,8 +90,13 @@ function CanvasInner({ focusedBoxId, focusedCardId }: Props) {
       focusedCardId,
       relatedBatch: relatedBatchQ.data ?? {},
       showPotential,
+      showTagRelated,
+      showCrossLinks,
+      workspaceLinks: workspaceLinksQ.data?.links ?? [],
     });
-    const finalNodes = applyAnchorPositions(raw.nodes, raw.edges, positionsQ.data ?? {});
+    const anchored = applyAnchorPositions(raw.nodes, raw.edges, positionsQ.data ?? {});
+    // 一次性碰撞解算：把自动布局产生的重叠抹掉，但锁定用户手动拖过的位置
+    const finalNodes = resolveCollisions(anchored, positionsQ.data ?? {});
     return { nodes: finalNodes, edges: raw.edges };
   }, [
     cardsQ.data,
@@ -89,6 +106,9 @@ function CanvasInner({ focusedBoxId, focusedCardId }: Props) {
     focusedCardId,
     relatedBatchQ.data,
     showPotential,
+    showTagRelated,
+    showCrossLinks,
+    workspaceLinksQ.data,
     positionsQ.data,
   ]);
 
@@ -130,12 +150,12 @@ function CanvasInner({ focusedBoxId, focusedCardId }: Props) {
     [qc, scope],
   );
 
-  if (cardsQ.isLoading) return <FullCenter>加载卡片库…</FullCenter>;
+  if (cardsQ.isLoading) return <FullCenter>Loading cards…</FullCenter>;
   if (cardsQ.error) return <FullCenter error>{String(cardsQ.error)}</FullCenter>;
   if (!cardsQ.data?.cards.length)
-    return <FullCenter>Vault 里没有卡片。在 example-vault/ 加 .md 文件试试。</FullCenter>;
-  if (boxQ.isLoading) return <FullCenter>加载盒子 {focusedBoxId}…</FullCenter>;
-  if (boxQ.error) return <FullCenter error>找不到盒子 {focusedBoxId}</FullCenter>;
+    return <FullCenter>The vault is empty. Drop some .md files in example-vault/ to get started.</FullCenter>;
+  if (boxQ.isLoading) return <FullCenter>Loading box {focusedBoxId}…</FullCenter>;
+  if (boxQ.error) return <FullCenter error>Box {focusedBoxId} not found</FullCenter>;
 
   return (
     <div className="w-full h-full relative">
@@ -157,20 +177,66 @@ function CanvasInner({ focusedBoxId, focusedCardId }: Props) {
         <MiniMap pannable zoomable position="top-right" maskColor="rgba(0,0,0,0.05)" />
       </ReactFlow>
 
-      {/* potential toggle：极简，只在角落 */}
-      <button
-        onClick={() => setShowPotential(!showPotential)}
-        className={`absolute top-4 left-4 z-10 flex items-center gap-2 px-3 py-1.5 rounded-full shadow-md border transition-all text-[10px] font-bold uppercase tracking-widest ${
-          showPotential
-            ? 'bg-white border-gray-200 text-gray-600'
-            : 'bg-gray-100 border-gray-200 text-gray-400'
-        }`}
-        title={showPotential ? '隐藏 potential 卡' : '显示 potential 卡'}
-      >
-        <span className={`w-1.5 h-1.5 rounded-full ${showPotential ? 'bg-gray-400' : 'bg-gray-300'}`} />
-        Potential
-      </button>
+      {/* 边类型开关，左上角 */}
+      <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 px-2 py-1.5 bg-white/95 backdrop-blur-sm rounded-full shadow-md border border-gray-200">
+        <EdgeToggle
+          color="#7c4dff"
+          label="Link"
+          active={showCrossLinks}
+          onClick={() => setShowCrossLinks(!showCrossLinks)}
+          title="Manual [[link]] edges (purple)"
+        />
+        <EdgeToggle
+          color="#10b981"
+          label="Tag"
+          active={showTagRelated}
+          onClick={() => setShowTagRelated(!showTagRelated)}
+          title="Tag co-occurrence edges (green)"
+        />
+        <EdgeToggle
+          color="#cbd5e1"
+          label="Potential"
+          active={showPotential}
+          onClick={() => setShowPotential(!showPotential)}
+          title="Text-similarity potential edges (gray dashed)"
+        />
+      </div>
     </div>
+  );
+}
+
+function EdgeToggle({
+  color,
+  label,
+  active,
+  onClick,
+  title,
+}: {
+  color: string;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  title: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${
+        active
+          ? 'text-gray-700 hover:bg-gray-50'
+          : 'text-gray-300 hover:text-gray-500 hover:bg-gray-50'
+      }`}
+    >
+      <span
+        className="w-2 h-2 rounded-full transition-all"
+        style={{
+          backgroundColor: active ? color : 'transparent',
+          border: `1.5px solid ${active ? color : '#d1d5db'}`,
+        }}
+      />
+      {label}
+    </button>
   );
 }
 

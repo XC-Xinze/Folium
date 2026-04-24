@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowDownToLine, ArrowUpToLine, Check, GripVertical, Layers, Pencil, Trash2, X } from 'lucide-react';
 import { setCardDragData } from '../lib/dragCard';
+import { dialog } from '../lib/dialog';
 import { api, type Card } from '../lib/api';
 import { attachWikilinkHandler, renderMarkdown } from '../lib/markdown';
 import type { CardNodeData } from '../lib/cardGraph';
@@ -21,6 +22,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
   // 关键：用 card.luhmannId 拉取，不用 React Flow 的 node id
   // 因为 workspace 里节点 id 是 workspace 本地 uuid，不是 luhmannId
   const cardLuhmannId = card.luhmannId;
+  const isGhost = !!nodeData.ghostFromWorkspace;
   const [full, setFull] = useState<Card | null>(
     'contentMd' in card ? (card as Card) : null,
   );
@@ -35,11 +37,22 @@ export function CardNode({ data, id, selected }: NodeProps) {
   const [draftContent, setDraftContent] = useState('');
   const [draftTags, setDraftTags] = useState('');
   const [draftStatus, setDraftStatus] = useState<'ATOMIC' | 'INDEX'>('ATOMIC');
+  const [hovered, setHovered] = useState(false);
+  // 实时尺寸：拖动时跟随光标更新，松开时持久化
+  const [w, setW] = useState<number | undefined>(savedW);
+  const [h, setH] = useState<number | undefined>(savedH);
+  useEffect(() => { if (savedW != null) setW(savedW); }, [savedW]);
+  useEffect(() => { if (savedH != null) setH(savedH); }, [savedH]);
   void id;
 
   const onPromote = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`确定提权 ${cardLuhmannId} 吗？\n\n会重命名文件并更新所有引用 [[${cardLuhmannId}]] → [[新ID]]`)) return;
+    const ok = await dialog.confirm(`Promote ${cardLuhmannId}?`, {
+      title: 'Promote card',
+      description: `The .md file will be renamed and every [[${cardLuhmannId}]] reference updated to the new id.`,
+      confirmLabel: 'Promote',
+    });
+    if (!ok) return;
     setPromoting(true);
     try {
       const result = await api.promoteCard(cardLuhmannId);
@@ -49,7 +62,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
       qc.invalidateQueries({ queryKey: ['tags'] });
       navigate(result.newId);
     } catch (err) {
-      alert((err as Error).message);
+      dialog.alert((err as Error).message, { title: 'Promote failed' });
     } finally {
       setPromoting(false);
     }
@@ -82,9 +95,11 @@ export function CardNode({ data, id, selected }: NodeProps) {
       qc.invalidateQueries({ queryKey: ['cards'] });
       qc.invalidateQueries({ queryKey: ['indexes'] });
       qc.invalidateQueries({ queryKey: ['tags'] });
+      qc.invalidateQueries({ queryKey: ['card'] });
+      qc.invalidateQueries({ queryKey: ['linked'] });
       setEditing(false);
     } catch (err) {
-      alert((err as Error).message);
+      dialog.alert((err as Error).message, { title: 'Save failed' });
     }
   };
 
@@ -94,13 +109,26 @@ export function CardNode({ data, id, selected }: NodeProps) {
 
   const onDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    // 工作区里：仅移除工作区节点引用，不动 vault
+    // In a workspace: only remove the workspace node, leave vault untouched
     if (nodeData.onDeleteOverride) {
-      if (!confirm(`从工作区移除 ${cardLuhmannId}？（不删 vault 卡片）`)) return;
+      const ok = await dialog.confirm(`Remove ${cardLuhmannId} from this workspace?`, {
+        title: 'Remove from workspace',
+        description: 'The vault card itself stays untouched.',
+        confirmLabel: 'Remove',
+        variant: 'danger',
+      });
+      if (!ok) return;
       nodeData.onDeleteOverride();
       return;
     }
-    if (!confirm(`确定删除 ${cardLuhmannId} 吗？\n\n会删除 .md 文件，并清理其他卡片对它的 crossLinks 引用。`)) return;
+    const ok = await dialog.confirm(`Delete ${cardLuhmannId}?`, {
+      title: 'Delete card',
+      description:
+        'The .md file will be removed and crossLinks from other cards cleaned up.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
     setPromoting(true);
     try {
       await api.deleteCard(cardLuhmannId);
@@ -110,7 +138,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
       qc.invalidateQueries({ queryKey: ['tags'] });
       qc.invalidateQueries({ queryKey: ['workspaces'] });
     } catch (err) {
-      alert((err as Error).message);
+      dialog.alert((err as Error).message, { title: 'Delete failed' });
     } finally {
       setPromoting(false);
     }
@@ -118,7 +146,13 @@ export function CardNode({ data, id, selected }: NodeProps) {
 
   const onDemote = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`确定降权 ${cardLuhmannId} 吗？\n\n卡片会变成下一个兄弟卡片的子卡，子树跟随移动。`)) return;
+    const ok = await dialog.confirm(`Demote ${cardLuhmannId}?`, {
+      title: 'Demote card',
+      description:
+        'The card becomes a child of its next sibling. Its subtree moves with it.',
+      confirmLabel: 'Demote',
+    });
+    if (!ok) return;
     setPromoting(true);
     try {
       const result = await api.demoteCard(cardLuhmannId);
@@ -128,15 +162,15 @@ export function CardNode({ data, id, selected }: NodeProps) {
       qc.invalidateQueries({ queryKey: ['tags'] });
       navigate(result.newId);
     } catch (err) {
-      alert((err as Error).message);
+      dialog.alert((err as Error).message, { title: 'Demote failed' });
     } finally {
       setPromoting(false);
     }
   };
 
-  // 摘要 → 按需拉取完整正文
+  // 摘要 → 按需拉取完整正文（ghost 节点已带内容，跳过）
   useEffect(() => {
-    if (full) return;
+    if (full || isGhost) return;
     let cancelled = false;
     api
       .getCard(cardLuhmannId)
@@ -147,7 +181,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
     return () => {
       cancelled = true;
     };
-  }, [cardLuhmannId, full]);
+  }, [cardLuhmannId, full, isGhost]);
 
   useEffect(() => {
     if (!contentRef.current) return;
@@ -176,6 +210,13 @@ export function CardNode({ data, id, selected }: NodeProps) {
       shadow: 'shadow-md',
       badge: 'bg-accentSoft text-accent',
     },
+    'tag-related': {
+      border: 'border border-emerald-300',
+      bg: 'bg-white',
+      opacity: 'opacity-95',
+      shadow: 'shadow-md',
+      badge: 'bg-emerald-50 text-emerald-700',
+    },
     potential: {
       border: 'border border-dashed border-gray-300',
       bg: 'bg-white',
@@ -193,30 +234,34 @@ export function CardNode({ data, id, selected }: NodeProps) {
   const sharedBoxes = nodeData.sharedBoxes ?? [];
   const sharedBoxLabels = nodeData.sharedBoxLabels ?? [];
   const isShared = sharedBoxes.length > 1; // 被多个 INDEX 引用
-  // 当前是从外部"借"过来的卡片（cross-flank / potential）—— 显示来源 box
+  // 当前是从外部"借"过来的卡片（cross-flank / tag-related / potential）—— 显示来源 box
   const otherBoxLabels = sharedBoxLabels.filter((b) => b.id !== focusedBoxId);
   const showSourceLabel =
-    (variant === 'cross-flank' || variant === 'potential') && otherBoxLabels.length > 0;
+    (variant === 'cross-flank' || variant === 'tag-related' || variant === 'potential') &&
+    otherBoxLabels.length > 0;
   const html = full ? renderMarkdown(full.contentMd) : '';
 
   return (
     <div
-      className={`group relative rounded-xl ${styles.border} ${styles.bg} ${styles.shadow} ${styles.opacity} cursor-default flex flex-col overflow-hidden`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className={`group relative rounded-xl ${styles.border} ${styles.bg} ${styles.shadow} ${styles.opacity} cursor-default flex flex-col`}
       style={{
-        width: savedW ?? NODE_WIDTH,
-        height: savedH,
+        width: w ?? NODE_WIDTH,
+        height: h,
       }}
-      onClick={(e) => {
-        e.stopPropagation();
+      onClick={() => {
+        if (isGhost) return;
         setFocus(cardLuhmannId);
       }}
       onDoubleClick={(e) => {
         e.stopPropagation();
+        if (isGhost) return;
         navigate(cardLuhmannId);
       }}
     >
-      {/* 拖拽手柄：右下角；workspace 内不显示（已在工作区里） */}
-      {!nodeData.isInWorkspace && (
+      {/* 拖拽手柄：右下角；workspace 内不显示，ghost 也不显示 */}
+      {!nodeData.isInWorkspace && !isGhost && (
         <div
           draggable
           onDragStart={(e) => {
@@ -226,21 +271,21 @@ export function CardNode({ data, id, selected }: NodeProps) {
           onMouseDown={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
           className="nodrag nopan absolute bottom-2 right-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white/90 hover:bg-accent hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 hover:border-accent shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
-          title="按住拖动到工作区"
+          title="Drag to workspace"
         >
           <GripVertical size={10} />
           <span>WS</span>
         </div>
       )}
 
-      {/* Promote / Demote / Delete 按钮 — hover 时显示 */}
-      {!isIndex && (
+      {/* Promote / Demote / Delete / Edit buttons — visible on hover (ghost 不显示) */}
+      {!isIndex && !isGhost && (
         <>
           <button
             onClick={onPromote}
             disabled={promoting}
             className="absolute -top-2 -left-2 z-10 w-6 h-6 rounded-full bg-amber-500 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-amber-600 transition-all disabled:opacity-30"
-            title={`提权 ${cardLuhmannId} → 父级的兄弟 (e.g., 1a2 → 1aa)`}
+            title={`Promote ${cardLuhmannId} to parent's sibling (e.g. 1a2 → 1aa)`}
           >
             <ArrowUpToLine size={12} />
           </button>
@@ -248,42 +293,52 @@ export function CardNode({ data, id, selected }: NodeProps) {
             onClick={onDemote}
             disabled={promoting}
             className="absolute -top-2 left-6 z-10 w-6 h-6 rounded-full bg-sky-500 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-sky-600 transition-all disabled:opacity-30"
-            title={`降权 ${cardLuhmannId} → 下一个兄弟卡片的子卡`}
+            title={`Demote ${cardLuhmannId} to child of next sibling`}
           >
             <ArrowDownToLine size={12} />
           </button>
         </>
       )}
-      <button
-        onClick={onDelete}
-        disabled={promoting || editing}
-        className="absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full bg-red-500 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-all disabled:opacity-30"
-        title={`删除 ${cardLuhmannId}`}
-      >
-        <Trash2 size={12} />
-      </button>
-      <button
-        onClick={startEdit}
-        disabled={promoting || editing || !full}
-        className="absolute -top-2 right-6 z-10 w-6 h-6 rounded-full bg-gray-700 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-ink transition-all disabled:opacity-30"
-        title={`编辑 ${cardLuhmannId}`}
-      >
-        <Pencil size={11} />
-      </button>
-      {/* 调整大小：选中时显示 8 个手柄。保存到 positions 的 w/h 字段 */}
-      <NodeResizer
-        isVisible={selected}
-        minWidth={240}
-        minHeight={180}
-        lineClassName="!border-accent/40"
-        handleClassName="!bg-accent !border !border-white !w-2 !h-2"
-        onResizeEnd={(_e, params) => {
-          api.setSize(scope, cardLuhmannId, params.width, params.height).catch((err) => {
-            console.error('save size failed', err);
-          });
-        }}
-      />
-      {/* tree 用上下；非 tree 关系（tag/cross/potential）用左右，避免边路径穿越 */}
+      {!isGhost && (
+        <button
+          onClick={onDelete}
+          disabled={promoting || editing}
+          className="absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full bg-red-500 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-all disabled:opacity-30"
+          title={`Delete ${cardLuhmannId}`}
+        >
+          <Trash2 size={12} />
+        </button>
+      )}
+      {!isGhost && (
+        <button
+          onClick={startEdit}
+          disabled={promoting || editing || !full}
+          className="absolute -top-2 right-6 z-10 w-6 h-6 rounded-full bg-gray-700 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-ink transition-all disabled:opacity-30"
+          title={`Edit ${cardLuhmannId}`}
+        >
+          <Pencil size={11} />
+        </button>
+      )}
+      {/* Resize: 8 handles visible on hover/select. Saved to positions.w/h */}
+      {!isGhost && (
+        <NodeResizer
+          isVisible={hovered || selected}
+          minWidth={240}
+          minHeight={180}
+          lineClassName="!border-accent/40"
+          handleClassName="!bg-accent !border !border-white !w-2 !h-2"
+          onResize={(_e, params) => {
+            setW(params.width);
+            setH(params.height);
+          }}
+          onResizeEnd={(_e, params) => {
+            api.setSize(scope, cardLuhmannId, params.width, params.height).catch((err) => {
+              console.error('save size failed', err);
+            });
+          }}
+        />
+      )}
+      {/* Tree edges use top/bottom; tag/cross/potential use left/right to avoid edge-path collisions */}
       <Handle id="top" type="target" position={Position.Top} className="!bg-gray-300 !w-2 !h-2 !border-0" />
       <Handle id="bottom" type="source" position={Position.Bottom} className="!bg-gray-300 !w-2 !h-2 !border-0" />
       <Handle id="left-in" type="target" position={Position.Left} className="!bg-transparent !w-2 !h-2 !border-0" />
@@ -292,7 +347,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
       <Handle id="right-out" type="source" position={Position.Right} className="!bg-transparent !w-2 !h-2 !border-0" />
 
       {editing ? (
-        // ━━━ 编辑模式 ━━━
+        // ━━━ Edit mode ━━━
         <div className="nodrag nopan p-3 space-y-2" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-2">
             <span className={`font-mono text-[11px] font-bold px-1.5 py-0.5 rounded ${styles.badge}`}>
@@ -302,7 +357,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
               value={draftTitle}
               onChange={(e) => setDraftTitle(e.target.value)}
               className="flex-1 text-[13px] font-bold px-2 py-1 border border-gray-200 rounded focus:border-accent outline-none"
-              placeholder="标题"
+              placeholder="Title"
             />
             <select
               value={draftStatus}
@@ -316,14 +371,14 @@ export function CardNode({ data, id, selected }: NodeProps) {
           <textarea
             value={draftContent}
             onChange={(e) => setDraftContent(e.target.value)}
-            placeholder="markdown 正文，支持 [[link]] 和 #tag"
+            placeholder="Markdown body — supports [[link]] and #tag"
             className="w-full text-[12px] font-mono px-2 py-1 border border-gray-200 rounded focus:border-accent outline-none resize-y"
             rows={8}
           />
           <input
             value={draftTags}
             onChange={(e) => setDraftTags(e.target.value)}
-            placeholder="tags（逗号分隔）"
+            placeholder="Tags (comma-separated)"
             className="w-full text-[11px] px-2 py-1 border border-gray-200 rounded focus:border-accent outline-none"
           />
           <div className="flex justify-end gap-2">
@@ -331,13 +386,13 @@ export function CardNode({ data, id, selected }: NodeProps) {
               onClick={cancelEdit}
               className="text-[11px] font-bold px-3 py-1 rounded text-gray-500 hover:bg-gray-100 flex items-center gap-1"
             >
-              <X size={11} /> 取消
+              <X size={11} /> Cancel
             </button>
             <button
               onClick={saveEdit}
               className="text-[11px] font-bold px-3 py-1 rounded bg-accent text-white hover:bg-accent/90 flex items-center gap-1"
             >
-              <Check size={11} /> 保存
+              <Check size={11} /> Save
             </button>
           </div>
         </div>
@@ -345,10 +400,18 @@ export function CardNode({ data, id, selected }: NodeProps) {
         <>
           <header className="px-5 pt-4 pb-3 flex items-start justify-between gap-3">
             <div className="flex items-baseline gap-2 min-w-0">
-              <span className={`font-mono text-[11px] font-bold px-1.5 py-0.5 rounded ${styles.badge}`}>
-                {display.luhmannId}
-              </span>
-              <h3 className="text-[13px] font-bold tracking-tight truncate">{display.title || cardLuhmannId}</h3>
+              {isGhost ? (
+                <span className="font-mono text-[10px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-purple-100 text-purple-600">
+                  Temp
+                </span>
+              ) : (
+                <span className={`font-mono text-[11px] font-bold px-1.5 py-0.5 rounded ${styles.badge}`}>
+                  {display.luhmannId}
+                </span>
+              )}
+              <h3 className="text-[13px] font-bold tracking-tight truncate">
+                {display.title || (isGhost ? '(untitled temp)' : cardLuhmannId)}
+              </h3>
             </div>
             {isIndex && (
               <span className="shrink-0 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-accent text-white">
@@ -358,7 +421,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
             {isShared && (
               <span
                 className="shrink-0 flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200"
-                title={`同时存在于：${sharedBoxes.join(', ')}`}
+                title={`Also indexed by: ${sharedBoxes.join(', ')}`}
               >
                 <Layers size={9} />
                 {sharedBoxes.length}
@@ -369,7 +432,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
           <div
             ref={contentRef}
             className={`prose-card text-[12px] text-ink px-5 pb-4 ${
-              savedH ? 'flex-1 overflow-y-auto' : 'max-h-72 overflow-hidden'
+              h ? 'flex-1 overflow-y-auto' : 'max-h-72 overflow-hidden'
             }`}
             dangerouslySetInnerHTML={{ __html: html }}
           />
@@ -384,7 +447,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
                     setFocusTag(t);
                   }}
                   className="text-[9px] font-bold text-accent hover:underline cursor-pointer"
-                  title={`查看 #${t} 下所有卡片`}
+                  title={`Show all cards tagged #${t}`}
                 >
                   #{t}
                 </button>
@@ -394,11 +457,20 @@ export function CardNode({ data, id, selected }: NodeProps) {
         </>
       )}
 
-      {/* 来源盒子标签：本卡是从其他 box 借进来的 → 显示原属盒子 */}
-      {showSourceLabel && (
+      {/* Ghost-from-workspace label */}
+      {isGhost && nodeData.ghostFromWorkspace && (
+        <div className="absolute -bottom-2.5 left-3 px-1.5 py-0.5 rounded text-[9px] font-bold bg-white border border-purple-300 text-purple-600 shadow-sm flex items-center gap-1">
+          <span className="text-[8px]">⌘</span>
+          <span>from workspace</span>
+          <span className="text-purple-700">{nodeData.ghostFromWorkspace.workspaceName}</span>
+        </div>
+      )}
+
+      {/* Source-box label: this card is borrowed from another box */}
+      {!isGhost && showSourceLabel && (
         <div className="absolute -bottom-2.5 left-3 px-1.5 py-0.5 rounded text-[9px] font-bold bg-white border border-gray-300 text-gray-600 shadow-sm flex items-center gap-1">
           <span className="text-[8px]">↗</span>
-          <span>来自</span>
+          <span>from</span>
           {otherBoxLabels.slice(0, 2).map((b, i) => (
             <span key={b.id} className="text-accent">
               {b.title}

@@ -4,6 +4,7 @@ import { RibbonBar } from './components/RibbonBar';
 import { Sidebar } from './components/Sidebar';
 import { WorkspacesSidebar } from './components/WorkspacesSidebar';
 import { Canvas } from './components/Canvas';
+import { Dialog } from './components/Dialog';
 import { NewCardBar } from './components/NewCardBar';
 import { SettingsView } from './components/SettingsView';
 import { Splitter } from './components/Splitter';
@@ -12,6 +13,7 @@ import { WorkspaceView } from './components/WorkspaceView';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { useUIStore } from './store/uiStore';
 import { api } from './lib/api';
+import { dialog } from './lib/dialog';
 
 export function App() {
   const focusedId = useUIStore((s) => s.focusedCardId);
@@ -38,12 +40,12 @@ export function App() {
     if (first) setBoxAndFocus(first);
   }, [focusedId, indexesQ.data, cardsQ.data, setBoxAndFocus]);
 
-  // 全局 Delete / Cmd+Backspace 删除当前焦点卡
+  // Global Delete / Cmd+Backspace deletes the currently focused card
   const qc = useQueryClient();
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      // 在输入框 / textarea / contentEditable 中不响应
+      // Skip when typing in input / textarea / contentEditable
       if (target) {
         const tag = target.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
@@ -52,17 +54,26 @@ export function App() {
       if (!isDelete) return;
       if (!focusedId) return;
       e.preventDefault();
-      if (!confirm(`删除 ${focusedId}？\n\n会删 .md 并清理其他卡的引用。`)) return;
-      api
-        .deleteCard(focusedId)
-        .then(() => {
+      void (async () => {
+        const ok = await dialog.confirm(`Delete ${focusedId}?`, {
+          title: 'Delete card',
+          description:
+            'The .md file will be removed and references from other cards cleaned up.',
+          confirmLabel: 'Delete',
+          variant: 'danger',
+        });
+        if (!ok) return;
+        try {
+          await api.deleteCard(focusedId);
           qc.invalidateQueries({ queryKey: ['cards'] });
           qc.invalidateQueries({ queryKey: ['indexes'] });
           qc.invalidateQueries({ queryKey: ['positions'] });
           qc.invalidateQueries({ queryKey: ['tags'] });
           qc.invalidateQueries({ queryKey: ['workspaces'] });
-        })
-        .catch((err) => alert((err as Error).message));
+        } catch (err) {
+          dialog.alert((err as Error).message, { title: 'Delete failed' });
+        }
+      })();
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -94,7 +105,7 @@ export function App() {
           <Canvas focusedBoxId={focusedBoxId} focusedCardId={focusedId} />
         ) : (
           <div className="h-full flex items-center justify-center text-sm text-gray-400">
-            {cardsQ.isLoading ? '加载卡片库…' : '左侧选择一张卡片开始'}
+            {cardsQ.isLoading ? 'Loading cards…' : 'Select a card from the sidebar to start'}
           </div>
         )}
       </div>
@@ -154,6 +165,7 @@ export function App() {
           />
         )}
       </main>
+      <Dialog />
     </div>
   );
 }

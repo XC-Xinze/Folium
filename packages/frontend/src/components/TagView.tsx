@@ -80,12 +80,12 @@ function TagViewInner({ tag }: Props) {
 
   return (
     <div className="w-full h-full relative bg-[#fafafa]">
-      {/* 顶部 chip + 返回按钮，浮在画布上 */}
+      {/* Top chip + back button, floating over the canvas */}
       <div className="absolute top-4 left-4 z-10 flex items-center gap-3 bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-md border border-gray-200">
         <button
           onClick={() => setFocusTag(null)}
           className="p-1 rounded hover:bg-gray-100 text-gray-500"
-          title="返回"
+          title="Back"
         >
           <ArrowLeft size={14} />
         </button>
@@ -93,12 +93,12 @@ function TagViewInner({ tag }: Props) {
           <Tag size={11} className="text-accent" />
           <span className="text-[12px] font-bold text-accent">#{tag}</span>
         </div>
-        <span className="text-[11px] text-gray-500">{q.data?.cards.length ?? 0} 张</span>
+        <span className="text-[11px] text-gray-500">{q.data?.cards.length ?? 0} cards</span>
       </div>
 
       {q.isLoading && (
         <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">
-          加载中…
+          Loading…
         </div>
       )}
       {q.error && (
@@ -108,7 +108,7 @@ function TagViewInner({ tag }: Props) {
       )}
       {q.data && q.data.cards.length === 0 && (
         <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">
-          这个标签下还没有卡片
+          No cards under this tag yet
         </div>
       )}
 

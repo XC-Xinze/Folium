@@ -1,6 +1,6 @@
 import dagre from 'dagre';
 import type { Edge, Node } from '@xyflow/react';
-import type { Card, CardSummary, PositionMap, RelatedBatch } from './api';
+import type { Card, CardSummary, PositionMap, RelatedBatch, WorkspaceLink } from './api';
 
 export const NODE_WIDTH = 340;
 export const NODE_HEIGHT = 380;
@@ -9,11 +9,20 @@ export const NODE_HEIGHT = 380;
 const X_GAP = 80; // 同层兄弟节点间距
 const Y_GAP = 130; // 父子层级间距
 const FLANK_OFFSET_X = 120; // cross-flank 离行边界的横向距离
-const POTENTIAL_OFFSET_X = 200; // potential 比 cross-flank 更外（更"外层"）
+const POTENTIAL_OFFSET_X = 40; // potential 与 cross-flank 列之间的间隙（小一点更贴近被链接的卡）
 
 export type CardNodeData = {
   card: Card | CardSummary;
-  variant: 'focus' | 'tree' | 'cross-flank' | 'potential';
+  /**
+   * - focus: 当前焦点卡（高亮）
+   * - tree: 当前 box 的骨干树成员
+   * - cross-flank: 通过手动 [[link]] 进来的"侧翼"卡
+   * - tag-related: 通过共享 tag 进来的卡（涌现式关系，一等公民）
+   * - potential: 文本/关键字相似度发现的卡（弱关系）
+   */
+  variant: 'focus' | 'tree' | 'cross-flank' | 'tag-related' | 'potential';
+  /** tag-related 时记录共享的 tag，给标签气泡用 */
+  sharedTags?: string[];
   sharedBoxes?: string[];
   sharedBoxLabels?: { id: string; title: string }[];
   /** 来自保存的大小（如果有） */
@@ -23,6 +32,8 @@ export type CardNodeData = {
   onDeleteOverride?: () => void;
   /** 在 workspace 里时隐藏 WS 拖拽手柄（卡片已经在工作区里了） */
   isInWorkspace?: boolean;
+  /** 来自工作区的"幽灵 temp 节点"——只读、不发请求、只显示标题/正文 */
+  ghostFromWorkspace?: { workspaceId: string; workspaceName: string };
 };
 
 /** 计算每张卡被哪些 INDEX 引用 */
@@ -48,7 +59,19 @@ export interface BuildGraphInput {
   /** 每张骨干卡的关联（仅 backbone 外部的卡才会被采用为 potential） */
   relatedBatch: RelatedBatch;
   showPotential: boolean;
+  /** 默认 true：显示绿色 tag 共现边/节点 */
+  showTagRelated?: boolean;
+  /** 默认 true：显示紫色手动 [[link]] cross-flank 边/节点 */
+  showCrossLinks?: boolean;
+  /** 工作区边（任何 vault 卡参与的）—— 当作 potential 显示在画布上 */
+  workspaceLinks?: WorkspaceLink[];
 }
+
+/** 用于 ghost temp 节点的合成 luhmannId，避免与真实卡 id 撞车 */
+const TEMP_GHOST_PREFIX = '__ws-temp::';
+export const tempGhostId = (workspaceId: string, nodeId: string) =>
+  `${TEMP_GHOST_PREFIX}${workspaceId}::${nodeId}`;
+export const isTempGhost = (id: string) => id.startsWith(TEMP_GHOST_PREFIX);
 
 /* -------- 工具：luhmannId 解析 -------- */
 
@@ -176,14 +199,24 @@ export function computeBackbone(
 /* -------- 2. 主入口：构建完整图 -------- */
 
 export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge[] } {
-  const { allCards, fullCards, focusedBoxId, focusedCardId, relatedBatch, showPotential } = input;
+  const {
+    allCards,
+    fullCards,
+    focusedBoxId,
+    focusedCardId,
+    relatedBatch,
+    showPotential,
+    showTagRelated = true,
+    showCrossLinks = true,
+    workspaceLinks,
+  } = input;
   const cardMap = new Map(allCards.map((c) => [c.luhmannId, c]));
 
   // 树以 box 为根；focus 仅决定哪张卡是 'focus' 变体
   const backbone = computeBackbone(focusedBoxId, allCards, fullCards);
 
   /* ----- 收集 raw 节点和边 ----- */
-  type RawEdgeKind = 'tree' | 'cross' | 'potential';
+  type RawEdgeKind = 'tree' | 'cross' | 'tag' | 'potential';
   interface RawEdge {
     id: string;
     source: string;
@@ -199,7 +232,11 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
   const rawNodes = new Map<string, CardNodeData>();
   const rawEdges: RawEdge[] = [];
 
-  const addNode = (id: string, variant: CardNodeData['variant']) => {
+  const addNode = (
+    id: string,
+    variant: CardNodeData['variant'],
+    extra: { sharedTags?: string[] } = {},
+  ) => {
     if (rawNodes.has(id)) return;
     const summary = cardMap.get(id);
     if (!summary) return;
@@ -210,6 +247,7 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
       variant,
       sharedBoxes: boxes,
       sharedBoxLabels: boxes?.map((bid) => ({ id: bid, title: indexTitle.get(bid) ?? bid })),
+      sharedTags: extra.sharedTags,
     });
   };
 
@@ -223,46 +261,119 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
   }
 
   // 骨干上的 cross-link 边（从 fullCards 抽取）
-  for (const id of backbone.ids) {
-    const full = fullCards.get(id);
-    if (!full) continue;
-    // INDEX 卡的 [[link]] 本质是"成员关系"，已经体现在 tree 结构里了；
-    // 不要再画一遍 cross 边，否则会和 tree 边重叠或冗余
-    if (full.status === 'INDEX') continue;
-    for (const target of full.crossLinks) {
-      if (target === id) continue;
-      const existsTree = backbone.treeEdges.some(
-        (e) => (e.source === id && e.target === target) || (e.source === target && e.target === id),
-      );
-      if (existsTree) continue;
-      if (!rawNodes.has(target) && cardMap.has(target)) {
-        // 焦点卡若是这个 cross-flank 也要高亮
-        addNode(target, target === focusedCardId ? 'focus' : 'cross-flank');
+  if (showCrossLinks) {
+    for (const id of backbone.ids) {
+      const full = fullCards.get(id);
+      if (!full) continue;
+      // INDEX 卡的 [[link]] 本质是"成员关系"，已经体现在 tree 结构里了；
+      // 不要再画一遍 cross 边，否则会和 tree 边重叠或冗余
+      if (full.status === 'INDEX') continue;
+      for (const target of full.crossLinks) {
+        if (target === id) continue;
+        const existsTree = backbone.treeEdges.some(
+          (e) => (e.source === id && e.target === target) || (e.source === target && e.target === id),
+        );
+        if (existsTree) continue;
+        if (!rawNodes.has(target) && cardMap.has(target)) {
+          // 焦点卡若是这个 cross-flank 也要高亮
+          addNode(target, target === focusedCardId ? 'focus' : 'cross-flank');
+        }
+        if (rawNodes.has(target)) {
+          rawEdges.push({
+            id: `cross:${id}->${target}`,
+            source: id,
+            target,
+            kind: 'cross',
+          });
+        }
       }
-      if (rawNodes.has(target)) {
+    }
+  }
+
+  // Tag 共现：first-class 关系，默认显示，绿色实线
+  // 涌现式的化学反应——比手动 [[link]] 更本质，比 potential 更可信
+  // 优先级：tree > cross > tag。同一对节点已有更"硬"的边则不再叠加绿线（视觉重叠会盖住底下的边）
+  const pairHasEdge = (a: string, b: string, kinds: RawEdgeKind[]) =>
+    rawEdges.some(
+      (e) =>
+        kinds.includes(e.kind) &&
+        ((e.source === a && e.target === b) || (e.source === b && e.target === a)),
+    );
+  const pairHasTree = (a: string, b: string) =>
+    backbone.treeEdges.some(
+      (e) => (e.source === a && e.target === b) || (e.source === b && e.target === a),
+    );
+
+  if (showTagRelated) {
+    for (const id of backbone.ids) {
+      const rel = relatedBatch[id];
+      if (!rel) continue;
+      for (const tr of rel.tagRelated) {
+        // 已有 tree 或 cross 边连这对节点 → 只把共享 tag 写到节点上，不再画绿线
+        if (pairHasTree(id, tr.luhmannId) || pairHasEdge(id, tr.luhmannId, ['cross'])) {
+          const existing = rawNodes.get(tr.luhmannId);
+          if (existing && !existing.sharedTags) existing.sharedTags = tr.sharedTags;
+          continue;
+        }
+        // 已经因为是骨干或别的 anchor 的 tag-related 加进来了 → 复用节点，确保有边
+        if (rawNodes.has(tr.luhmannId)) {
+          const existing = rawNodes.get(tr.luhmannId)!;
+          if (!existing.sharedTags) existing.sharedTags = tr.sharedTags;
+          if (!pairHasEdge(id, tr.luhmannId, ['tag'])) {
+            rawEdges.push({
+              id: `tag:${id}->${tr.luhmannId}`,
+              source: id,
+              target: tr.luhmannId,
+              kind: 'tag',
+            });
+          }
+          continue;
+        }
+        // 全新 tag-related 节点
+        const summary = cardMap.get(tr.luhmannId);
+        if (!summary) continue;
+        if (summary.status === 'INDEX') continue; // INDEX 卡不算 tag-related
+        addNode(
+          tr.luhmannId,
+          tr.luhmannId === focusedCardId ? 'focus' : 'tag-related',
+          { sharedTags: tr.sharedTags },
+        );
         rawEdges.push({
-          id: `cross:${id}->${target}`,
+          id: `tag:${id}->${tr.luhmannId}`,
           source: id,
-          target,
-          kind: 'cross',
+          target: tr.luhmannId,
+          kind: 'tag',
         });
       }
     }
   }
 
-  // Potential：仅添加 backbone 外部的内容卡（INDEX 卡是"容器"不是"内容"，不算 potential）
+  // Potential：unlinked references。骨干外的内容卡作为 potential 节点拉进来；
+  // 骨干内部之间的 potential 关系也要画一条灰虚线（之前 continue 跳过了导致 7 看不到 potential）。
+  // 优先级：tree > cross > tag > potential。如果这对节点已经有更"硬"的边，就别叠加 potential。
   if (showPotential) {
     for (const id of backbone.ids) {
       const rel = relatedBatch[id];
       if (!rel) continue;
       for (const p of rel.potential) {
-        // 关键过滤
-        if (backbone.ids.has(p.luhmannId)) continue;
-        if (rawNodes.has(p.luhmannId)) continue;
         const summary = cardMap.get(p.luhmannId);
         if (!summary) continue;
-        if (summary.status === 'INDEX') continue; // ★ 索引卡不能是 potential
-        addNode(p.luhmannId, p.luhmannId === focusedCardId ? 'focus' : 'potential');
+        if (summary.status === 'INDEX') continue; // INDEX 卡不能是 potential
+
+        // 已有更硬的边 → 跳过，避免重叠盖住底层
+        if (
+          pairHasTree(id, p.luhmannId) ||
+          pairHasEdge(id, p.luhmannId, ['cross', 'tag'])
+        ) {
+          continue;
+        }
+        // 已经画过 potential 边了
+        if (pairHasEdge(id, p.luhmannId, ['potential'])) continue;
+
+        // 节点不在图里 → 加进来作为 potential 卡片
+        if (!rawNodes.has(p.luhmannId)) {
+          addNode(p.luhmannId, p.luhmannId === focusedCardId ? 'focus' : 'potential');
+        }
         rawEdges.push({
           id: `pot:${id}->${p.luhmannId}`,
           source: id,
@@ -270,6 +381,95 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
           kind: 'potential',
         });
       }
+    }
+  }
+
+  // 工作区链接：作为 potential 风格的节点/边叠加到画布上
+  //   - card↔card 工作区边：另一端的 vault 卡用 'potential' 变体加入（如果尚未在图中）
+  //   - card↔temp 工作区边：合成一个 ghost 节点（带 temp 内容）作为 'potential' 加入
+  //   只渲染至少有一端在当前 backbone 视野内的链接，否则与当前焦点无关
+  if (workspaceLinks && workspaceLinks.length > 0) {
+    const seenWsEdges = new Set<string>();
+    for (const link of workspaceLinks) {
+      if (seenWsEdges.has(link.edgeId)) continue;
+
+      const sourceInBackbone = link.source.kind === 'card' && backbone.ids.has(link.source.id);
+      const targetInBackbone = link.target.kind === 'card' && backbone.ids.has(link.target.id);
+      if (!sourceInBackbone && !targetInBackbone) continue;
+      seenWsEdges.add(link.edgeId);
+
+      // 找到本 link 中的 vault 卡端 + 另一端
+      const sourceIsCard = link.source.kind === 'card';
+      const targetIsCard = link.target.kind === 'card';
+
+      // 解析两端在画布中的 node id（vault 卡用 luhmannId；temp 用 ghostId）
+      const sourceNodeId = sourceIsCard
+        ? link.source.id
+        : tempGhostId(link.workspaceId, link.source.id);
+      const targetNodeId = targetIsCard
+        ? link.target.id
+        : tempGhostId(link.workspaceId, link.target.id);
+
+      // 如果某端是 card 且不在 backbone（也不在已加节点中），把它当 'potential' 拉进来
+      const ensureCardEnd = (cardId: string) => {
+        if (rawNodes.has(cardId)) return true;
+        const summary = cardMap.get(cardId);
+        if (!summary) return false;
+        addNode(cardId, cardId === focusedCardId ? 'focus' : 'potential');
+        return true;
+      };
+      // 如果某端是 temp，合成 ghost 节点
+      const ensureTempEnd = (
+        nodeId: string,
+        title: string | undefined,
+        content: string | undefined,
+        wsId: string,
+        wsName: string,
+      ) => {
+        const id = tempGhostId(wsId, nodeId);
+        if (rawNodes.has(id)) return;
+        const ghostCard: Card = {
+          luhmannId: id,
+          title: title || '(untitled temp)',
+          status: 'ATOMIC',
+          parentId: null,
+          sortKey: '',
+          depth: 0,
+          contentMd: content ?? '',
+          tags: [],
+          crossLinks: [],
+          filePath: '',
+          mtime: 0,
+          createdAt: null,
+          updatedAt: null,
+        };
+        rawNodes.set(id, {
+          card: ghostCard,
+          variant: 'potential',
+          ghostFromWorkspace: { workspaceId: wsId, workspaceName: wsName },
+        });
+      };
+
+      let bothInGraph = true;
+      if (sourceIsCard) {
+        if (!ensureCardEnd(link.source.id)) bothInGraph = false;
+      } else {
+        ensureTempEnd(link.source.id, link.source.title, link.source.content, link.workspaceId, link.workspaceName);
+      }
+      if (targetIsCard) {
+        if (!ensureCardEnd(link.target.id)) bothInGraph = false;
+      } else {
+        ensureTempEnd(link.target.id, link.target.title, link.target.content, link.workspaceId, link.workspaceName);
+      }
+      if (!bothInGraph) continue;
+
+      // 跨 ws 边：用同 'potential' 边样式（虚线浅色）
+      rawEdges.push({
+        id: `ws:${link.workspaceId}:${link.edgeId}`,
+        source: sourceNodeId,
+        target: targetNodeId,
+        kind: 'potential',
+      });
     }
   }
 
@@ -320,53 +520,84 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
   };
   const FLANK_STEP_Y = NODE_HEIGHT + 30;
 
-  for (const [id, data] of rawNodes) {
-    if (positions.has(id)) continue;
-
+  // 为每个待定位节点找它"挂在哪张骨干卡上"
+  const findAnchor = (id: string) => {
     const edge = rawEdges.find(
       (e) =>
         (e.source === id && backbone.ids.has(e.target)) ||
         (e.target === id && backbone.ids.has(e.source)),
     );
-    if (!edge) {
+    if (!edge) return null;
+    return backbone.ids.has(edge.source) ? edge.source : edge.target;
+  };
+
+  // Pass 1: cross-flanks 和 tag-related 一起布局（同等"侧翼"地位），左右交替
+  for (const [id, data] of rawNodes) {
+    if (positions.has(id)) continue;
+    if (data.variant !== 'cross-flank' && data.variant !== 'tag-related') continue;
+    const anchorId = findAnchor(id);
+    if (!anchorId) {
       positions.set(id, { x: 1500, y: -500 });
       continue;
     }
-    const anchorId = backbone.ids.has(edge.source) ? edge.source : edge.target;
     const anchor = positions.get(anchorId)!;
     const row = rowBounds.get(anchor.y) ?? { minX: anchor.x, maxX: anchor.x };
 
-    if (data.variant === 'potential') {
-      // potential：永远在行的最外层右侧，比 cross-flank 更远
-      const i = bumpFlank(`${anchorId}::pot`);
+    const leftIdx = flankCount.get(`${anchorId}::L`) ?? 0;
+    const rightIdx = flankCount.get(`${anchorId}::R`) ?? 0;
+    if (leftIdx <= rightIdx) {
+      const i = bumpFlank(`${anchorId}::L`);
       positions.set(id, {
-        x: row.maxX + 2 * (NODE_WIDTH + FLANK_OFFSET_X) + POTENTIAL_OFFSET_X,
+        x: row.minX - NODE_WIDTH - FLANK_OFFSET_X,
         y: anchor.y + i * FLANK_STEP_Y,
       });
     } else {
-      // cross-flank：行边界外，左右交替；i 累计错开下方
-      const leftIdx = flankCount.get(`${anchorId}::L`) ?? 0;
-      const rightIdx = flankCount.get(`${anchorId}::R`) ?? 0;
-      if (leftIdx <= rightIdx) {
-        const i = bumpFlank(`${anchorId}::L`);
-        positions.set(id, {
-          x: row.minX - NODE_WIDTH - FLANK_OFFSET_X,
-          y: anchor.y + i * FLANK_STEP_Y,
-        });
-      } else {
-        const i = bumpFlank(`${anchorId}::R`);
-        positions.set(id, {
-          x: row.maxX + NODE_WIDTH + FLANK_OFFSET_X,
-          y: anchor.y + i * FLANK_STEP_Y,
-        });
-      }
+      const i = bumpFlank(`${anchorId}::R`);
+      positions.set(id, {
+        x: row.maxX + NODE_WIDTH + FLANK_OFFSET_X,
+        y: anchor.y + i * FLANK_STEP_Y,
+      });
     }
+  }
+
+  // Pass 2: potential（含 ws-temp ghost）
+  // —— 紧贴被链接的卡片放，但要让出已存在的右侧 cross-flank 位置
+  for (const [id, data] of rawNodes) {
+    if (positions.has(id)) continue;
+    if (data.variant !== 'potential') continue;
+    const anchorId = findAnchor(id);
+    if (!anchorId) {
+      positions.set(id, { x: 1500, y: -500 });
+      continue;
+    }
+    const anchor = positions.get(anchorId)!;
+    const row = rowBounds.get(anchor.y) ?? { minX: anchor.x, maxX: anchor.x };
+
+    const i = bumpFlank(`${anchorId}::pot`);
+    const rightCrossCount = flankCount.get(`${anchorId}::R`) ?? 0;
+    // 没有右侧 cross-flank → potential 直接占行边界外的第一个槽位
+    // 有右侧 cross-flank → potential 退到 cross-flank 之后
+    const xOffset =
+      rightCrossCount > 0
+        ? 2 * (NODE_WIDTH + FLANK_OFFSET_X) + POTENTIAL_OFFSET_X
+        : NODE_WIDTH + FLANK_OFFSET_X + POTENTIAL_OFFSET_X;
+    positions.set(id, {
+      x: row.maxX + xOffset,
+      y: anchor.y + i * FLANK_STEP_Y,
+    });
+  }
+
+  // Pass 3: 兜底（不应触达，但 focus / tree 漏了的话不至于崩）
+  for (const [id] of rawNodes) {
+    if (positions.has(id)) continue;
+    positions.set(id, { x: 1500, y: -500 });
   }
 
   /* ----- 4. 边：智能 handle 选择 ----- */
   const edgeStyles: Record<RawEdgeKind, { stroke: string; strokeWidth: number; strokeDasharray?: string }> = {
     tree: { stroke: '#9ca3af', strokeWidth: 1.5 },
     cross: { stroke: '#7c4dff', strokeWidth: 1.3 },
+    tag: { stroke: '#10b981', strokeWidth: 1.4 }, // 绿色实线，first-class
     potential: { stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '6 4' },
   };
 
@@ -409,6 +640,12 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
       src && tgt
         ? pickHandles(e.kind, src, tgt)
         : { sourceHandle: 'bottom', targetHandle: 'top' };
+    // 焦点卡的连线加粗 + 不透明度满，让用户切焦点时一眼看到关联
+    const touchesFocus = e.source === focusedCardId || e.target === focusedCardId;
+    const baseStyle = edgeStyles[e.kind];
+    const style = touchesFocus
+      ? { ...baseStyle, strokeWidth: baseStyle.strokeWidth + 1.5, opacity: 1 }
+      : { ...baseStyle, opacity: 0.6 };
     return {
       id: e.id,
       source: e.source,
@@ -417,8 +654,8 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
       targetHandle: handles.targetHandle,
       type: 'default', // 全部用 bezier，不再用 smoothstep 的硬拐角
       animated: false,
-      style: edgeStyles[e.kind],
-      data: { kind: e.kind },
+      style,
+      data: { kind: e.kind, touchesFocus },
     };
   });
 
@@ -505,6 +742,82 @@ export function applyAnchorPositions(
         savedH: sav?.h,
       },
     };
+  });
+}
+
+/**
+ * 简单的"碰撞力"——AABB 反推。
+ *   - 用户手动拖过保存了位置的卡 → 视为锁定，不会被推动
+ *   - 其它卡互相碰撞时沿最小重叠轴推开
+ *   - 默认 60 次迭代或所有对都不再重叠时停止
+ *   - 给周围加 padding，让相邻的卡有呼吸空间
+ *
+ * 这不是真正的物理仿真（不需要每帧跑），只是布局阶段一次性把重叠抹掉。
+ */
+export function resolveCollisions(
+  nodes: Node[],
+  saved: PositionMap,
+  padding = 24,
+  maxIterations = 60,
+): Node[] {
+  if (nodes.length < 2) return nodes;
+
+  type Box = { x: number; y: number; w: number; h: number; fixed: boolean };
+  const boxes = new Map<string, Box>();
+  for (const n of nodes) {
+    const sav = saved[n.id];
+    const dataW = (n.data as { savedW?: number } | undefined)?.savedW;
+    const dataH = (n.data as { savedH?: number } | undefined)?.savedH;
+    boxes.set(n.id, {
+      x: n.position.x,
+      y: n.position.y,
+      w: sav?.w ?? dataW ?? (n.width as number | undefined) ?? NODE_WIDTH,
+      h: sav?.h ?? dataH ?? NODE_HEIGHT,
+      fixed: !!sav, // 用户保存了 → 锁定
+    });
+  }
+
+  const ids = nodes.map((n) => n.id);
+  for (let iter = 0; iter < maxIterations; iter++) {
+    let moved = false;
+    for (let i = 0; i < ids.length; i++) {
+      const a = boxes.get(ids[i]!)!;
+      for (let j = i + 1; j < ids.length; j++) {
+        const b = boxes.get(ids[j]!)!;
+        if (a.fixed && b.fixed) continue;
+
+        const acx = a.x + a.w / 2;
+        const acy = a.y + a.h / 2;
+        const bcx = b.x + b.w / 2;
+        const bcy = b.y + b.h / 2;
+        const dx = bcx - acx;
+        const dy = bcy - acy;
+        const overlapX = (a.w + b.w) / 2 + padding - Math.abs(dx);
+        const overlapY = (a.h + b.h) / 2 + padding - Math.abs(dy);
+        if (overlapX <= 0 || overlapY <= 0) continue;
+
+        // 沿重叠较小的轴推开
+        const aShare = a.fixed ? 0 : b.fixed ? 1 : 0.5;
+        const bShare = b.fixed ? 0 : a.fixed ? 1 : 0.5;
+
+        if (overlapX < overlapY) {
+          const sign = dx >= 0 ? 1 : -1;
+          a.x -= sign * overlapX * aShare;
+          b.x += sign * overlapX * bShare;
+        } else {
+          const sign = dy >= 0 ? 1 : -1;
+          a.y -= sign * overlapY * aShare;
+          b.y += sign * overlapY * bShare;
+        }
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+
+  return nodes.map((n) => {
+    const box = boxes.get(n.id)!;
+    return { ...n, position: { x: box.x, y: box.y } };
   });
 }
 

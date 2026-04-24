@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { randomUUID } from '../lib/uuid';
 import { api, type Workspace, type WorkspaceEdge, type WorkspaceNode } from '../lib/api';
+import { dialog } from '../lib/dialog';
 import { useUIStore } from '../store/uiStore';
 import { CardNode } from './CardNode';
 import { WorkspaceNoteNode } from './WorkspaceNoteNode';
@@ -122,17 +123,38 @@ function WorkspaceInner({ workspaceId }: Props) {
           } as unknown as Record<string, unknown>,
         };
       });
-      const wsEdges: Edge[] = ws.edges.map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        label: e.label,
-        type: 'wsApply',
-        data: { applied: !!e.applied, workspaceId: ws.id, edgeId: e.id } as unknown as Record<string, unknown>,
-        style: e.applied
-          ? { stroke: '#7c4dff', strokeWidth: 2 }
-          : { stroke: '#9ca3af', strokeWidth: 1.5, strokeDasharray: '6 4' },
-      }));
+      const nodeKinds = new Map(ws.nodes.map((n) => [n.id, n.kind] as const));
+      const wsEdges: Edge[] = ws.edges.map((e) => {
+        const sourceKind = nodeKinds.get(e.source) ?? 'card';
+        const targetKind = nodeKinds.get(e.target) ?? 'card';
+        const bothCards = sourceKind === 'card' && targetKind === 'card';
+        // Edges with a temp endpoint: dotted, no Apply button — they auto-materialize
+        // when the temp is promoted to a vault card.
+        // Card↔card: dashed when not applied, solid purple when applied.
+        const styleBase = bothCards
+          ? e.applied
+            ? { stroke: '#7c4dff', strokeWidth: 2 }
+            : { stroke: '#9ca3af', strokeWidth: 1.5, strokeDasharray: '6 4' }
+          : { stroke: '#a78bfa', strokeWidth: 1.5, strokeDasharray: '2 4' };
+        return {
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          sourceHandle: e.sourceHandle ?? undefined,
+          targetHandle: e.targetHandle ?? undefined,
+          label: e.label,
+          type: 'wsApply',
+          data: {
+            applied: !!e.applied,
+            workspaceId: ws.id,
+            edgeId: e.id,
+            bothCards,
+            sourceKind,
+            targetKind,
+          } as unknown as Record<string, unknown>,
+          style: styleBase,
+        };
+      });
       return { nodes: wsNodes, edges: wsEdges };
     },
     [],
@@ -233,14 +255,20 @@ function WorkspaceInner({ workspaceId }: Props) {
 
   const promoteTempToVault = useCallback(
     async (nodeId: string) => {
-      const luhmannId = window.prompt('请输入 vault 中的 luhmannId（如 5b1）：');
+      const luhmannId = await dialog.prompt('Enter the vault luhmannId (e.g. 5b1):', {
+        title: 'Promote temp card to vault',
+        placeholder: 'luhmannId',
+        confirmLabel: 'Promote',
+      });
       if (!luhmannId?.trim()) return;
       try {
         await api.tempToVault(workspaceId, nodeId, luhmannId.trim());
         qc.invalidateQueries({ queryKey: ['workspace', workspaceId] });
         qc.invalidateQueries({ queryKey: ['cards'] });
+        qc.invalidateQueries({ queryKey: ['card'] });
+        qc.invalidateQueries({ queryKey: ['linked'] });
       } catch (err) {
-        alert((err as Error).message);
+        dialog.alert((err as Error).message, { title: 'Promote failed' });
       }
     },
     [workspaceId, qc],
@@ -257,6 +285,8 @@ function WorkspaceInner({ workspaceId }: Props) {
             id: randomUUID(),
             source: conn.source!,
             target: conn.target!,
+            sourceHandle: conn.sourceHandle,
+            targetHandle: conn.targetHandle,
           } as WorkspaceEdge,
         ],
       }));
@@ -350,9 +380,9 @@ function WorkspaceInner({ workspaceId }: Props) {
     [addNote],
   );
 
-  if (wsQ.isLoading) return <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">加载工作区…</div>;
+  if (wsQ.isLoading) return <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">Loading workspace…</div>;
   if (wsQ.error || !wsQ.data)
-    return <div className="w-full h-full flex items-center justify-center text-sm text-red-500">{String(wsQ.error ?? '工作区不存在')}</div>;
+    return <div className="w-full h-full flex items-center justify-center text-sm text-red-500">{String(wsQ.error ?? 'Workspace not found')}</div>;
 
   return (
     <div
@@ -363,33 +393,33 @@ function WorkspaceInner({ workspaceId }: Props) {
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      {/* 顶部工具条 */}
+      {/* Toolbar */}
       <div className="absolute top-4 left-4 z-10 flex items-center gap-1 bg-white/95 backdrop-blur-sm px-2 py-1.5 rounded-lg shadow-md border border-gray-200">
-        {/* 4 方向 docking */}
+        {/* 4-direction docking */}
         <div className="flex items-center gap-0.5 px-1 border-r border-gray-200 mr-1">
-          <DockBtn icon={<PanelLeft size={13} />} active={workspacePanelPosition === 'left'} onClick={() => setWorkspacePanelPosition('left')} title="停靠到左边" />
-          <DockBtn icon={<PanelTop size={13} />} active={workspacePanelPosition === 'top'} onClick={() => setWorkspacePanelPosition('top')} title="停靠到上边" />
-          <DockBtn icon={<PanelBottom size={13} />} active={workspacePanelPosition === 'bottom'} onClick={() => setWorkspacePanelPosition('bottom')} title="停靠到下边" />
-          <DockBtn icon={<PanelRight size={13} />} active={workspacePanelPosition === 'right'} onClick={() => setWorkspacePanelPosition('right')} title="停靠到右边" />
+          <DockBtn icon={<PanelLeft size={13} />} active={workspacePanelPosition === 'left'} onClick={() => setWorkspacePanelPosition('left')} title="Dock to left" />
+          <DockBtn icon={<PanelTop size={13} />} active={workspacePanelPosition === 'top'} onClick={() => setWorkspacePanelPosition('top')} title="Dock to top" />
+          <DockBtn icon={<PanelBottom size={13} />} active={workspacePanelPosition === 'bottom'} onClick={() => setWorkspacePanelPosition('bottom')} title="Dock to bottom" />
+          <DockBtn icon={<PanelRight size={13} />} active={workspacePanelPosition === 'right'} onClick={() => setWorkspacePanelPosition('right')} title="Dock to right" />
         </div>
         <button
           onClick={toggleWorkspacePanelPinned}
           className={`p-1 rounded hover:bg-gray-100 ${workspacePanelPinned ? 'text-accent' : 'text-gray-400'}`}
-          title={workspacePanelPinned ? '已 pin（布局会被记住）' : 'pin 当前布局'}
+          title={workspacePanelPinned ? 'Pinned (this workspace reopens on reload)' : 'Pin: reopen this workspace on reload'}
         >
           {workspacePanelPinned ? <Pin size={13} /> : <PinOff size={13} />}
         </button>
         <button
           onClick={() => setWorkspaceFullscreen(!workspaceFullscreen)}
           className="p-1 rounded hover:bg-gray-100 text-gray-500"
-          title={workspaceFullscreen ? '退出全屏（split 视图）' : '全屏'}
+          title={workspaceFullscreen ? 'Exit fullscreen (split view)' : 'Fullscreen'}
         >
           {workspaceFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
         </button>
         <button
           onClick={() => setFocusWorkspace(null)}
           className="p-1 rounded hover:bg-gray-100 text-gray-500"
-          title="关闭工作区面板"
+          title="Close workspace panel"
         >
           <X size={14} />
         </button>
@@ -405,22 +435,22 @@ function WorkspaceInner({ workspaceId }: Props) {
           className="text-[13px] font-bold text-ink ml-1"
         />
         <span className="text-[10px] text-gray-400">
-          {wsQ.data.nodes.length} 节点 · {wsQ.data.edges.length} 边
+          {wsQ.data.nodes.length} nodes · {wsQ.data.edges.length} edges
         </span>
         <div className="border-l border-gray-200 mx-1 h-4" />
         <button
           onClick={() => addNote(200, 200)}
           className="flex items-center gap-1 text-[11px] font-bold text-yellow-700 hover:text-yellow-800 px-2 py-1 rounded hover:bg-yellow-50"
-          title="加便签"
+          title="Add sticky note"
         >
-          <StickyNote size={12} /> 便签
+          <StickyNote size={12} /> Note
         </button>
         <button
           onClick={() => addTempCard(400, 200)}
           className="flex items-center gap-1 text-[11px] font-bold text-purple-700 hover:text-purple-800 px-2 py-1 rounded hover:bg-purple-50"
-          title="加临时卡"
+          title="Add temporary card"
         >
-          <FilePlus size={12} /> 临时卡
+          <FilePlus size={12} /> Temp card
         </button>
         <div className="border-l border-gray-200 mx-1 h-4" />
         <input
@@ -432,7 +462,7 @@ function WorkspaceInner({ workspaceId }: Props) {
               setAddCardInput('');
             }
           }}
-          placeholder="vault 卡 id"
+          placeholder="vault card id"
           className="w-24 text-[11px] font-mono px-2 py-0.5 border border-gray-200 rounded focus:border-accent outline-none"
         />
         <button
@@ -441,17 +471,17 @@ function WorkspaceInner({ workspaceId }: Props) {
             setAddCardInput('');
           }}
           className="flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 px-2 py-1 rounded hover:bg-emerald-50"
-          title="按 luhmannId 把 vault 卡加进来（如 1a2）"
+          title="Add a vault card by luhmannId (e.g. 1a2)"
         >
-          <Layers size={12} /> 加卡
+          <Layers size={12} /> Add card
         </button>
       </div>
 
-      {/* 提示语 */}
+      {/* Empty-state hint */}
       {wsQ.data.nodes.length === 0 && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 text-center text-gray-400 text-sm pointer-events-none">
-          双击空白处 + 便签 / 临时卡 / 把 vault 卡片拖进来 ・ 自由连线作为思维链<br/>
-          <span className="text-[11px]">连线后可以"应用到 vault"，把临时连接转为正式 [[link]]</span>
+          Double-click the canvas to add a note · drop a vault card here · connect freely<br/>
+          <span className="text-[11px]">Then "Apply" an edge to write it back to the vault as a real [[link]]</span>
         </div>
       )}
 
@@ -497,59 +527,133 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
     sourcePosition,
     targetPosition,
   });
-  const d = data as unknown as { applied: boolean; workspaceId: string; edgeId: string } | undefined;
+  const d = data as unknown as
+    | {
+        applied: boolean;
+        workspaceId: string;
+        edgeId: string;
+        bothCards: boolean;
+        sourceKind: 'card' | 'temp' | 'note';
+        targetKind: 'card' | 'temp' | 'note';
+      }
+    | undefined;
+  const invalidateCardData = () => {
+    qc.invalidateQueries({ queryKey: ['workspace', d!.workspaceId] });
+    qc.invalidateQueries({ queryKey: ['cards'] });
+    qc.invalidateQueries({ queryKey: ['card'] });
+    qc.invalidateQueries({ queryKey: ['linked'] });
+    qc.invalidateQueries({ queryKey: ['related-batch'] });
+    qc.invalidateQueries({ queryKey: ['referenced-from'] });
+  };
   const applyMut = useMutation({
     mutationFn: () => api.applyEdge(d!.workspaceId, d!.edgeId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['workspace', d!.workspaceId] });
-      qc.invalidateQueries({ queryKey: ['cards'] });
+    onSuccess: invalidateCardData,
+    onError: (err: Error) => {
+      dialog.alert(err.message, { title: 'Apply failed' });
     },
   });
   const unapplyMut = useMutation({
     mutationFn: () => api.unapplyEdge(d!.workspaceId, d!.edgeId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['workspace', d!.workspaceId] });
-      qc.invalidateQueries({ queryKey: ['cards'] });
+    onSuccess: invalidateCardData,
+    onError: (err: Error) => {
+      dialog.alert(err.message, { title: 'Unapply failed' });
     },
   });
+  const deleteMut = useMutation({
+    mutationFn: () => api.deleteWorkspaceEdge(d!.workspaceId, d!.edgeId),
+    onSuccess: invalidateCardData,
+    onError: (err: Error) => {
+      dialog.alert(err.message, { title: 'Delete failed' });
+    },
+  });
+  const onDelete = async () => {
+    if (deleteMut.isPending) return;
+    const ok = await dialog.confirm('Delete this edge?', {
+      title: 'Delete edge',
+      description: d?.applied
+        ? 'The edge has been applied to the vault. The [[link]] in the source card will be removed too.'
+        : undefined,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    deleteMut.mutate();
+  };
   return (
     <>
       <BaseEdge id={id} path={edgePath} style={style} />
       <EdgeLabelRenderer>
         <div
-          className="absolute pointer-events-auto"
+          className="absolute pointer-events-auto flex items-center gap-1"
           style={{
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
           }}
         >
-          {!d?.applied ? (
-            <button
-              onClick={() => {
-                if (applyMut.isPending) return;
-                if (!confirm('把这条边写入 vault，作为 source 卡片正文里的 [[target]]？')) return;
-                applyMut.mutate();
-              }}
-              disabled={applyMut.isPending}
-              className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-accent/40 text-accent hover:bg-accent hover:text-white shadow-sm transition-colors"
-              title="把这条边写到 vault 里成为真正的 [[link]]"
-            >
-              {applyMut.isPending ? '应用中…' : 'Apply'}
-            </button>
+          {d?.bothCards ? (
+            !d.applied ? (
+              <button
+                onClick={async () => {
+                  if (applyMut.isPending) return;
+                  const ok = await dialog.confirm(
+                    'Write this edge into the vault as a real [[link]] in the source card?',
+                    {
+                      title: 'Apply edge',
+                      confirmLabel: 'Apply',
+                    },
+                  );
+                  if (!ok) return;
+                  applyMut.mutate();
+                }}
+                disabled={applyMut.isPending}
+                className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-accent/40 text-accent hover:bg-accent hover:text-white shadow-sm transition-colors"
+                title="Persist this edge into the vault as a real [[link]]"
+              >
+                {applyMut.isPending ? 'Applying…' : 'Apply'}
+              </button>
+            ) : (
+              <button
+                onClick={async () => {
+                  if (unapplyMut.isPending) return;
+                  const ok = await dialog.confirm(
+                    'Remove this edge’s [[link]] from the vault?',
+                    {
+                      title: 'Unapply edge',
+                      confirmLabel: 'Unapply',
+                      variant: 'danger',
+                    },
+                  );
+                  if (!ok) return;
+                  unapplyMut.mutate();
+                }}
+                disabled={unapplyMut.isPending}
+                className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-accent text-white hover:bg-accent/80 shadow-sm"
+                title="Unapply: remove from vault"
+              >
+                <Undo2 size={9} />
+                {unapplyMut.isPending ? 'Unapplying…' : 'Applied'}
+              </button>
+            )
           ) : (
-            <button
-              onClick={() => {
-                if (unapplyMut.isPending) return;
-                if (!confirm('撤销：从 vault 中移除这条边的 [[link]]？')) return;
-                unapplyMut.mutate();
-              }}
-              disabled={unapplyMut.isPending}
-              className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-accent text-white hover:bg-accent/80 shadow-sm"
-              title="撤销 apply：从 vault 移除"
+            // Edge involving a temp/note: no Apply button — auto-materializes when temps are promoted
+            <span
+              className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-50 border border-purple-200 text-purple-600 select-none"
+              title={
+                d?.sourceKind === 'temp' || d?.targetKind === 'temp'
+                  ? 'Auto-links into the vault when the temp card is promoted'
+                  : 'Workspace-only link'
+              }
             >
-              <Undo2 size={9} />
-              {unapplyMut.isPending ? '撤销中…' : 'Applied'}
-            </button>
+              workspace
+            </span>
           )}
+          <button
+            onClick={onDelete}
+            disabled={deleteMut.isPending}
+            className="w-4 h-4 rounded-full bg-white border border-gray-300 text-gray-400 hover:bg-red-500 hover:text-white hover:border-red-500 shadow-sm flex items-center justify-center transition-colors"
+            title="Delete edge"
+          >
+            <X size={9} />
+          </button>
           {label ? <span className="ml-1 text-[10px] text-gray-500">{label}</span> : null}
         </div>
       </EdgeLabelRenderer>

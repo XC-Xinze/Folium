@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, FolderTree, Pencil, Tag, Trash2 } from 'lucide-react';
+import { ChevronRight, FolderTree, Tag, Trash2 } from 'lucide-react';
 import { api, type IndexNode } from '../lib/api';
+import { dialog } from '../lib/dialog';
 import { useUIStore } from '../store/uiStore';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
 import { setCardDragData } from '../lib/dragCard';
@@ -42,7 +43,7 @@ export function Sidebar() {
         <span className="font-bold text-sm tracking-tight">Vault</span>
       </header>
 
-      {/* Indexes 树：顶部最重要 */}
+      {/* Indexes tree: top section, most important */}
       <Section icon={<FolderTree size={12} />} title="INDEXES">
         {indexesQ.data?.tree.length ? (
           indexesQ.data.tree.map((node) => (
@@ -57,62 +58,53 @@ export function Sidebar() {
           ))
         ) : (
           <div className="text-[11px] text-gray-400 px-3 py-1.5 leading-relaxed">
-            还没有索引卡。新建时把状态选为 Index，并在正文里 [[link]] 别的卡。
+            No index cards yet. When creating a card, set its status to Index and use [[link]] in the body to reference others.
           </div>
         )}
       </Section>
 
-      {/* Tags：竖向列表，按 count 降序 */}
+      {/* Tags: 内联 chips，自动换行；右键改名 */}
       <Section icon={<Tag size={12} />} title="TAGS">
         {(tagsQ.data?.tags ?? []).length === 0 ? (
-          <div className="text-[11px] text-gray-400 px-3 py-1.5">还没有标签</div>
+          <div className="text-[11px] text-gray-400 px-3 py-1.5">No tags yet</div>
         ) : (
-          (tagsQ.data?.tags ?? [])
-            .slice()
-            .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
-            .map((t) => (
-              <div
-                key={t.name}
-                className={`group flex items-center justify-between px-3 py-1.5 rounded-md transition-colors cursor-pointer ${
-                  focusedTag === t.name
-                    ? 'bg-accentSoft text-accent'
-                    : 'hover:bg-gray-50 text-gray-700'
-                }`}
-                onClick={() => setFocusTag(t.name)}
-                title={`查看 #${t.name} 下所有卡片`}
-              >
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <span
-                    className={`text-[10px] font-bold w-2.5 text-right ${
-                      focusedTag === t.name ? 'text-accent' : 'text-gray-300 group-hover:text-accent'
-                    }`}
-                  >
-                    #
-                  </span>
-                  <span className="text-[12px] truncate">{t.name}</span>
-                </div>
+          <div className="flex flex-wrap gap-1.5 px-1">
+            {(tagsQ.data?.tags ?? [])
+              .slice()
+              .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+              .map((t) => (
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const newName = window.prompt(`重命名 #${t.name} 为：`, t.name);
+                  key={t.name}
+                  onClick={() => setFocusTag(t.name)}
+                  onContextMenu={async (e) => {
+                    e.preventDefault();
+                    const newName = await dialog.prompt(`Rename #${t.name} to:`, {
+                      title: 'Rename tag',
+                      defaultValue: t.name,
+                      confirmLabel: 'Rename',
+                    });
                     if (newName?.trim() && newName.trim() !== t.name) {
                       renameTagMut.mutate({ oldName: t.name, newName: newName.trim() });
                     }
                   }}
-                  className="p-0.5 text-gray-300 hover:text-accent opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                  title="重命名 tag（级联到所有 .md）"
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold transition-colors ${
+                    focusedTag === t.name
+                      ? 'bg-accent text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-accentSoft hover:text-accent'
+                  }`}
+                  title={`#${t.name} · ${t.count} cards · right-click to rename`}
                 >
-                  <Pencil size={10} />
+                  <span>#{t.name}</span>
+                  <span className={`text-[9px] tabular-nums ${focusedTag === t.name ? 'text-white/70' : 'text-gray-400'}`}>
+                    {t.count}
+                  </span>
                 </button>
-                <span className="text-[10px] font-mono text-gray-400 tabular-nums shrink-0 ml-1">
-                  {t.count}
-                </span>
-              </div>
-            ))
+              ))}
+          </div>
         )}
       </Section>
 
-      {/* All Cards：底部 — 项可拖入工作区 */}
+      {/* All Cards: bottom — draggable into a workspace */}
       <Section title="ALL CARDS" scroll>
         {cardsQ.data?.cards.map((c) => (
           <div
@@ -124,7 +116,7 @@ export function Sidebar() {
             draggable
             onDragStart={(e) => setCardDragData(e, { luhmannId: c.luhmannId, title: c.title })}
             onClick={() => navigate(c.luhmannId)}
-            title="拖到工作区"
+            title="Drag to workspace"
           >
             <span className="font-mono text-[10px] text-gray-500 w-12 shrink-0">{c.luhmannId}</span>
             <span className="text-[12px] truncate flex-1 min-w-0">{c.title}</span>
@@ -132,12 +124,17 @@ export function Sidebar() {
               <span className="text-[8px] font-bold text-accent shrink-0">IDX</span>
             )}
             <button
-              onClick={(e) => {
+              onClick={async (e) => {
                 e.stopPropagation();
-                if (confirm(`删除 ${c.luhmannId}？`)) deleteMut.mutate(c.luhmannId);
+                const ok = await dialog.confirm(`Delete ${c.luhmannId}?`, {
+                  title: 'Delete card',
+                  confirmLabel: 'Delete',
+                  variant: 'danger',
+                });
+                if (ok) deleteMut.mutate(c.luhmannId);
               }}
               className="p-0.5 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-              title="删除"
+              title="Delete"
             >
               <Trash2 size={11} />
             </button>
@@ -196,7 +193,7 @@ function IndexNodeView({
           draggable
           onDragStart={(e) => setCardDragData(e, { luhmannId: node.luhmannId, title: node.title })}
           className="flex-1 min-w-0 flex items-center gap-1.5 py-1.5 text-left cursor-grab active:cursor-grabbing"
-          title="拖到工作区"
+          title="Drag to workspace"
         >
           <span
             className={`font-mono text-[9.5px] font-bold px-1 py-0.5 rounded shrink-0 ${

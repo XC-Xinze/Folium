@@ -98,12 +98,15 @@ export function getTagRelated(
 }
 
 /**
- * 潜在链接：纯文本/关键字层面的发现，未来可能加 embedding 等技术。
- * 与 tag 完全无关——tag 是 first-class，走 getTagRelated。
+ * 潜在链接（Logseq 风的 "Unlinked References"）：
+ *   不需要双向链接，只要正文里出现了别人的标题/编号（不在 [[...]] 包裹内）就算。
  *
- * 当前两种信号：
- *   1. FTS5 全文 BM25（标题作为 query）
- *   2. 标题/编号在他人正文中的明文出现（Logseq 风格）
+ *   三种信号：
+ *     1. incoming — 别人正文里以纯文本形式提到了"我"
+ *     2. outgoing — "我"的正文里以纯文本形式提到了别人
+ *     3. FTS5 BM25 全文相似度（兜底信号）
+ *
+ *   tag 共现 / 已有 [[link]] 的卡片排除，避免和其他视觉层重复。
  */
 export function getPotentialLinks(
   db: Database.Database,
@@ -111,7 +114,6 @@ export function getPotentialLinks(
   card: Card,
   limit = 10,
 ): PotentialLink[] {
-  // tag 共现的卡片也排除掉，避免和"已经因 tag 显示"的卡片重复
   const tagRelatedIds = new Set(getTagRelated(db, repo, card).map((t) => t.luhmannId));
   const excluded = new Set<string>([card.luhmannId, ...card.crossLinks, ...tagRelatedIds]);
 
@@ -124,7 +126,41 @@ export function getPotentialLinks(
     scores.set(id, cur);
   };
 
-  // 信号 1：FTS5 BM25
+  // ── 信号 1: incoming —— 谁的正文里以纯文本形式提到了"我"？ ──
+  // 不仅匹配完整标题，还匹配标题切片（"主动学习与查询策略" → 同时试 "主动学习" / "查询策略"）。
+  const myKeywords = titleKeywords(card.title);
+  const allCardsWithContent = db
+    .prepare(`SELECT luhmann_id, content_md FROM cards WHERE luhmann_id != ?`)
+    .all(card.luhmannId) as { luhmann_id: string; content_md: string }[];
+  for (const row of allCardsWithContent) {
+    if (excluded.has(row.luhmann_id)) continue;
+    const stripped = stripWikilinks(row.content_md);
+    let total = 0;
+    for (const kw of myKeywords) total += countUnlinkedHits(stripped, kw);
+    total += countUnlinkedHits(stripped, card.luhmannId);
+    if (total > 0) {
+      bump(row.luhmann_id, Math.min(total * 0.5, 1.5), `mentions this card ×${total}`);
+    }
+  }
+
+  // ── 信号 2: outgoing —— "我"的正文里以纯文本形式提到了别人？ ──
+  const myStripped = stripWikilinks(card.contentMd);
+  const allOthers = db
+    .prepare(`SELECT luhmann_id, title FROM cards WHERE luhmann_id != ?`)
+    .all(card.luhmannId) as { luhmann_id: string; title: string }[];
+  for (const other of allOthers) {
+    if (excluded.has(other.luhmann_id)) continue;
+    let total = 0;
+    for (const kw of titleKeywords(other.title)) {
+      total += countUnlinkedHits(myStripped, kw);
+    }
+    total += countUnlinkedHits(myStripped, other.luhmann_id);
+    if (total > 0) {
+      bump(other.luhmann_id, Math.min(total * 0.4, 1.0), `mentioned here ×${total}`);
+    }
+  }
+
+  // ── 信号 3: FTS5 BM25 全文相似度（兜底） ──
   try {
     const ftsQuery = sanitizeFtsQuery(card.title);
     if (ftsQuery) {
@@ -138,23 +174,11 @@ export function getPotentialLinks(
         .all(ftsQuery) as { luhmann_id: string; rank: number }[];
       for (const row of rows) {
         const norm = 1 / (1 + Math.max(0, row.rank));
-        bump(row.luhmann_id, norm * 0.6, 'content similarity');
+        bump(row.luhmann_id, norm * 0.3, 'content similarity');
       }
     }
   } catch {
     // FTS query 失败（保留字符等）静默忽略
-  }
-
-  // 信号 2：当前卡片的 luhmannId / title 在他人正文中的明文出现
-  const mentionRows = db
-    .prepare(
-      `SELECT luhmann_id FROM cards
-       WHERE luhmann_id != ?
-         AND (content_md LIKE '%' || ? || '%' OR content_md LIKE '%' || ? || '%')`,
-    )
-    .all(card.luhmannId, card.luhmannId, card.title) as { luhmann_id: string }[];
-  for (const row of mentionRows) {
-    bump(row.luhmann_id, 0.5, 'mentioned in body');
   }
 
   return [...scores.entries()]
@@ -176,6 +200,62 @@ export function getPotentialLinks(
 
 // CardSummary unused but type imported for future tag-related list
 void (null as unknown as CardSummary);
+
+/** 移除所有 [[wikilink]] 包裹的内容，剩下的才是"裸"提及 */
+export function stripWikilinks(s: string): string {
+  return s.replace(/\[\[[^\]]*\]\]/g, '');
+}
+
+/**
+ * 把一个标题切成几个可独立引用的关键词。
+ *   "主动学习与查询策略" → ["主动学习与查询策略", "主动学习", "查询策略"]
+ *   "Active Learning vs Random Sampling" → ["Active Learning vs Random Sampling", "Active Learning", "Random Sampling"]
+ *   "RBF" → ["RBF"]
+ *
+ * 这是为了让 potential 检测能容错"完整标题"vs"概念核心"的差异——
+ * 实际写卡时很少会在正文里把另一张卡的完整标题原样抄一遍。
+ */
+export function titleKeywords(title: string): string[] {
+  if (!title) return [];
+  // 用  当替身，避免分隔时把多词短语（如 "Active Learning"）按空格切散
+  const SEP = '';
+  const cleaned = title
+    .replace(/[（）()【】\[\]《》]/g, SEP)
+    // 英文连接词整词替换为分隔符
+    .replace(/\b(?:vs|and|or|with)\b/gi, SEP);
+  const parts = cleaned
+    // 分隔符：替身 + CJK 标点 + 英文标点 + CJK 单字连接词（不切空白）
+    .split(new RegExp(`[${SEP}、，。：；！？,;:!?\\/\\\\|·→\\-—与和及或跟同]+`))
+    .map((p) => p.trim())
+    .filter((p) => p.length >= 2);
+  return [...new Set([title, ...parts])].filter((p) => p.length >= 2);
+}
+
+/**
+ * 统计 phrase 在 body 中作为"裸"词的出现次数。
+ *   - phrase 必须 >= 2 字符（避免单字符 ID 引爆假阳性）
+ *   - 纯 ASCII：在边界用 \b（仅当那一端是 word 字符时；像 "C++" 末尾的 + 不强制 \b）
+ *   - 含 CJK：直接全字符串匹配（CJK 的"词边界"语义模糊，宁可宽松也不要漏）
+ *   - 调用前请把 body 用 stripWikilinks 处理
+ */
+export function countUnlinkedHits(body: string, phrase: string): number {
+  if (!phrase || phrase.length < 2) return 0;
+  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const isAscii = /^[\x00-\x7F]+$/.test(phrase);
+  try {
+    let re: RegExp;
+    if (isAscii) {
+      const prefix = /^\w/.test(phrase) ? '\\b' : '';
+      const suffix = /\w$/.test(phrase) ? '\\b' : '';
+      re = new RegExp(`${prefix}${escaped}${suffix}`, 'gi');
+    } else {
+      re = new RegExp(escaped, 'g');
+    }
+    return (body.match(re) || []).length;
+  } catch {
+    return 0;
+  }
+}
 
 function sanitizeFtsQuery(s: string): string {
   // 去掉 FTS5 保留字符，只保留中英文/数字

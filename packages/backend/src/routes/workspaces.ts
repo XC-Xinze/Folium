@@ -3,9 +3,11 @@ import { z } from 'zod';
 import {
   applyEdge,
   createWorkspace,
+  deleteEdge,
   deleteWorkspace,
   getWorkspace,
   listWorkspaces,
+  listWorkspaceLinksFor,
   tempToVault,
   unapplyEdge,
   updateWorkspace,
@@ -80,6 +82,16 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
+  // Delete an edge entirely (unapplies first if applied)
+  app.delete<{ Params: { id: string; edgeId: string } }>(
+    '/workspaces/:id/edges/:edgeId',
+    async (req, reply) => {
+      const result = await deleteEdge(repo, req.params.id, req.params.edgeId);
+      if ('error' in result) return reply.code(400).send(result);
+      return result;
+    },
+  );
+
   // Temp card → real vault card
   const tempSchema = z.object({
     nodeId: z.string(),
@@ -90,9 +102,19 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
     async (req, reply) => {
       const parsed = tempSchema.safeParse(req.body);
       if (!parsed.success) return reply.code(400).send({ error: 'bad_input' });
-      const result = await tempToVault(req.params.id, parsed.data.nodeId, parsed.data.luhmannId);
+      const result = await tempToVault(repo, req.params.id, parsed.data.nodeId, parsed.data.luhmannId);
       if ('error' in result) return reply.code(400).send(result);
       return result;
     },
   );
+
+  // Batch: workspace edges touching the given vault cards.
+  // Used by the vault canvas to render workspace-derived links/temps as potential-style overlays.
+  const wsLinksSchema = z.object({ cardIds: z.array(z.string()) });
+  app.post('/workspace-links/batch', async (req, reply) => {
+    const parsed = wsLinksSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'bad_input' });
+    const links = await listWorkspaceLinksFor(parsed.data.cardIds);
+    return { links };
+  });
 };

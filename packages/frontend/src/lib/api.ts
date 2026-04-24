@@ -83,8 +83,25 @@ export interface WorkspaceEdge {
   id: string;
   source: string;
   target: string;
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
   label?: string;
   applied?: boolean;
+}
+
+export interface WorkspaceLinkEndpoint {
+  kind: 'card' | 'temp';
+  id: string;
+  title?: string;
+  content?: string;
+}
+
+export interface WorkspaceLink {
+  workspaceId: string;
+  workspaceName: string;
+  edgeId: string;
+  source: WorkspaceLinkEndpoint;
+  target: WorkspaceLinkEndpoint;
 }
 
 export interface Workspace {
@@ -279,6 +296,25 @@ export const api = {
       const j = await res.json().catch(() => ({}));
       throw new Error(j.error ?? `${res.status} ${res.statusText}`);
     }
+  },
+  deleteWorkspaceEdge: async (workspaceId: string, edgeId: string): Promise<void> => {
+    const res = await fetch(
+      `${BASE}/workspaces/${encodeURIComponent(workspaceId)}/edges/${encodeURIComponent(edgeId)}`,
+      { method: 'DELETE' },
+    );
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? `${res.status} ${res.statusText}`);
+    }
+  },
+  workspaceLinksBatch: async (cardIds: string[]): Promise<{ links: WorkspaceLink[] }> => {
+    const res = await fetch(`${BASE}/workspace-links/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cardIds }),
+    });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.json();
   },
   tempToVault: async (workspaceId: string, nodeId: string, luhmannId: string): Promise<void> => {
     const res = await fetch(`${BASE}/workspaces/${encodeURIComponent(workspaceId)}/temp-to-vault`, {

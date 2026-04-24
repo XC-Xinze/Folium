@@ -1,15 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '../lib/api';
+import { dialog } from '../lib/dialog';
 import { useUIStore } from '../store/uiStore';
 import { RenamableName } from './RenamableName';
 
 /**
- * Sidebar 在 'workspaces' tab 下展示的内容。
- *   - 列出所有工作区
- *   - 点击 → 在右侧面板打开
- *   - 加号 → 新建
- *   - hover 出删除按钮
+ * Sidebar contents under the 'workspaces' tab.
+ *   - lists all workspaces
+ *   - click → opens in the right panel
+ *   - plus → create new
+ *   - hover → delete button
  */
 export function WorkspacesSidebar() {
   const focusedWorkspaceId = useUIStore((s) => s.focusedWorkspaceId);
@@ -47,15 +48,19 @@ export function WorkspacesSidebar() {
       <header className="h-12 px-5 flex items-center justify-between border-b border-gray-100">
         <div className="flex items-center gap-2">
           <Sparkles size={14} className="text-accent" />
-          <span className="font-bold text-sm tracking-tight">工作区</span>
+          <span className="font-bold text-sm tracking-tight">Workspaces</span>
         </div>
         <button
-          onClick={() => {
-            const name = window.prompt('工作区名称：', '新工作区');
+          onClick={async () => {
+            const name = await dialog.prompt('Workspace name', {
+              title: 'New workspace',
+              defaultValue: 'New workspace',
+              confirmLabel: 'Create',
+            });
             if (name?.trim()) createMut.mutate(name.trim());
           }}
           className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-accent"
-          title="新建工作区"
+          title="New workspace"
         >
           <Plus size={14} />
         </button>
@@ -64,7 +69,7 @@ export function WorkspacesSidebar() {
       <div className="flex-1 overflow-y-auto p-3">
         {(wsQ.data?.workspaces ?? []).length === 0 && (
           <div className="text-[11px] text-gray-400 px-2 py-3 italic leading-relaxed">
-            还没有工作区。点上面 + 创建一个，把 vault 的卡片拖进去自由布局做脑暴。
+            No workspaces yet. Click + above to create one, then drag vault cards in to brainstorm.
           </div>
         )}
         <div className="space-y-1">
@@ -85,12 +90,17 @@ export function WorkspacesSidebar() {
               />
               <span className="text-[9px] text-gray-400 shrink-0">{ws.nodes.length}</span>
               <button
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.stopPropagation();
-                  if (confirm(`删除工作区 "${ws.name}"？`)) deleteMut.mutate(ws.id);
+                  const ok = await dialog.confirm(`Delete workspace "${ws.name}"?`, {
+                    title: 'Delete workspace',
+                    confirmLabel: 'Delete',
+                    variant: 'danger',
+                  });
+                  if (ok) deleteMut.mutate(ws.id);
                 }}
                 className="p-0.5 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                title="删除"
+                title="Delete"
               >
                 <Trash2 size={11} />
               </button>

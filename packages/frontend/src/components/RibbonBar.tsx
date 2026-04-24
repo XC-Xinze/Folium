@@ -2,11 +2,11 @@ import { FolderTree, PanelLeftClose, PanelLeftOpen, Settings, Sparkles } from 'l
 import { useUIStore } from '../store/uiStore';
 
 /**
- * Obsidian 风的最左竖向 ribbon：图标导航条。
- *   - 折叠按钮（顶部）
- *   - Vault: sidebar 切回 Indexes/Tags/Cards
- *   - Workspaces: sidebar 切到 workspace 列表
- *   - Settings（底部）
+ * Obsidian-style leftmost vertical ribbon: icon-only navigation strip.
+ *   - Collapse button (top)
+ *   - Vault: sidebar shows Indexes/Tags/Cards
+ *   - Workspaces: sidebar shows workspace list
+ *   - Settings (bottom)
  */
 export function RibbonBar() {
   const tab = useUIStore((s) => s.sidebarTab);
@@ -18,10 +18,10 @@ export function RibbonBar() {
 
   const onTabClick = (t: 'vault' | 'workspaces') => {
     if (collapsed) {
-      // 折叠态点 tab → 展开并切到该 tab
+      // Collapsed: clicking a tab expands and switches to it
       setSidebarTab(t);
     } else if (tab === t) {
-      // 已是当前 tab → 折叠
+      // Already on this tab → collapse
       toggleLeftSidebar();
     } else {
       setSidebarTab(t);
@@ -33,7 +33,7 @@ export function RibbonBar() {
       <IconButton
         icon={collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
         onClick={toggleLeftSidebar}
-        title={collapsed ? '展开侧栏' : '折叠侧栏'}
+        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       />
 
       <div className="w-6 border-t border-gray-300 my-1" />
@@ -42,14 +42,14 @@ export function RibbonBar() {
         icon={<FolderTree size={16} />}
         active={!collapsed && tab === 'vault'}
         onClick={() => onTabClick('vault')}
-        title="Vault（索引/标签/卡片）"
+        title="Vault (indexes / tags / cards)"
       />
 
       <IconButton
         icon={<Sparkles size={16} />}
         active={!collapsed && tab === 'workspaces'}
         onClick={() => onTabClick('workspaces')}
-        title="工作区"
+        title="Workspaces"
       />
 
       <div className="flex-1" />
@@ -58,7 +58,7 @@ export function RibbonBar() {
         icon={<Settings size={16} />}
         active={viewMode === 'settings'}
         onClick={() => setViewMode(viewMode === 'settings' ? 'chain' : 'settings')}
-        title="设置"
+        title="Settings"
       />
     </div>
   );

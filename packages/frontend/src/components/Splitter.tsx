@@ -2,8 +2,8 @@ import { useCallback, type RefObject } from 'react';
 import type { WorkspacePanelPosition } from '../store/uiStore';
 
 /**
- * 主区与 workspace 面板之间的可拖动分隔条。
- * 拖动时实时计算 workspace 占容器的百分比并回调。
+ * Draggable splitter between the main area and the workspace panel.
+ * On drag, computes the workspace's percentage of the container live and calls back.
  */
 export function Splitter({
   position,
@@ -57,7 +57,7 @@ export function Splitter({
       className={`shrink-0 bg-gray-200 hover:bg-accent transition-colors ${
         isHorizontal ? 'w-1 cursor-col-resize' : 'h-1 cursor-row-resize'
       }`}
-      title="拖动调整大小"
+      title="Drag to resize"
     />
   );
 }

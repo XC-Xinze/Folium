@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Image, Paperclip, PenLine } from 'lucide-react';
+import { Image, Paperclip, PenLine, Pencil } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
 import { makeMarkdownInsert, uploadAttachment } from '../lib/uploadAttachment';
 import { api } from '../lib/api';
@@ -32,9 +32,39 @@ function deriveTitle(content: string): string {
   return firstLine
     .replace(/^#+\s*/, '')
     .replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1')
-    .replace(/#[一-龥\w-]+/g, '')
+    // strip #tag tokens (CJK + word chars)
+    .replace(/#[\p{L}\w-]+/gu, '')
     .trim()
     .slice(0, 80);
+}
+
+/**
+ * 推算"父卡片下一个未占用的子卡 id"。
+ *   1a (末尾 alpha) → 1a1, 1a2, 1a3...
+ *   1 (末尾 num)    → 1a, 1b, 1c...
+ *   1a2 (末尾 num)  → 1a2a, 1a2b...
+ */
+function nextChildId(parentId: string, existing: Set<string>): string {
+  if (!parentId) return nextTopLevelId(existing);
+  const lastIsNum = /\d$/.test(parentId);
+  if (lastIsNum) {
+    for (let i = 0; i < 26; i++) {
+      const c = parentId + String.fromCharCode(97 + i);
+      if (!existing.has(c)) return c;
+    }
+    return parentId + 'aa';
+  }
+  for (let i = 1; i < 1000; i++) {
+    const c = parentId + i;
+    if (!existing.has(c)) return c;
+  }
+  return parentId + '1';
+}
+
+function nextTopLevelId(existing: Set<string>): string {
+  let n = 1;
+  while (existing.has(String(n))) n++;
+  return String(n);
 }
 
 export function NewCardBar() {
@@ -49,14 +79,29 @@ export function NewCardBar() {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [editingId, setEditingId] = useState(false);
   const [tagSuggest, setTagSuggest] = useState<{ query: string; pos: number } | null>(null);
   const [tagSuggestIndex, setTagSuggestIndex] = useState(0);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const idInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const tagsQ = useQuery({ queryKey: ['tags'], queryFn: api.listTags });
+  const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
 
-  // tag 自动补全候选
+  // 根据当前焦点和已有卡片推算下一个 id
+  // 焦点存在 → 当作父级，找下一个空的 child；否则给一个新顶层
+  const suggestedId = useMemo(() => {
+    const existing = new Set((cardsQ.data?.cards ?? []).map((c) => c.luhmannId));
+    return focusedId ? nextChildId(focusedId, existing) : nextTopLevelId(existing);
+  }, [cardsQ.data, focusedId]);
+
+  // 用户没手动改过 id 时，让 luhmannId 跟随推算结果
+  useEffect(() => {
+    if (!editingId) setLuhmannId(suggestedId);
+  }, [suggestedId, editingId]);
+
+  // Tag autocomplete candidates
   const tagCandidates = (() => {
     if (!tagSuggest) return [];
     const q = tagSuggest.query.toLowerCase();
@@ -66,7 +111,7 @@ export function NewCardBar() {
       .slice(0, 6);
   })();
 
-  // 监听内容变化，检测是否在输入 #xxx
+  // Watch content changes to detect #xxx being typed
   useEffect(() => {
     const ta = taRef.current;
     if (!ta || !focused) {
@@ -75,8 +120,8 @@ export function NewCardBar() {
     }
     const cursor = ta.selectionStart;
     const before = content.slice(0, cursor);
-    // 找最近的 # 起始位置（要求前面是空白或行首）
-    const m = before.match(/(?:^|\s)#([一-龥\w-]*)$/);
+    // Find the most recent # (must be at line-start or preceded by whitespace)
+    const m = before.match(/(?:^|\s)#([\p{L}\w-]*)$/u);
     if (m && m[1] !== undefined) {
       const queryStart = cursor - m[1].length;
       setTagSuggest({ query: m[1], pos: queryStart });
@@ -109,12 +154,13 @@ export function NewCardBar() {
       qc.invalidateQueries({ queryKey: ['cards'] });
       qc.invalidateQueries({ queryKey: ['hubs'] });
       qc.invalidateQueries({ queryKey: ['tags'] });
-      // 创建 INDEX 卡 → 同时切换 box；ATOMIC → 仅 focus
+      // INDEX cards switch the focused box; ATOMIC only changes the focused card
       if (status === 'INDEX') setBoxAndFocus(newId);
       else setFocus(newId);
       setLuhmannId('');
       setContent('');
       setStatus('ATOMIC');
+      setEditingId(false); // 重新交还给自动推算
     },
   });
 
@@ -212,12 +258,11 @@ export function NewCardBar() {
     }
   };
 
-  const fillFromFocus = () => {
-    if (!focusedId) return;
-    setLuhmannId(focusedId + 'a');
-  };
-
   const canSave = luhmannId.trim() && content.trim() && !mutation.isPending;
+  // 推算依据的人话提示，给底部 id 标签当 tooltip
+  const idHint = focusedId
+    ? `Auto-suggested as a child of ${focusedId}. Click to override.`
+    : 'Auto-suggested as a new top-level card. Click to override.';
 
   return (
     <div className="px-6 pt-5 pb-4">
@@ -234,36 +279,18 @@ export function NewCardBar() {
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
       >
-        {/* 左侧装饰条：紫色窄竖线，给输入框一个视觉锚点 */}
+        {/* Left accent bar */}
         <div className="absolute left-0 top-4 bottom-4 w-[3px] bg-accent rounded-full" />
 
-        {/* 顶部小标签：带图标，告诉用户这是个写作区 */}
+        {/* Header label */}
         <div className="flex items-center justify-between pl-7 pr-5 pt-3.5 pb-1">
           <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-accent/80">
             <PenLine size={11} />
-            <span>新卡片</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* L-Index：右上角，小但可见 */}
-            <input
-              value={luhmannId}
-              onChange={(e) => setLuhmannId(e.target.value)}
-              placeholder="编号"
-              className="w-20 bg-transparent border-0 outline-none text-[11px] font-mono font-bold text-ink placeholder:text-gray-300 text-right focus:bg-white/60 px-1.5 py-0.5 rounded transition-colors"
-            />
-            {focusedId && !luhmannId && (
-              <button
-                onClick={fillFromFocus}
-                className="text-[10px] text-gray-400 hover:text-accent transition-colors"
-                title={`基于焦点 ${focusedId}`}
-              >
-                ↳ {focusedId}a
-              </button>
-            )}
+            <span>New card</span>
           </div>
         </div>
 
-        {/* 主输入区 */}
+        {/* Main editor */}
         <div className="pl-7 pr-5 pb-3 relative">
           <textarea
             ref={taRef}
@@ -273,13 +300,13 @@ export function NewCardBar() {
             onKeyDown={onKeyDown}
             onFocus={() => setFocused(true)}
             onBlur={() => setTimeout(() => setFocused(false), 150)}
-            placeholder="此刻在想什么？"
+            placeholder="What's on your mind?"
             rows={3}
             className="w-full bg-transparent border-0 outline-none resize-none text-[14px] text-ink placeholder:text-gray-300 leading-[1.8]"
-            style={{ fontFamily: '"Source Han Serif SC", "Songti SC", "Noto Serif SC", "Inter", serif' }}
+            style={{ fontFamily: '"Inter", "Source Han Serif SC", "Songti SC", "Noto Serif SC", serif' }}
           />
 
-          {/* tag 自动补全弹层 */}
+          {/* Tag autocomplete popover */}
           {tagSuggest && tagCandidates.length > 0 && (
             <div className="absolute left-7 right-5 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-10">
               <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 px-3 py-1.5 bg-gray-50 border-b border-gray-100">
@@ -297,21 +324,66 @@ export function NewCardBar() {
                   }`}
                 >
                   <span className="font-bold">#{t.name}</span>
-                  <span className="text-[10px] text-gray-400">{t.count} 张</span>
+                  <span className="text-[10px] text-gray-400">{t.count} cards</span>
                 </button>
               ))}
               <div className="text-[9px] text-gray-400 px-3 py-1 bg-gray-50 border-t border-gray-100">
-                ↑↓ 选择 · Tab/Enter 确认 · Esc 关闭
+                ↑↓ navigate · Tab/Enter accept · Esc dismiss
               </div>
             </div>
           )}
         </div>
 
-        {/* 底部工具条：细线分隔，纸面色加深一点 */}
+        {/* Bottom toolbar */}
         <div className="border-t border-paperEdge px-4 py-2 flex items-center gap-1 bg-gradient-to-b from-transparent to-paperEdge/10 rounded-b-2xl">
-          {/* 提示语：极弱 */}
-          <span className="text-[10px] text-gray-400 ml-2 hidden sm:inline">
-            #标签 · [[1a]] · 拖拽图片
+          {/* "Save as: 1aa" 标签——明示自动推算的 id，点击可手改 */}
+          {editingId ? (
+            <input
+              ref={idInputRef}
+              value={luhmannId}
+              onChange={(e) => setLuhmannId(e.target.value)}
+              onBlur={() => {
+                if (!luhmannId.trim()) {
+                  setLuhmannId(suggestedId);
+                  setEditingId(false);
+                } else if (luhmannId === suggestedId) {
+                  setEditingId(false);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === 'Escape') {
+                  e.preventDefault();
+                  if (e.key === 'Escape') {
+                    setLuhmannId(suggestedId);
+                    setEditingId(false);
+                  } else {
+                    (e.currentTarget as HTMLInputElement).blur();
+                  }
+                }
+              }}
+              autoFocus
+              className="w-24 ml-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-white border border-accent/40 text-ink outline-none"
+              title={idHint}
+            />
+          ) : (
+            <button
+              onClick={() => {
+                setEditingId(true);
+                requestAnimationFrame(() => {
+                  idInputRef.current?.select();
+                });
+              }}
+              className="ml-1 flex items-center gap-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 hover:bg-accentSoft hover:text-accent transition-colors"
+              title={idHint}
+            >
+              <span className="text-gray-400 font-sans uppercase tracking-widest text-[8px]">id</span>
+              <span>{luhmannId || suggestedId}</span>
+              <Pencil size={9} className="opacity-50" />
+            </button>
+          )}
+
+          <span className="text-[10px] text-gray-400 ml-2 hidden md:inline">
+            #tag · [[1a]] · drop image
           </span>
 
           <div className="flex-1" />
@@ -335,7 +407,7 @@ export function NewCardBar() {
             ))}
           </div>
 
-          {/* 附件 */}
+          {/* Attachments */}
           <input
             ref={fileInputRef}
             type="file"
@@ -350,26 +422,26 @@ export function NewCardBar() {
           <button
             onClick={() => fileInputRef.current?.click()}
             className="p-1.5 rounded-md text-gray-400 hover:text-accent hover:bg-accentSoft transition-colors"
-            title="插入图片"
+            title="Insert image"
           >
             <Image size={14} />
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
             className="p-1.5 rounded-md text-gray-400 hover:text-accent hover:bg-accentSoft transition-colors"
-            title="插入附件"
+            title="Insert attachment"
           >
             <Paperclip size={14} />
           </button>
 
-          {uploading && <span className="text-[10px] text-gray-400 italic ml-1">上传中…</span>}
+          {uploading && <span className="text-[10px] text-gray-400 italic ml-1">Uploading…</span>}
           {mutation.isError && (
             <span className="text-[10px] text-red-500/80 ml-1 max-w-[180px] truncate">
               {(mutation.error as Error).message}
             </span>
           )}
 
-          {/* 保存按钮：紫色胶囊 */}
+          {/* Save button */}
           <button
             onClick={submit}
             disabled={!canSave}
@@ -379,7 +451,7 @@ export function NewCardBar() {
                 : 'bg-gray-100 text-gray-400 cursor-not-allowed'
             }`}
           >
-            {mutation.isPending ? '记录中' : '记录'}
+            {mutation.isPending ? 'Saving…' : 'Save'}
             <kbd className="text-[8px] opacity-70 font-mono">⌘↵</kbd>
           </button>
         </div>
@@ -387,7 +459,7 @@ export function NewCardBar() {
         {dragOver && (
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center rounded-2xl">
             <div className="text-accent font-bold text-sm bg-white/80 px-4 py-2 rounded-full shadow-lg">
-              松手插入附件
+              Drop to attach
             </div>
           </div>
         )}

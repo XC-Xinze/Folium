@@ -39,7 +39,7 @@ export function WorkspaceNoteNode({ data }: NodeProps) {
           d.onDelete();
         }}
         className="absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full bg-red-500 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-all"
-        title="删除便签"
+        title="Delete note"
       >
         <Trash2 size={11} />
       </button>
@@ -57,7 +57,7 @@ export function WorkspaceNoteNode({ data }: NodeProps) {
             }
           }}
           className="w-full h-full min-h-[120px] bg-transparent border-0 outline-none p-3 text-[12px] font-mono resize-none nodrag"
-          placeholder="支持 markdown…"
+          placeholder="Markdown supported…"
         />
       ) : (
         <div
@@ -70,7 +70,7 @@ export function WorkspaceNoteNode({ data }: NodeProps) {
           dangerouslySetInnerHTML={{
             __html: d.content
               ? renderMarkdown(d.content)
-              : '<span class="text-gray-400 italic text-[11px]">双击编辑…</span>',
+              : '<span class="text-gray-400 italic text-[11px]">Double-click to edit…</span>',
           }}
         />
       )}

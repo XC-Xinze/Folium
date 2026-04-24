@@ -47,6 +47,9 @@ export interface WorkspaceEdge {
   id: string;
   source: string; // workspace-local node id
   target: string;
+  /** 端点 handle id（如 'top', 'bottom', 'left-out'）— 不指定时 React Flow 渲染会含糊 */
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
   label?: string;
   /** 是否已写回 vault 形成真正的 [[link]] */
   applied?: boolean;
@@ -142,18 +145,129 @@ export async function deleteWorkspace(id: string): Promise<void> {
   await flush(map);
 }
 
+/**
+ * Delete a workspace edge. If it was applied (i.e. wrote a [[link]] into a vault
+ * .md file), unapply first to clean up the source card before removing the edge.
+ */
+export async function deleteEdge(
+  repo: CardRepository,
+  workspaceId: string,
+  edgeId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const ws = await getWorkspace(workspaceId);
+  if (!ws) return { error: 'workspace not found' };
+  const edge = ws.edges.find((e) => e.id === edgeId);
+  if (!edge) return { error: 'edge not found' };
+  if (edge.applied) {
+    const unres = await unapplyEdge(repo, workspaceId, edgeId);
+    if ('error' in unres) return unres;
+  }
+  // Re-load (unapply may have mutated state)
+  const fresh = await getWorkspace(workspaceId);
+  if (!fresh) return { error: 'workspace not found' };
+  const remaining = fresh.edges.filter((e) => e.id !== edgeId);
+  await updateWorkspace(workspaceId, { edges: remaining });
+  return { ok: true };
+}
+
+/* ============================================================
+ * Workspace-link discovery (for vault canvas overlay)
+ * ============================================================ */
+
+export interface WorkspaceLinkEndpoint {
+  kind: 'card' | 'temp';
+  /** When kind='card': vault luhmannId. When kind='temp': workspace-local node id. */
+  id: string;
+  /** Temp-only fields */
+  title?: string;
+  content?: string;
+}
+
+export interface WorkspaceLink {
+  workspaceId: string;
+  workspaceName: string;
+  edgeId: string;
+  source: WorkspaceLinkEndpoint;
+  target: WorkspaceLinkEndpoint;
+}
+
+/**
+ * Find all workspace edges that touch any of the given vault cards (by luhmannId).
+ * Used by the vault canvas to overlay workspace-derived links/temps as "potential"-style nodes.
+ *
+ * Excludes:
+ *   - edges involving notes
+ *   - temp ↔ temp edges (those stay workspace-only per the user's spec)
+ */
+export async function listWorkspaceLinksFor(cardIds: string[]): Promise<WorkspaceLink[]> {
+  const all = await loadAll();
+  const cardSet = new Set(cardIds);
+  const result: WorkspaceLink[] = [];
+  for (const ws of Object.values(all)) {
+    const nodeById = new Map(ws.nodes.map((n) => [n.id, n] as const));
+    for (const edge of ws.edges) {
+      const src = nodeById.get(edge.source);
+      const tgt = nodeById.get(edge.target);
+      if (!src || !tgt) continue;
+      if (src.kind === 'note' || tgt.kind === 'note') continue;
+      if (src.kind === 'temp' && tgt.kind === 'temp') continue;
+
+      const srcIsRelevantCard = src.kind === 'card' && cardSet.has((src as CardRefNode).cardId);
+      const tgtIsRelevantCard = tgt.kind === 'card' && cardSet.has((tgt as CardRefNode).cardId);
+      if (!srcIsRelevantCard && !tgtIsRelevantCard) continue;
+
+      const toEndpoint = (n: WorkspaceNode): WorkspaceLinkEndpoint =>
+        n.kind === 'card'
+          ? { kind: 'card', id: (n as CardRefNode).cardId }
+          : {
+              kind: 'temp',
+              id: n.id,
+              title: (n as TempCardNode).title,
+              content: (n as TempCardNode).content,
+            };
+
+      result.push({
+        workspaceId: ws.id,
+        workspaceName: ws.name,
+        edgeId: edge.id,
+        source: toEndpoint(src),
+        target: toEndpoint(tgt),
+      });
+    }
+  }
+  return result;
+}
+
 /* ============================================================
  * Apply / Unapply edge to vault
  * ============================================================ */
 
 import { CardRepository } from '../vault/repository.js';
+import { parseCardFile } from '../vault/parser.js';
 
 /**
- * Apply 把工作区里的一条边写回 vault。
- *   - source 必须是真实 vault 卡（要写它的 .md 文件）
- *   - target 是 vault 卡 → 标准 [[link]]
- *   - target 是 temp 卡 → 写"来自工作区 X"占位文本，标记 pending；temp 提升后会被自动替换为真 [[link]]
- *   - target/source 是 note → 拒绝
+ * Re-parse and upsert a card right after we wrote its .md file.
+ * The chokidar watcher debounces ~200ms before re-indexing, but the frontend
+ * refetches immediately on apply success — so we need to refresh the in-memory
+ * repo synchronously, otherwise the next `getCard` returns stale data.
+ */
+async function reindexFile(repo: CardRepository, filePath: string): Promise<void> {
+  try {
+    const card = await parseCardFile(filePath);
+    if (card) repo.upsertOne(card);
+  } catch (err) {
+    console.error('[applyEdge] reindex failed', filePath, err);
+  }
+}
+
+/**
+ * Apply commits a workspace edge into the vault as a real [[link]].
+ *
+ * Only meaningful for card↔card edges (both endpoints are real vault cards).
+ * Edges involving a temp card or a note can't be committed by the user — they're
+ * workspace-only sketches. When a temp card is promoted to a real vault card via
+ * tempToVault, every workspace edge involving it is auto-materialized at that
+ * moment (no manual Apply needed).
  */
 export async function applyEdge(
   repo: CardRepository,
@@ -168,56 +282,36 @@ export async function applyEdge(
   const source = ws.nodes.find((n) => n.id === edge.source);
   const target = ws.nodes.find((n) => n.id === edge.target);
   if (!source || !target) return { error: 'edge endpoints not found' };
-  if (source.kind === 'note' || target.kind === 'note') {
-    return { error: '便签不能参与 apply（它们仅在工作区内存在）' };
+  if (source.kind !== 'card' || target.kind !== 'card') {
+    return {
+      error:
+        'Apply only commits links between two real vault cards. Edges involving a temp card or a note will materialize automatically when the temp is promoted.',
+    };
   }
-  if (source.kind !== 'card') {
-    return { error: 'source 必须是真实卡片才能 apply（先把临时卡提升）' };
-  }
-  if (edge.applied) return { error: '此边已经 apply 过了' };
+  if (edge.applied) return { error: 'This edge has already been applied' };
 
   const sourceCard = repo.getById((source as CardRefNode).cardId);
   if (!sourceCard) return { error: 'source card not found in vault' };
+  const targetCard = repo.getById((target as CardRefNode).cardId);
+  if (!targetCard) return { error: 'target card not found in vault' };
+  const marker = `<!-- ws:${workspaceId}:${edgeId} --> [[${targetCard.luhmannId}]]`;
 
-  const markerPrefix = `<!-- ws:${workspaceId}:${edgeId}`;
-  let marker: string;
-  let pendingTempIds: string[] | undefined;
-
-  if (target.kind === 'card') {
-    const targetCard = repo.getById((target as CardRefNode).cardId);
-    if (!targetCard) return { error: 'target card not found in vault' };
-    marker = `${markerPrefix} --> [[${targetCard.luhmannId}]]`;
-
-    // 加到 frontmatter.crossLinks
-    const raw = await readFile(sourceCard.filePath, 'utf8');
-    const parsed = matter(raw);
-    const body = parsed.content.endsWith('\n')
-      ? parsed.content + marker + '\n'
-      : parsed.content + '\n\n' + marker + '\n';
-    if (!Array.isArray(parsed.data.crossLinks)) parsed.data.crossLinks = [];
-    if (!parsed.data.crossLinks.includes(targetCard.luhmannId)) {
-      parsed.data.crossLinks.push(targetCard.luhmannId);
-    }
-    await writeFile(sourceCard.filePath, matter.stringify(body, parsed.data), 'utf8');
-  } else {
-    // target 是 temp：写占位文本，等 temp 提升后自动转真链接
-    const tempNode = target as TempCardNode;
-    const titleHint = tempNode.title || '(未命名临时卡)';
-    marker = `${markerPrefix} pending:${tempNode.id} --> 🔗 来自工作区《${ws.name}》: "${titleHint}"`;
-    pendingTempIds = [tempNode.id];
-
-    const raw = await readFile(sourceCard.filePath, 'utf8');
-    const parsed = matter(raw);
-    const body = parsed.content.endsWith('\n')
-      ? parsed.content + marker + '\n'
-      : parsed.content + '\n\n' + marker + '\n';
-    await writeFile(sourceCard.filePath, matter.stringify(body, parsed.data), 'utf8');
+  const raw = await readFile(sourceCard.filePath, 'utf8');
+  const parsed = matter(raw);
+  const body = parsed.content.endsWith('\n')
+    ? parsed.content + marker + '\n'
+    : parsed.content + '\n\n' + marker + '\n';
+  if (!Array.isArray(parsed.data.crossLinks)) parsed.data.crossLinks = [];
+  if (!parsed.data.crossLinks.includes(targetCard.luhmannId)) {
+    parsed.data.crossLinks.push(targetCard.luhmannId);
   }
+  await writeFile(sourceCard.filePath, matter.stringify(body, parsed.data), 'utf8');
+  await reindexFile(repo, sourceCard.filePath);
 
   edge.applied = true;
   edge.appliedToFile = sourceCard.filePath;
   edge.appliedMarker = marker;
-  if (pendingTempIds) edge.pendingTempIds = pendingTempIds;
+
   await updateWorkspace(workspaceId, { edges: ws.edges });
   return { ok: true };
 }
@@ -231,50 +325,58 @@ export async function unapplyEdge(
   if (!ws) return { error: 'workspace not found' };
   const edge = ws.edges.find((e) => e.id === edgeId);
   if (!edge) return { error: 'edge not found' };
-  if (!edge.applied || !edge.appliedToFile) {
-    return { error: '此边未 apply' };
+  if (!edge.applied) {
+    return { error: 'This edge has not been applied' };
   }
 
-  const raw = await readFile(edge.appliedToFile, 'utf8');
-  const parsed = matter(raw);
-  // 按 ws:wsId:edgeId 这个稳定前缀匹配（不论 marker 后面是 [[link]] 还是占位文本）
-  const stableMarker = `<!-- ws:${workspaceId}:${edgeId}`;
-  const lines = parsed.content.split('\n');
-  const newLines = lines.filter((line) => !line.includes(stableMarker));
-  const newBody = newLines.join('\n');
+  // If a vault file was written (real-card target), undo it.
+  // Deferred temp-target applies didn't touch the vault, so nothing to do there.
+  if (edge.appliedToFile) {
+    const raw = await readFile(edge.appliedToFile, 'utf8');
+    const parsed = matter(raw);
+    // Match by the stable `<!-- ws:wsId:edgeId` prefix (regardless of marker tail)
+    const stableMarker = `<!-- ws:${workspaceId}:${edgeId}`;
+    const lines = parsed.content.split('\n');
+    const newLines = lines.filter((line) => !line.includes(stableMarker));
+    const newBody = newLines.join('\n');
 
-  // 如果 target 已经是真卡，检查是否还有其他对它的引用，没有就清 frontmatter
-  const target = ws.nodes.find((n) => n.id === edge.target);
-  if (target && target.kind === 'card') {
-    const targetCardId = (target as CardRefNode).cardId;
-    const escaped = targetCardId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const stillReferenced = new RegExp(
-      `\\[\\[\\s*${escaped}\\s*(\\|[^\\]]+)?\\s*\\]\\]`,
-    ).test(newBody);
-    if (!stillReferenced && Array.isArray(parsed.data.crossLinks)) {
-      parsed.data.crossLinks = parsed.data.crossLinks.filter(
-        (x: unknown) => String(x) !== targetCardId,
-      );
+    // Drop the target id from frontmatter.crossLinks if no other [[link]] references it
+    const target = ws.nodes.find((n) => n.id === edge.target);
+    if (target && target.kind === 'card') {
+      const targetCardId = (target as CardRefNode).cardId;
+      const escaped = targetCardId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const stillReferenced = new RegExp(
+        `\\[\\[\\s*${escaped}\\s*(\\|[^\\]]+)?\\s*\\]\\]`,
+      ).test(newBody);
+      if (!stillReferenced && Array.isArray(parsed.data.crossLinks)) {
+        parsed.data.crossLinks = parsed.data.crossLinks.filter(
+          (x: unknown) => String(x) !== targetCardId,
+        );
+      }
     }
+    await writeFile(edge.appliedToFile, matter.stringify(newBody, parsed.data), 'utf8');
+    await reindexFile(repo, edge.appliedToFile);
   }
-  await writeFile(edge.appliedToFile, matter.stringify(newBody, parsed.data), 'utf8');
 
   edge.applied = false;
   delete edge.appliedToFile;
   delete edge.appliedMarker;
   delete edge.pendingTempIds;
   await updateWorkspace(workspaceId, { edges: ws.edges });
-  void repo;
   return { ok: true };
 }
 
-/** 列出所有 workspace 中等待某 temp 节点提升的边 */
-async function findEdgesPendingTemp(tempNodeId: string): Promise<Array<{ ws: Workspace; edge: WorkspaceEdge }>> {
+/**
+ * List every workspace edge that touches a given workspace node id.
+ * Used by tempToVault to auto-materialize all edges involving a temp that's
+ * being promoted (not just edges previously marked as applied).
+ */
+async function findEdgesTouching(nodeId: string): Promise<Array<{ ws: Workspace; edge: WorkspaceEdge }>> {
   const all = await loadAll();
   const result: Array<{ ws: Workspace; edge: WorkspaceEdge }> = [];
   for (const ws of Object.values(all)) {
     for (const e of ws.edges) {
-      if (e.applied && e.pendingTempIds?.includes(tempNodeId)) {
+      if (e.source === nodeId || e.target === nodeId) {
         result.push({ ws, edge: e });
       }
     }
@@ -283,13 +385,18 @@ async function findEdgesPendingTemp(tempNodeId: string): Promise<Array<{ ws: Wor
 }
 
 /**
- * 把临时卡片"提升"为 vault 真实卡片：
- *   1. 校验 luhmannId 不存在
- *   2. 写 .md 文件
- *   3. 把 workspace 节点从 temp 转换为 card 引用
- *   4. 任何指向这个 temp 节点的 edge 仍然有效（节点 id 不变，只是 kind 变了）
+ * Promote a temp card to a real vault card:
+ *   1. Validate the luhmannId is free
+ *   2. Write the .md file
+ *   3. Replace the temp workspace node with a card-ref to the new vault card
+ *   4. Auto-materialize every workspace edge that touches this node and whose
+ *      other end is also a real vault card. The user's drawn direction is
+ *      preserved (source.md gets `[[target]]`).
+ *   5. Edges to other still-temp nodes are left in place — they'll materialize
+ *      when those temps are promoted later.
  */
 export async function tempToVault(
+  repo: CardRepository,
   workspaceId: string,
   nodeId: string,
   luhmannId: string,
@@ -297,25 +404,28 @@ export async function tempToVault(
   const ws = await getWorkspace(workspaceId);
   if (!ws) return { error: 'workspace not found' };
   const node = ws.nodes.find((n) => n.id === nodeId);
-  if (!node || node.kind !== 'temp') return { error: '不是 temp 卡' };
+  if (!node || node.kind !== 'temp') return { error: 'not a temp card' };
 
   const tempNode = node as TempCardNode;
 
-  // 用 writer 创建 vault 卡片
+  // Create the vault card via the writer
   const { writeNewCard } = await import('../vault/writer.js');
+  let createdFile: string;
   try {
-    await writeNewCard({
+    const result = await writeNewCard({
       luhmannId,
       title: tempNode.title,
       content: tempNode.content,
       status: 'ATOMIC',
     });
+    createdFile = result.filePath;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { error: msg };
   }
+  await reindexFile(repo, createdFile);
 
-  // 替换节点：temp → card ref
+  // Replace node: temp → card ref
   const idx = ws.nodes.findIndex((n) => n.id === nodeId);
   ws.nodes[idx] = {
     kind: 'card',
@@ -326,33 +436,57 @@ export async function tempToVault(
   };
   await updateWorkspace(workspaceId, { nodes: ws.nodes });
 
-  // 关键：resolve 所有指向这个 temp 的 pending edges
-  const pending = await findEdgesPendingTemp(tempNode.id);
-  for (const { ws: pws, edge } of pending) {
-    if (!edge.appliedToFile) continue;
+  // Auto-materialize every workspace edge touching this temp where the other
+  // end is a real vault card. Note: ws.nodes for *this* workspace was already
+  // mutated above (temp → card), so the lookup below sees both ends as cards.
+  const touching = await findEdgesTouching(tempNode.id);
+  for (const { ws: pws, edge } of touching) {
     try {
-      const raw = await readFile(edge.appliedToFile, 'utf8');
+      // Re-find the nodes with the freshest workspace data (might be `ws` itself)
+      const wsNow = pws.id === workspaceId ? ws : pws;
+      const sourceNode = wsNow.nodes.find((n) => n.id === edge.source);
+      const targetNode = wsNow.nodes.find((n) => n.id === edge.target);
+      if (!sourceNode || !targetNode) continue;
+      // Skip if either end is still a temp/note (will resolve on later promotion)
+      if (sourceNode.kind !== 'card' || targetNode.kind !== 'card') continue;
+
+      const sourceCardId = (sourceNode as CardRefNode).cardId;
+      const targetCardId = (targetNode as CardRefNode).cardId;
+      const sourceCard = repo.getById(sourceCardId);
+      if (!sourceCard) continue;
+
+      // Old-style edges from a previous refactor may already have a placeholder
+      // marker in source.md — replace it. Otherwise append a fresh marker.
+      const stableMarker = `<!-- ws:${wsNow.id}:${edge.id}`;
+      const newMarker = `<!-- ws:${wsNow.id}:${edge.id} --> [[${targetCardId}]]`;
+      const raw = await readFile(sourceCard.filePath, 'utf8');
       const parsed = matter(raw);
-      const stableMarker = `<!-- ws:${pws.id}:${edge.id}`;
-      const newMarker = `<!-- ws:${pws.id}:${edge.id} --> [[${luhmannId}]]`;
-      const lines = parsed.content.split('\n');
-      const newLines = lines.map((line) => (line.includes(stableMarker) ? newMarker : line));
-      const newBody = newLines.join('\n');
-
-      // 加 luhmannId 到 frontmatter.crossLinks
-      if (!Array.isArray(parsed.data.crossLinks)) parsed.data.crossLinks = [];
-      if (!parsed.data.crossLinks.includes(luhmannId)) {
-        parsed.data.crossLinks.push(luhmannId);
+      const hasOldMarker = parsed.content.split('\n').some((l) => l.includes(stableMarker));
+      let newBody: string;
+      if (hasOldMarker) {
+        newBody = parsed.content
+          .split('\n')
+          .map((l) => (l.includes(stableMarker) ? newMarker : l))
+          .join('\n');
+      } else {
+        newBody = parsed.content.endsWith('\n')
+          ? parsed.content + newMarker + '\n'
+          : parsed.content + '\n\n' + newMarker + '\n';
       }
-      await writeFile(edge.appliedToFile, matter.stringify(newBody, parsed.data), 'utf8');
+      if (!Array.isArray(parsed.data.crossLinks)) parsed.data.crossLinks = [];
+      if (!parsed.data.crossLinks.includes(targetCardId)) {
+        parsed.data.crossLinks.push(targetCardId);
+      }
+      await writeFile(sourceCard.filePath, matter.stringify(newBody, parsed.data), 'utf8');
+      await reindexFile(repo, sourceCard.filePath);
 
-      // 更新 edge：清掉 pending，更新 marker
+      edge.applied = true;
+      edge.appliedToFile = sourceCard.filePath;
       edge.appliedMarker = newMarker;
-      edge.pendingTempIds = (edge.pendingTempIds ?? []).filter((id) => id !== tempNode.id);
-      if (edge.pendingTempIds.length === 0) delete edge.pendingTempIds;
-      await updateWorkspace(pws.id, { edges: pws.edges });
+      delete edge.pendingTempIds;
+      await updateWorkspace(wsNow.id, { edges: wsNow.edges });
     } catch (err) {
-      console.error('failed to resolve pending edge', edge.id, err);
+      console.error('failed to materialize edge', edge.id, err);
     }
   }
 

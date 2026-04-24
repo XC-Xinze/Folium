@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * 双击进入编辑、Enter/blur 保存、Esc 取消的就地重命名组件。
+ * Inline rename: double-click to edit, Enter/blur to save, Esc to cancel.
  */
 export function RenamableName({
   value,
@@ -62,7 +62,7 @@ export function RenamableName({
         setEditing(true);
       }}
       className={`cursor-text ${className}`}
-      title="双击重命名"
+      title="Double-click to rename"
     >
       {value}
     </span>

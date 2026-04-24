@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  BaseEdge,
   Background,
   Controls,
   Handle,
@@ -8,11 +7,8 @@ import {
   Position,
   ReactFlow,
   ReactFlowProvider,
-  useStore,
   useViewport,
   type Edge,
-  type EdgeProps,
-  type InternalNode,
   type Node,
 } from '@xyflow/react';
 import {
@@ -201,55 +197,7 @@ function makeSimulation(simNodes: SimNode[], links: SimLink[]): Simulation<SimNo
   return sim as unknown as Simulation<SimNode, SimLink>;
 }
 
-/** 计算从节点中心到目标方向的"出口点"——线 center→other 与节点矩形的交点 */
-function getNodeIntersection(
-  node: InternalNode,
-  otherCx: number,
-  otherCy: number,
-): { x: number; y: number } {
-  const w = node.measured?.width ?? (node as { width?: number }).width ?? NODE_W;
-  const h = node.measured?.height ?? (node as { height?: number }).height ?? NODE_H;
-  const cx = (node.internals?.positionAbsolute?.x ?? node.position.x) + w / 2;
-  const cy = (node.internals?.positionAbsolute?.y ?? node.position.y) + h / 2;
-  const dx = otherCx - cx;
-  const dy = otherCy - cy;
-  if (dx === 0 && dy === 0) return { x: cx, y: cy };
-  const w2 = w / 2;
-  const h2 = h / 2;
-  // 比较 |dx|/w2 与 |dy|/h2 哪个先撞到边
-  if (Math.abs(dx) * h2 > Math.abs(dy) * w2) {
-    // 先撞到左/右边
-    return { x: cx + Math.sign(dx) * w2, y: cy + (dy * w2) / Math.abs(dx) };
-  }
-  // 先撞到上/下边
-  return { x: cx + (dx * h2) / Math.abs(dy), y: cy + Math.sign(dy) * h2 };
-}
-
-/** 浮动边：source/target 不绑特定 handle，用节点中心连线与边界的交点作为端点。
- *  视觉上像 Obsidian 的 graph：线从节点边缘"四面八方"射出。 */
-function FloatingEdge({ id, source, target, style }: EdgeProps) {
-  const sourceNode = useStore(
-    useCallback((s: { nodeLookup: Map<string, InternalNode> }) => s.nodeLookup.get(source), [source]),
-  );
-  const targetNode = useStore(
-    useCallback((s: { nodeLookup: Map<string, InternalNode> }) => s.nodeLookup.get(target), [target]),
-  );
-  if (!sourceNode || !targetNode) return null;
-  const sw = sourceNode.measured?.width ?? NODE_W;
-  const sh = sourceNode.measured?.height ?? NODE_H;
-  const tw = targetNode.measured?.width ?? NODE_W;
-  const th = targetNode.measured?.height ?? NODE_H;
-  const sCx = (sourceNode.internals?.positionAbsolute?.x ?? sourceNode.position.x) + sw / 2;
-  const sCy = (sourceNode.internals?.positionAbsolute?.y ?? sourceNode.position.y) + sh / 2;
-  const tCx = (targetNode.internals?.positionAbsolute?.x ?? targetNode.position.x) + tw / 2;
-  const tCy = (targetNode.internals?.positionAbsolute?.y ?? targetNode.position.y) + th / 2;
-  const sPt = getNodeIntersection(sourceNode, tCx, tCy);
-  const tPt = getNodeIntersection(targetNode, sCx, sCy);
-  return <BaseEdge id={id} path={`M ${sPt.x},${sPt.y} L ${tPt.x},${tPt.y}`} style={style} />;
-}
-
 const nodeTypes = { graphNode: GraphNode };
-const edgeTypes = { floating: FloatingEdge };
 
 interface EdgeToggles {
   hierarchy: boolean;
@@ -376,7 +324,7 @@ function GraphInner() {
           id: `${l.kind}:${l.source}->${l.target}`,
           source: l.source,
           target: l.target,
-          type: 'floating',
+          type: 'default',
           style: {
             stroke: baseColor,
             strokeWidth,
@@ -407,7 +355,6 @@ function GraphInner() {
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
         onNodeClick={(e, node) => {
           e.stopPropagation();
           setSelectedId((cur) => (cur === node.id ? null : node.id));
@@ -496,25 +443,15 @@ function EdgeToggle({
   );
 }
 
-/** 隐形 handles —— 节点中心一个，配合 'straight' edge type 让边像 Obsidian 那样
- *  从节点四面八方"指向"另一节点的中心方向 —— 不再都从 top 发出 */
+/** 隐形 handles —— top + bottom，给 React Flow default 边类型作 anchor */
 function Anchors() {
-  const handleStyle = {
-    opacity: 0,
-    pointerEvents: 'none' as const,
-    width: 1,
-    height: 1,
-    minWidth: 0,
-    minHeight: 0,
-    border: 0,
-    background: 'transparent',
-  };
-  // 同一个 position（Top）但 source 和 target —— React Flow 用直线连接两个 Top
-  // 改用 4 方向的 handles，并通过 edge type='straight' 让 React Flow 自己选最近的
+  const s = { opacity: 0, pointerEvents: 'none' as const };
   return (
     <>
-      <Handle type="source" position={Position.Top} id="s" style={{ ...handleStyle, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
-      <Handle type="target" position={Position.Top} id="t" style={{ ...handleStyle, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+      <Handle type="source" position={Position.Top} id="t" style={s} />
+      <Handle type="target" position={Position.Top} id="t-in" style={s} />
+      <Handle type="source" position={Position.Bottom} id="b" style={s} />
+      <Handle type="target" position={Position.Bottom} id="b-in" style={s} />
     </>
   );
 }

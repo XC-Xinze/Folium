@@ -314,7 +314,50 @@ const [h, setH] = useState(savedH);
 
 ---
 
-### 4.4 React Flow 的 onConnect 默认丢失 handle 信息
+### 4.4 多 React Flow 实例的 SVG ID 冲突
+
+**症状**：在 workspace 里 zoom，主画布的背景点也跟着缩放/平移。
+
+**根因**：每个 `<Background>` 组件渲染一个 `<pattern id="...">` 定义。如果不显式传 id，多个实例共享默认 id → 浏览器解析 `url(#patternId)` 时找的是文档里第一个匹配的 → 所有 backgrounds 渲染同一个 pattern → transform 串了。
+
+**修法**：
+
+```tsx
+<Background id={`vault-bg-${focusedBoxId}`} ... />
+<Background id={`ws-bg-${workspaceId}`} ... />
+<Background id={`tag-bg-${tag}`} ... />
+```
+
+**问自己**：同一页面多个相同库实例时，库内部的 SVG / CSS-in-JS / portal target 是不是依赖全局 id？要么显式 id，要么作用域隔离。
+
+### 4.5 React Flow 的 onPaneDoubleClick 没用 closest 判断
+
+**症状**：workspace 上"双击空白处加便签"——双击没反应。
+
+**根因**：
+
+```ts
+if (!target.classList.contains('react-flow__pane')) return;
+```
+
+但实际双击的 target 经常是 pane 内部的 `react-flow__viewport` 或者更深层的 div，不是 pane 自身。
+
+**修法**：用"排除法" + closest：
+
+```ts
+if (
+  target.closest('.react-flow__node') ||
+  target.closest('.react-flow__edge') ||
+  target.closest('button') || ...
+) return;
+// 不在这些里面 → 是空白处
+```
+
+而且坐标转换要用 `useReactFlow().screenToFlowPosition`，不能用 `clientX - rect.left`，否则 zoom/pan 之后位置错。
+
+**问自己**：判断"是否点在某个区域"用的是 `===` 还是 `closest`？前者只匹配元素自己，后者匹配整棵子树。绝大多数场景应该用 closest。
+
+### 4.6 React Flow 的 onConnect 默认丢失 handle 信息
 
 **症状**：用户在 workspace 拖一条边，连出来后视觉位置不对、有时甚至看不见。
 

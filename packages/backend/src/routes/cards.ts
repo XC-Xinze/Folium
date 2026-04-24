@@ -7,6 +7,7 @@ import { buildIndexTree } from '../services/indexes.js';
 import { demoteCard, promoteCard } from '../services/promote.js';
 import { deleteVaultCard } from '../services/deleteCard.js';
 import { runSearchReplace } from '../services/searchReplace.js';
+import { findDiscoveryClusters } from '../services/discoveries.js';
 import { parseCardFile } from '../vault/parser.js';
 import { updateCardFile, writeNewCard } from '../vault/writer.js';
 import { deleteTag, renameTag } from '../services/renameTag.js';
@@ -148,6 +149,11 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
       const msg = err instanceof Error ? err.message : String(err);
       return reply.code(400).send({ error: 'search_replace_failed', message: msg });
     }
+  });
+
+  /** Discovery：找还没被 INDEX 收的"看起来是同一类"的卡簇 */
+  app.get('/discoveries', async () => {
+    return { clusters: findDiscoveryClusters(db, repo) };
   });
 
   app.get('/tags', async () => {

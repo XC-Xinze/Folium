@@ -149,6 +149,13 @@ export const api = {
   listIndexes: () => get<{ tree: IndexNode[] }>(`/indexes`),
   getTagRelated: (id: string) =>
     get<{ related: TagRelated[] }>(`/cards/${encodeURIComponent(id)}/tag-related`),
+  getDiscoveries: () =>
+    get<{
+      clusters: Array<{
+        cards: Array<{ luhmannId: string; title: string }>;
+        hintTags: string[];
+      }>;
+    }>(`/discoveries`),
   getTagSuggestions: (id: string) =>
     get<{ suggestions: Array<{ name: string; score: number }> }>(
       `/cards/${encodeURIComponent(id)}/tag-suggestions`,

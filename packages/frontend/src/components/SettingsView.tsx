@@ -7,6 +7,7 @@ import { HotkeysPanel } from './HotkeysPanel';
 import { TrashPanel } from './TrashPanel';
 import { SearchReplacePanel } from './SearchReplacePanel';
 import { ExportPanel } from './ExportPanel';
+import { DiscoveriesPanel } from './DiscoveriesPanel';
 
 export function SettingsView() {
   // 在 modal 模式下，"返回"只需要关弹窗；其他场景由模态外层处理
@@ -61,6 +62,10 @@ export function SettingsView() {
 
       <Section title="Hotkeys">
         <HotkeysPanel />
+      </Section>
+
+      <Section title="Discoveries">
+        <DiscoveriesPanel />
       </Section>
 
       <Section title="Search & Replace">

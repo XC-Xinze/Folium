@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '../lib/api';
 import { dialog } from '../lib/dialog';
-import { useUIStore } from '../store/uiStore';
+import { usePaneStore } from '../store/paneStore';
 import { RenamableName } from './RenamableName';
 
 /**
@@ -13,8 +13,7 @@ import { RenamableName } from './RenamableName';
  *   - hover → delete button
  */
 export function WorkspacesSidebar() {
-  const focusedWorkspaceId = useUIStore((s) => s.focusedWorkspaceId);
-  const setFocusWorkspace = useUIStore((s) => s.setFocusWorkspace);
+  const openTab = usePaneStore((s) => s.openTab);
   const qc = useQueryClient();
 
   const wsQ = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces });
@@ -23,15 +22,14 @@ export function WorkspacesSidebar() {
     mutationFn: (name: string) => api.createWorkspace(name),
     onSuccess: (ws) => {
       qc.invalidateQueries({ queryKey: ['workspaces'] });
-      setFocusWorkspace(ws.id);
+      openTab({ kind: 'workspace', title: ws.name, workspaceId: ws.id });
     },
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.deleteWorkspace(id),
-    onSuccess: (_data, id) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['workspaces'] });
-      if (focusedWorkspaceId === id) setFocusWorkspace(null);
     },
   });
 
@@ -76,12 +74,13 @@ export function WorkspacesSidebar() {
           {(wsQ.data?.workspaces ?? []).map((ws) => (
             <div
               key={ws.id}
-              className={`group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors ${
-                focusedWorkspaceId === ws.id
-                  ? 'bg-accentSoft text-accent'
-                  : 'hover:bg-gray-50 text-gray-700'
-              }`}
-              onClick={() => setFocusWorkspace(ws.id)}
+              className="group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors hover:bg-gray-50 text-gray-700"
+              onClick={(e) => {
+                openTab(
+                  { kind: 'workspace', title: ws.name, workspaceId: ws.id },
+                  modifiersToOpts(e),
+                );
+              }}
             >
               <RenamableName
                 value={ws.name}
@@ -110,4 +109,12 @@ export function WorkspacesSidebar() {
       </div>
     </aside>
   );
+}
+
+/** ⌘ click → 新 tab；⌘+⇧ click → split right */
+function modifiersToOpts(e: React.MouseEvent): { newTab?: boolean; splitDirection?: 'horizontal' } {
+  const cmd = e.metaKey || e.ctrlKey;
+  if (cmd && e.shiftKey) return { splitDirection: 'horizontal' };
+  if (cmd) return { newTab: true };
+  return {};
 }

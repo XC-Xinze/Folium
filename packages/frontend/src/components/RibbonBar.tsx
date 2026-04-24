@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { dialog } from '../lib/dialog';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
 import { useUIStore } from '../store/uiStore';
+import { usePaneStore } from '../store/paneStore';
 
 /**
  * Obsidian-style leftmost vertical ribbon: icon-only navigation strip.
@@ -17,9 +18,25 @@ export function RibbonBar() {
   const collapsed = useUIStore((s) => s.leftSidebarCollapsed);
   const toggleLeftSidebar = useUIStore((s) => s.toggleLeftSidebar);
   const setSidebarTab = useUIStore((s) => s.setSidebarTab);
-  const setViewMode = useUIStore((s) => s.setViewMode);
-  const viewMode = useUIStore((s) => s.viewMode);
   const setQuickSwitcherOpen = useUIStore((s) => s.setQuickSwitcherOpen);
+  const openTab = usePaneStore((s) => s.openTab);
+  // 当前 active tab 是 graph / settings → 高亮对应按钮
+  const root = usePaneStore((s) => s.root);
+  const activeLeafId = usePaneStore((s) => s.activeLeafId);
+  const activeTabKind = (() => {
+    function find(node: typeof root): typeof root | null {
+      if (node.kind === 'leaf') return node.id === activeLeafId ? node : null;
+      for (const c of node.children) {
+        const r = find(c);
+        if (r) return r;
+      }
+      return null;
+    }
+    const leaf = find(root);
+    if (leaf?.kind !== 'leaf') return null;
+    const t = leaf.tabs.find((x) => x.id === leaf.activeTabId);
+    return t?.kind ?? null;
+  })();
   const navigate = useNavigateToCard();
   const qc = useQueryClient();
   const openToday = async () => {
@@ -86,8 +103,8 @@ export function RibbonBar() {
 
       <IconButton
         icon={<Network size={16} />}
-        active={viewMode === 'graph'}
-        onClick={() => setViewMode(viewMode === 'graph' ? 'chain' : 'graph')}
+        active={activeTabKind === 'graph'}
+        onClick={() => openTab({ kind: 'graph', title: 'Graph' })}
         title="Vault graph (zoom to navigate)"
       />
 
@@ -95,8 +112,8 @@ export function RibbonBar() {
 
       <IconButton
         icon={<Settings size={16} />}
-        active={viewMode === 'settings'}
-        onClick={() => setViewMode(viewMode === 'settings' ? 'chain' : 'settings')}
+        active={activeTabKind === 'settings'}
+        onClick={() => openTab({ kind: 'settings', title: 'Settings' })}
         title="Settings"
       />
     </div>

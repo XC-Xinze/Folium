@@ -23,14 +23,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FilePlus,
   Layers,
-  Maximize2,
-  Minimize2,
-  PanelBottom,
-  PanelLeft,
-  PanelRight,
-  PanelTop,
-  Pin,
-  PinOff,
   StickyNote,
   Undo2,
   X,
@@ -57,13 +49,7 @@ export function WorkspaceView(props: Props) {
 }
 
 function WorkspaceInner({ workspaceId }: Props) {
-  const setFocusWorkspace = useUIStore((s) => s.setFocusWorkspace);
-  const workspaceFullscreen = useUIStore((s) => s.workspaceFullscreen);
-  const setWorkspaceFullscreen = useUIStore((s) => s.setWorkspaceFullscreen);
-  const workspacePanelPosition = useUIStore((s) => s.workspacePanelPosition);
-  const setWorkspacePanelPosition = useUIStore((s) => s.setWorkspacePanelPosition);
-  const workspacePanelPinned = useUIStore((s) => s.workspacePanelPinned);
-  const toggleWorkspacePanelPinned = useUIStore((s) => s.toggleWorkspacePanelPinned);
+  // 之前 workspace 在面板里时用 uiStore 管 fullscreen/dock/pin —— pane 系统取代了这些
   const qc = useQueryClient();
   const wsQ = useQuery({
     queryKey: ['workspace', workspaceId],
@@ -380,36 +366,8 @@ function WorkspaceInner({ workspaceId }: Props) {
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      {/* Toolbar */}
+      {/* Toolbar —— 之前的 dock/fullscreen/close 按钮在 pane 系统下都被 tab 系统替代了 */}
       <div className="absolute top-4 left-4 z-10 flex items-center gap-1 bg-white/95 backdrop-blur-sm px-2 py-1.5 rounded-lg shadow-md border border-gray-200">
-        {/* 4-direction docking */}
-        <div className="flex items-center gap-0.5 px-1 border-r border-gray-200 mr-1">
-          <DockBtn icon={<PanelLeft size={13} />} active={workspacePanelPosition === 'left'} onClick={() => setWorkspacePanelPosition('left')} title="Dock to left" />
-          <DockBtn icon={<PanelTop size={13} />} active={workspacePanelPosition === 'top'} onClick={() => setWorkspacePanelPosition('top')} title="Dock to top" />
-          <DockBtn icon={<PanelBottom size={13} />} active={workspacePanelPosition === 'bottom'} onClick={() => setWorkspacePanelPosition('bottom')} title="Dock to bottom" />
-          <DockBtn icon={<PanelRight size={13} />} active={workspacePanelPosition === 'right'} onClick={() => setWorkspacePanelPosition('right')} title="Dock to right" />
-        </div>
-        <button
-          onClick={toggleWorkspacePanelPinned}
-          className={`p-1 rounded hover:bg-gray-100 ${workspacePanelPinned ? 'text-accent' : 'text-gray-400'}`}
-          title={workspacePanelPinned ? 'Pinned (this workspace reopens on reload)' : 'Pin: reopen this workspace on reload'}
-        >
-          {workspacePanelPinned ? <Pin size={13} /> : <PinOff size={13} />}
-        </button>
-        <button
-          onClick={() => setWorkspaceFullscreen(!workspaceFullscreen)}
-          className="p-1 rounded hover:bg-gray-100 text-gray-500"
-          title={workspaceFullscreen ? 'Exit fullscreen (split view)' : 'Fullscreen'}
-        >
-          {workspaceFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-        </button>
-        <button
-          onClick={() => setFocusWorkspace(null)}
-          className="p-1 rounded hover:bg-gray-100 text-gray-500"
-          title="Close workspace panel"
-        >
-          <X size={14} />
-        </button>
         <RenamableName
           value={wsQ.data.name}
           onSave={(name) => {
@@ -649,27 +607,3 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
 }
 
 const edgeTypes = { wsApply: ApplyEdge };
-
-function DockBtn({
-  icon,
-  active,
-  onClick,
-  title,
-}: {
-  icon: React.ReactNode;
-  active: boolean;
-  onClick: () => void;
-  title: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      className={`w-6 h-6 rounded flex items-center justify-center transition-colors ${
-        active ? 'bg-accent text-white' : 'text-gray-400 hover:bg-gray-100 hover:text-ink'
-      }`}
-    >
-      {icon}
-    </button>
-  );
-}

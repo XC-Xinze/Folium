@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEve
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image, Paperclip, PenLine, Pencil } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
+import { usePaneStore } from '../store/paneStore';
 import { makeMarkdownInsert, uploadAttachment } from '../lib/uploadAttachment';
 import { api } from '../lib/api';
 
@@ -69,8 +70,7 @@ function nextTopLevelId(existing: Set<string>): string {
 
 export function NewCardBar() {
   const focusedId = useUIStore((s) => s.focusedCardId);
-  const setBoxAndFocus = useUIStore((s) => s.setBoxAndFocus);
-  const setFocus = useUIStore((s) => s.setFocus);
+  const focusedBoxId = useUIStore((s) => s.focusedBoxId);
   const qc = useQueryClient();
 
   const [luhmannId, setLuhmannId] = useState('');
@@ -155,9 +155,24 @@ export function NewCardBar() {
       qc.invalidateQueries({ queryKey: ['cards'] });
       qc.invalidateQueries({ queryKey: ['hubs'] });
       qc.invalidateQueries({ queryKey: ['tags'] });
-      // INDEX cards switch the focused box; ATOMIC only changes the focused card
-      if (status === 'INDEX') setBoxAndFocus(newId);
-      else setFocus(newId);
+      qc.invalidateQueries({ queryKey: ['indexes'] });
+      // INDEX cards switch the focused box；ATOMIC 只换 focus（保留当前 box）
+      const tabTitle = title.trim() || newId;
+      if (status === 'INDEX') {
+        usePaneStore.getState().openTab({
+          kind: 'card',
+          title: tabTitle,
+          cardBoxId: newId,
+          cardFocusId: newId,
+        });
+      } else {
+        usePaneStore.getState().openTab({
+          kind: 'card',
+          title: tabTitle,
+          cardBoxId: focusedBoxId ?? newId,
+          cardFocusId: newId,
+        });
+      }
       setLuhmannId('');
       setTitle('');
       setContent('');

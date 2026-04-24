@@ -104,7 +104,7 @@ export function Sidebar() {
               return (
                 <button
                   key={id}
-                  onClick={() => navigate(id)}
+                  onClick={(e) => navigate(id, modifiersToOpts(e))}
                   className={`group w-full flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-gray-50 text-left ${
                     focusedId === id ? 'bg-accentSoft' : ''
                   }`}
@@ -237,7 +237,7 @@ export function Sidebar() {
           {dailies.slice(0, 7).map((c) => (
             <button
               key={c.luhmannId}
-              onClick={() => navigate(c.luhmannId)}
+              onClick={(e) => navigate(c.luhmannId, modifiersToOpts(e))}
               className={`w-full flex items-center gap-2 px-3 py-1 rounded-md hover:bg-gray-50 text-left ${
                 focusedId === c.luhmannId ? 'bg-accentSoft' : ''
               }`}
@@ -274,7 +274,7 @@ export function Sidebar() {
                 }`}
                 draggable
                 onDragStart={(e) => setCardDragData(e, { luhmannId: c.luhmannId, title: c.title })}
-                onClick={() => navigate(c.luhmannId)}
+                onClick={(e) => navigate(c.luhmannId, modifiersToOpts(e))}
                 title="Drag to workspace"
               >
                 <span className="font-mono text-[10px] text-gray-500 w-10 shrink-0">{c.luhmannId}</span>
@@ -355,7 +355,7 @@ function IndexNodeView({
   level: number;
   focusedId: string | null;
   focusedBoxId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string, opts?: { newTab?: boolean; splitDirection?: 'horizontal' | 'vertical' }) => void;
 }) {
   const [expanded, setExpanded] = useState(level < 1);
   const hasChildren = node.children.length > 0;
@@ -388,11 +388,11 @@ function IndexNodeView({
           <span className="w-5" />
         )}
         <button
-          onClick={() => onSelect(node.luhmannId)}
+          onClick={(e) => onSelect(node.luhmannId, modifiersToOpts(e))}
           draggable
           onDragStart={(e) => setCardDragData(e, { luhmannId: node.luhmannId, title: node.title })}
           className="flex-1 min-w-0 flex items-center gap-1.5 py-1.5 text-left cursor-grab active:cursor-grabbing"
-          title="Drag to workspace"
+          title="Drag to workspace · ⌘ click new tab · ⌘⇧ click split"
         >
           <span
             className={`font-mono text-[9.5px] font-bold px-1 py-0.5 rounded shrink-0 ${
@@ -448,4 +448,14 @@ function Section({
       <div className="space-y-0.5">{children}</div>
     </div>
   );
+}
+
+/** ⌘ click → 新 tab；⌘+⇧ click → split right */
+function modifiersToOpts(
+  e: React.MouseEvent,
+): { newTab?: boolean; splitDirection?: 'horizontal' } {
+  const cmd = e.metaKey || e.ctrlKey;
+  if (cmd && e.shiftKey) return { splitDirection: 'horizontal' };
+  if (cmd) return { newTab: true };
+  return {};
 }

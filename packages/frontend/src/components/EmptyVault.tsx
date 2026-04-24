@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, FileText, FolderTree, Sparkles } from 'lucide-react';
 import { api } from '../lib/api';
 import { dialog } from '../lib/dialog';
-import { useUIStore } from '../store/uiStore';
+import { usePaneStore } from '../store/paneStore';
 
 /**
  * 空仓库的引导屏：第一次打开时给一个明确的"下一步"，而不是冷冰冰的提示。
@@ -14,7 +14,9 @@ import { useUIStore } from '../store/uiStore';
  */
 export function EmptyVault() {
   const qc = useQueryClient();
-  const setBoxAndFocus = useUIStore((s) => s.setBoxAndFocus);
+  const openTab = usePaneStore((s) => s.openTab);
+  const navigateTo = (boxId: string, focusId: string, title: string) =>
+    openTab({ kind: 'card', title, cardBoxId: boxId, cardFocusId: focusId });
   const [creating, setCreating] = useState(false);
 
   const refreshAll = () => {
@@ -64,7 +66,7 @@ export function EmptyVault() {
       }
       refreshAll();
       // 1 是 INDEX，把它当 box，1a 当 focus
-      setBoxAndFocus('1', '1a');
+      navigateTo('1', '1a', 'How Folgezettel IDs work');
     } catch (err) {
       dialog.alert((err as Error).message, { title: 'Seed failed' });
     } finally {
@@ -95,7 +97,7 @@ export function EmptyVault() {
         tags: [],
       });
       refreshAll();
-      setBoxAndFocus(id.trim(), id.trim());
+      navigateTo(id.trim(), id.trim(), title.trim());
     } catch (err) {
       dialog.alert((err as Error).message, { title: 'Create failed' });
     } finally {
@@ -108,7 +110,7 @@ export function EmptyVault() {
     try {
       const { luhmannId } = await api.openOrCreateDaily();
       refreshAll();
-      setBoxAndFocus(luhmannId, luhmannId);
+      navigateTo(luhmannId, luhmannId, `Daily ${luhmannId}`);
     } catch (err) {
       dialog.alert((err as Error).message, { title: 'Daily failed' });
     } finally {

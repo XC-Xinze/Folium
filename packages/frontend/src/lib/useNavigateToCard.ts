@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, type CardSummary } from './api';
 import { useUIStore } from '../store/uiStore';
+import { usePaneStore } from '../store/paneStore';
 
 /** 推导 luhmannId 的父级（前端版本，与后端逻辑一致） */
 function deriveParentId(luhmannId: string): string | null {
@@ -59,38 +60,41 @@ function isCardInBox(cardId: string, boxId: string, allCards: CardSummary[]): bo
  *   - 点 ATOMIC 卡但不在当前 box → 切到该卡的 primary box，并 focus
  */
 export function useNavigateToCard() {
-  const setFocus = useUIStore((s) => s.setFocus);
-  const setBoxAndFocus = useUIStore((s) => s.setBoxAndFocus);
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
+  const openTab = usePaneStore((s) => s.openTab);
 
   return useCallback(
-    (id: string) => {
+    (id: string, opts?: { newTab?: boolean; splitDirection?: 'horizontal' | 'vertical' }) => {
       const allCards = cardsQ.data?.cards ?? [];
       const card = allCards.find((c) => c.luhmannId === id);
+      const title = card?.title ?? id;
+      let boxId: string;
+      let focusId: string;
+
       if (!card) {
-        setFocus(id);
-        return;
-      }
-      if (card.status === 'INDEX') {
-        setBoxAndFocus(id);
-        return;
-      }
-      // ATOMIC：判断是否在当前 box
-      const currentBox = useUIStore.getState().focusedBoxId;
-      if (currentBox && isCardInBox(id, currentBox, allCards)) {
-        setFocus(id);
-        return;
-      }
-      // 不在当前 box → 找 primary box
-      const primary = findPrimaryBox(id, allCards);
-      if (primary) {
-        setBoxAndFocus(primary, id);
+        boxId = id;
+        focusId = id;
+      } else if (card.status === 'INDEX') {
+        boxId = id;
+        focusId = id;
       } else {
-        // 没有 primary box（orphan 卡，比如 daily / 顶层未索引卡）→ 自己当根 box
-        // 否则 focusedBoxId 还停在旧值，新焦点不在那个 box 的 backbone 里就"消失"了
-        setBoxAndFocus(id, id);
+        // ATOMIC：保留"在当前 box 内只动 focus"的语义
+        const currentBox = useUIStore.getState().focusedBoxId;
+        if (!opts?.newTab && currentBox && isCardInBox(id, currentBox, allCards)) {
+          focusId = id;
+          boxId = currentBox;
+        } else {
+          const primary = findPrimaryBox(id, allCards);
+          boxId = primary ?? id;
+          focusId = id;
+        }
       }
+
+      openTab(
+        { kind: 'card', title, cardBoxId: boxId, cardFocusId: focusId },
+        opts,
+      );
     },
-    [setFocus, setBoxAndFocus, cardsQ.data],
+    [openTab, cardsQ.data],
   );
 }

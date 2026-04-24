@@ -129,7 +129,7 @@ function TagViewInner({ tag }: Props) {
           nodesConnectable={false}
           elementsSelectable={false}
         >
-          <Background gap={24} size={1.5} color="#e5e7eb" />
+          <Background id={`tag-bg-${tag}`} gap={24} size={1.5} color="#e5e7eb" />
           <Controls position="bottom-right" showInteractive={false} />
           <MiniMap pannable zoomable position="top-right" maskColor="rgba(0,0,0,0.05)" />
         </ReactFlow>

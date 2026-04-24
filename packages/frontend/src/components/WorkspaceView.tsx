@@ -366,18 +366,23 @@ function WorkspaceInner({ workspaceId }: Props) {
 
   const onPaneDoubleClick = useCallback(
     (e: React.MouseEvent) => {
-      // 只响应在画布空白处的双击
+      // 在节点 / 边 / 工具条内部双击不响应
       const target = e.target as HTMLElement;
-      if (!target.classList.contains('react-flow__pane') && !target.classList.contains('react-flow__background')) return;
-      // 转换屏幕坐标到画布坐标
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      // 简化：用屏幕中心相对于画布原点估算（精确做法是 useReactFlow().screenToFlowPosition）
-      const x = e.clientX - rect.left - 140;
-      const y = e.clientY - rect.top - 60;
-      addNote(x, y);
+      if (
+        target.closest('.react-flow__node') ||
+        target.closest('.react-flow__edge') ||
+        target.closest('.react-flow__controls') ||
+        target.closest('.react-flow__minimap') ||
+        target.closest('button') ||
+        target.closest('input') ||
+        target.closest('textarea')
+      )
+        return;
+      // 用 React Flow 的 screen→flow 坐标转换（精确，跟随当前 zoom/pan）
+      const flowPos = reactFlow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      addNote(flowPos.x - 140, flowPos.y - 60);
     },
-    [addNote],
+    [addNote, reactFlow],
   );
 
   if (wsQ.isLoading) return <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">Loading workspace…</div>;
@@ -500,7 +505,7 @@ function WorkspaceInner({ workspaceId }: Props) {
         maxZoom={2}
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={24} size={1.5} color="#e5e7eb" />
+        <Background id={`ws-bg-${workspaceId}`} gap={24} size={1.5} color="#e5e7eb" />
         <Controls position="bottom-right" showInteractive={false}>
           <ZoomIn size={12} />
         </Controls>

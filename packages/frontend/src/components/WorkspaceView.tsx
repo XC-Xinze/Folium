@@ -364,27 +364,6 @@ function WorkspaceInner({ workspaceId }: Props) {
     [reactFlow, mutateWs],
   );
 
-  const onPaneDoubleClick = useCallback(
-    (e: React.MouseEvent) => {
-      // 在节点 / 边 / 工具条内部双击不响应
-      const target = e.target as HTMLElement;
-      if (
-        target.closest('.react-flow__node') ||
-        target.closest('.react-flow__edge') ||
-        target.closest('.react-flow__controls') ||
-        target.closest('.react-flow__minimap') ||
-        target.closest('button') ||
-        target.closest('input') ||
-        target.closest('textarea')
-      )
-        return;
-      // 用 React Flow 的 screen→flow 坐标转换（精确，跟随当前 zoom/pan）
-      const flowPos = reactFlow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-      addNote(flowPos.x - 140, flowPos.y - 60);
-    },
-    [addNote, reactFlow],
-  );
-
   if (wsQ.isLoading) return <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">Loading workspace…</div>;
   if (wsQ.error || !wsQ.data)
     return <div className="w-full h-full flex items-center justify-center text-sm text-red-500">{String(wsQ.error ?? 'Workspace not found')}</div>;
@@ -393,7 +372,6 @@ function WorkspaceInner({ workspaceId }: Props) {
     <div
       ref={containerRef}
       className={`w-full h-full relative bg-[#fafaf6] transition-colors ${dragHover ? 'bg-accentSoft/40' : ''}`}
-      onDoubleClick={onPaneDoubleClick}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
@@ -485,7 +463,7 @@ function WorkspaceInner({ workspaceId }: Props) {
       {/* Empty-state hint */}
       {wsQ.data.nodes.length === 0 && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 text-center text-gray-400 text-sm pointer-events-none">
-          Double-click the canvas to add a note · drop a vault card here · connect freely<br/>
+          Click "Note" to add a sticky · drop a vault card here · connect freely<br/>
           <span className="text-[11px]">Then "Apply" an edge to write it back to the vault as a real [[link]]</span>
         </div>
       )}

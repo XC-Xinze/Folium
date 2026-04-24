@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { ChevronsRight, Copy, MoveRight, SplitSquareHorizontal, SplitSquareVertical, X } from 'lucide-react';
+import { ChevronsRight, Copy, SplitSquareHorizontal, SplitSquareVertical, X } from 'lucide-react';
 import type { LeafPane } from '../store/paneStore';
 import { usePaneStore } from '../store/paneStore';
 
@@ -20,9 +20,15 @@ export function TabContextMenu({ pane, tabId, x, y, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const closeTab = usePaneStore((s) => s.closeTab);
   const splitPane = usePaneStore((s) => s.splitPane);
-  const moveTabToSplit = usePaneStore((s) => s.moveTabToSplit);
 
   const idx = pane.tabs.findIndex((t) => t.id === tabId);
+  const tab = pane.tabs.find((t) => t.id === tabId);
+  const splitWithThisTab = (direction: 'horizontal' | 'vertical') => {
+    if (!tab) return;
+    const { id: _id, ...spec } = tab;
+    void _id;
+    splitPane(pane.id, direction, spec);
+  };
   const onlyOne = pane.tabs.length === 1;
   const hasRight = idx >= 0 && idx < pane.tabs.length - 1;
 
@@ -87,35 +93,18 @@ export function TabContextMenu({ pane, tabId, x, y, onClose }: Props) {
     {
       kind: 'item',
       icon: SplitSquareHorizontal,
-      label: 'Split right (move tab)',
+      label: 'Split right',
       onClick: () => {
-        moveTabToSplit(pane.id, tabId, pane.id, 'right');
+        splitWithThisTab('horizontal');
         onClose();
       },
     },
     {
       kind: 'item',
       icon: SplitSquareVertical,
-      label: 'Split down (move tab)',
+      label: 'Split down',
       onClick: () => {
-        moveTabToSplit(pane.id, tabId, pane.id, 'bottom');
-        onClose();
-      },
-    },
-    { kind: 'separator' },
-    {
-      kind: 'item',
-      icon: MoveRight,
-      label: 'Split this pane right (clone tab)',
-      onClick: () => {
-        const at = pane.tabs.find((t) => t.id === tabId) ?? pane.tabs[0];
-        if (at) {
-          const { id: _id, ...spec } = at;
-          void _id;
-          splitPane(pane.id, 'horizontal', spec);
-        } else {
-          splitPane(pane.id, 'horizontal');
-        }
+        splitWithThisTab('vertical');
         onClose();
       },
     },

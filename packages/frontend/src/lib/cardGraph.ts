@@ -345,13 +345,9 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
       const rel = relatedBatch[id];
       if (!rel) continue;
       for (const tr of rel.tagRelated) {
-        // 已有 tree 或 cross 边连这对节点 → 只把共享 tag 写到节点上，不再画绿线
-        if (pairHasTree(id, tr.luhmannId) || pairHasEdge(id, tr.luhmannId, ['cross'])) {
-          const existing = rawNodes.get(tr.luhmannId);
-          if (existing && !existing.sharedTags) existing.sharedTags = tr.sharedTags;
-          continue;
-        }
-        // 已经因为是骨干或别的 anchor 的 tag-related 加进来了 → 复用节点，确保有边
+        // 节点已存在（骨干 / 其他锚点的 tag-related） → 复用，加边
+        // 即使已经有 tree/cross 边也再画一根 tag 边 —— 用户既然开了 Tag toggle 就是想看见
+        // 不同 kind 的边走不同 handle（tree=top/bottom，tag/cross=left/right）所以视觉不会糊
         if (rawNodes.has(tr.luhmannId)) {
           const existing = rawNodes.get(tr.luhmannId)!;
           if (!existing.sharedTags) existing.sharedTags = tr.sharedTags;

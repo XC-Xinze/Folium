@@ -195,41 +195,43 @@ export function CardNode({ data, id, selected }: NodeProps) {
     return attachWikilinkHandler(contentRef.current, (target) => navigate(target));
   }, [navigate, full?.luhmannId]);
 
+  // Dark 用 Catppuccin Mocha：surface0=#313244 (卡 bg), surface1=#45475a (border),
+  // text=#cdd6f4, mauve=#cba6f7 (focus), green=#a6e3a1 (tag), peach=#fab387, sky=#89dceb
   const stylesByVariant = {
     focus: {
-      border: 'border-2 border-ink dark:border-gray-100',
-      bg: 'bg-white dark:bg-[#1a1f2a]',
+      border: 'border-2 border-ink dark:border-[#cba6f7]',
+      bg: 'bg-white dark:bg-[#313244]',
       opacity: 'opacity-100',
       shadow: 'shadow-xl',
-      badge: 'bg-ink text-white dark:bg-gray-100 dark:text-ink',
+      badge: 'bg-ink text-white dark:bg-[#cba6f7] dark:text-[#1e1e2e]',
     },
     tree: {
-      border: 'border border-gray-200 dark:border-gray-700',
-      bg: 'bg-white dark:bg-[#1a1f2a]',
+      border: 'border border-gray-200 dark:border-[#45475a]',
+      bg: 'bg-white dark:bg-[#313244]',
       opacity: 'opacity-100',
       shadow: 'shadow-md',
-      badge: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200',
+      badge: 'bg-gray-100 dark:bg-[#45475a] text-gray-700 dark:text-[#cdd6f4]',
     },
     'cross-flank': {
-      border: 'border border-accent/40 dark:border-accent/60',
-      bg: 'bg-white dark:bg-[#1a1f2a]',
+      border: 'border border-accent/40 dark:border-[#cba6f7]/60',
+      bg: 'bg-white dark:bg-[#313244]',
       opacity: 'opacity-95',
       shadow: 'shadow-md',
-      badge: 'bg-accentSoft text-accent dark:bg-accent/20 dark:text-accent',
+      badge: 'bg-accentSoft text-accent dark:bg-[#cba6f7]/20 dark:text-[#cba6f7]',
     },
     'tag-related': {
-      border: 'border border-emerald-300 dark:border-emerald-700',
-      bg: 'bg-white dark:bg-[#1a1f2a]',
+      border: 'border border-emerald-300 dark:border-[#a6e3a1]/60',
+      bg: 'bg-white dark:bg-[#313244]',
       opacity: 'opacity-95',
       shadow: 'shadow-md',
-      badge: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+      badge: 'bg-emerald-50 text-emerald-700 dark:bg-[#a6e3a1]/15 dark:text-[#a6e3a1]',
     },
     potential: {
-      border: 'border border-dashed border-gray-300 dark:border-gray-600',
-      bg: 'bg-white dark:bg-[#1a1f2a]',
+      border: 'border border-dashed border-gray-300 dark:border-[#6c7086]',
+      bg: 'bg-white dark:bg-[#313244]',
       opacity: 'opacity-55',
       shadow: 'shadow-sm',
-      badge: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
+      badge: 'bg-gray-100 dark:bg-[#45475a] text-gray-500 dark:text-[#a6adc8]',
     },
   } as const;
   const styles = stylesByVariant[variant];

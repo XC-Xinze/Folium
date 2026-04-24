@@ -89,7 +89,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-72 h-full border-r border-gray-200 bg-white dark:bg-[#11151c] dark:border-gray-800 flex flex-col">
+    <aside className="w-72 h-full border-r border-gray-200 bg-white dark:bg-[#181825] dark:border-[#313244] flex flex-col">
       <header className="h-12 px-5 flex items-center border-b border-gray-100">
         <span className="font-bold text-sm tracking-tight">Vault</span>
       </header>

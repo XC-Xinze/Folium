@@ -49,7 +49,7 @@ export function RibbonBar() {
   };
 
   return (
-    <div className="w-12 bg-[#f3f3f1] dark:bg-[#161a20] border-r border-gray-200 dark:border-gray-800 flex flex-col items-center py-2 gap-1 shrink-0">
+    <div className="w-12 bg-[#f3f3f1] dark:bg-[#11111b] border-r border-gray-200 dark:border-[#313244] flex flex-col items-center py-2 gap-1 shrink-0">
       <IconButton
         icon={collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
         onClick={toggleLeftSidebar}

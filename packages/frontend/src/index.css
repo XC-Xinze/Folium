@@ -9,9 +9,10 @@ body {
   color: #1f2933;
   -webkit-font-smoothing: antialiased;
 }
+/* Dark theme：Catppuccin Mocha */
 html.dark body {
-  background: #0f1419;
-  color: #d1d5db;
+  background: #1e1e2e; /* base */
+  color: #cdd6f4;      /* text */
 }
 
 /* 卡片正文 markdown 渲染样式 */
@@ -23,18 +24,18 @@ html.dark body {
 .prose-card ul { list-style: disc; }
 .prose-card ol { list-style: decimal; }
 .prose-card code { background: #f1f5f9; padding: 0 4px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; font-size: 0.875em; }
-html.dark .prose-card code { background: #1f2937; color: #e5e7eb; }
+html.dark .prose-card code { background: #45475a; color: #cdd6f4; } /* surface1 / text */
 .prose-card strong { font-weight: 700; color: #1f2933; }
-html.dark .prose-card strong { color: #f3f4f6; }
+html.dark .prose-card strong { color: #f5e0dc; } /* rosewater */
 .prose-card .wikilink {
   color: #7c4dff;
   text-decoration: none;
   border-bottom: 1px dotted #7c4dff;
   cursor: pointer;
 }
-html.dark .prose-card .wikilink { color: #a78bfa; border-bottom-color: #a78bfa; }
+html.dark .prose-card .wikilink { color: #cba6f7; border-bottom-color: #cba6f7; } /* mauve */
 .prose-card .wikilink:hover { background: #ede9fe; }
-html.dark .prose-card .wikilink:hover { background: #312e81; }
+html.dark .prose-card .wikilink:hover { background: #45475a; } /* surface1 */
 .prose-card img {
   max-width: 100%;
   height: auto;
@@ -46,9 +47,20 @@ html.dark .prose-card .wikilink:hover { background: #312e81; }
   color: #7c4dff;
   text-decoration: underline;
 }
-html.dark .prose-card a { color: #a78bfa; }
+html.dark .prose-card a { color: #cba6f7; } /* mauve */
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
-html.dark ::-webkit-scrollbar-thumb { background: #4b5563; }
+html.dark ::-webkit-scrollbar-thumb { background: #45475a; } /* surface1 */
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* React Flow 在 dark 下的画布样式 */
+html.dark .react-flow__background { background-color: #1e1e2e !important; }
+html.dark .react-flow__minimap { background-color: #181825 !important; }
+html.dark .react-flow__controls { background-color: #181825 !important; }
+html.dark .react-flow__controls-button {
+  background-color: #313244 !important;
+  border-bottom-color: #45475a !important;
+  fill: #cdd6f4 !important;
+}
+html.dark .react-flow__controls-button:hover { background-color: #45475a !important; }

@@ -26,11 +26,13 @@ export function CardNode({ data, id, selected }: NodeProps) {
   const isGhost = !!nodeData.ghostFromWorkspace;
   // 用 useQuery 订阅卡片内容；这样 tag 改名 / 删除等操作 invalidate ['card', id] 时
   // 这里会自动 refetch，不会一直拿初次加载的 stale 副本
+  // 注意：用 placeholderData（不是 initialData）来给"首屏"展示——initialData 会
+  // 当成已加载的真数据塞进 cache，反而抑制 refetch
   const fullQ = useQuery({
     queryKey: ['card', cardLuhmannId],
     queryFn: () => api.getCard(cardLuhmannId),
     enabled: !isGhost,
-    initialData: 'contentMd' in card ? (card as Card) : undefined,
+    placeholderData: 'contentMd' in card ? (card as Card) : undefined,
   });
   const full: Card | null = isGhost ? (card as Card) : (fullQ.data ?? null);
   const navigate = useNavigateToCard();

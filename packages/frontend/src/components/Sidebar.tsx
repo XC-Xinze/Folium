@@ -30,14 +30,18 @@ export function Sidebar() {
     },
   });
   // tag 改名 / 删除会改写大量卡片的 frontmatter+正文，凡是缓存了卡片内容的查询都得失效
-  const invalidateAfterTagOp = () => {
-    qc.invalidateQueries({ queryKey: ['tags'] });
-    qc.invalidateQueries({ queryKey: ['cards'] });
-    qc.invalidateQueries({ queryKey: ['card'] }); // ['card', id] 单卡内容
-    qc.invalidateQueries({ queryKey: ['linked'] });
-    qc.invalidateQueries({ queryKey: ['related-batch'] });
-    qc.invalidateQueries({ queryKey: ['referenced-from'] });
-    qc.invalidateQueries({ queryKey: ['tag-cards'] });
+  // 用 refetchQueries 而不是 invalidateQueries——前者立刻强制重发请求，
+  // 后者只标 stale 等下次观察时再发，碰到边界情况可能延迟刷新
+  const invalidateAfterTagOp = async () => {
+    await Promise.all([
+      qc.refetchQueries({ queryKey: ['tags'] }),
+      qc.refetchQueries({ queryKey: ['cards'] }),
+      qc.refetchQueries({ queryKey: ['card'] }), // 匹配 ['card', id] 全部单卡
+      qc.refetchQueries({ queryKey: ['linked'] }),
+      qc.refetchQueries({ queryKey: ['related-batch'] }),
+      qc.refetchQueries({ queryKey: ['referenced-from'] }),
+      qc.refetchQueries({ queryKey: ['tag-cards'] }),
+    ]);
   };
   const renameTagMut = useMutation({
     mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>

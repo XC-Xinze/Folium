@@ -2,8 +2,7 @@
 luhmannId: d1a
 title: RBF 核函数优化
 status: ATOMIC
-tags:
-  - ml
+tags: []
 crossLinks:
   - d1
 created: 2026-01-17T00:00:00.000Z

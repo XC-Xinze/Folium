@@ -24,6 +24,8 @@ export interface Card {
   contentMd: string;
   tags: string[];
   crossLinks: string[];
+  /** crossLinks 中由动态查询自动加入的成员（INDEX 卡可能有） */
+  autoMembers?: string[];
   filePath: string;
   mtime: number;
   createdAt: string | null;

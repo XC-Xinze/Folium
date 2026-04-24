@@ -674,6 +674,14 @@ export function CardNode({ data, id, selected }: NodeProps) {
                 INDEX
               </span>
             )}
+            {isIndex && full && full.autoMembers && full.autoMembers.length > 0 && (
+              <span
+                className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 border border-purple-200"
+                title={`${full.autoMembers.length} cards auto-included via @members directive`}
+              >
+                +{full.autoMembers.length} auto
+              </span>
+            )}
             {isShared && (
               <span
                 className="shrink-0 flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200"

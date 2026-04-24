@@ -10,6 +10,8 @@ export interface Card {
   contentMd: string;
   tags: string[];
   crossLinks: string[];
+  /** crossLinks 中由 <!-- @members tag:xxx --> 自动展开的部分（仅 INDEX 卡可能非空） */
+  autoMembers?: string[];
   filePath: string;
   mtime: number;
   createdAt: string | null;

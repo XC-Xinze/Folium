@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import type { Card } from '../types.js';
 import { hooks } from '../hooks.js';
+import { getDynamicMembers } from '../services/dynamicMembers.js';
 
 export class CardRepository {
   constructor(private db: Database.Database) {}
@@ -99,9 +100,18 @@ export class CardRepository {
     const tags = (this.db.prepare(`SELECT tag FROM card_tags WHERE luhmann_id = ?`).all(row.luhmann_id) as {
       tag: string;
     }[]).map((t) => t.tag);
-    const crossLinks = (this.db
+    const manualLinks = (this.db
       .prepare(`SELECT target_id FROM cross_links WHERE source_id = ?`)
       .all(row.luhmann_id) as { target_id: string }[]).map((l) => l.target_id);
+
+    // 动态索引：INDEX 卡正文里的 <!-- @members tag:xxx --> 自动展开
+    // 仅 INDEX 卡跑（atomic 卡写这个没意义）；对其他类型 0 开销
+    let autoMembers: string[] = [];
+    if (row.status === 'INDEX' && row.content_md.includes('@members')) {
+      autoMembers = getDynamicMembers(this.db, row.luhmann_id, row.content_md).filter(
+        (id) => !manualLinks.includes(id),
+      );
+    }
 
     return {
       luhmannId: row.luhmann_id,
@@ -112,7 +122,8 @@ export class CardRepository {
       depth: row.depth,
       contentMd: row.content_md,
       tags,
-      crossLinks,
+      crossLinks: [...manualLinks, ...autoMembers],
+      autoMembers,
       filePath: row.file_path,
       mtime: row.mtime,
       createdAt: row.created_at,

@@ -11,7 +11,7 @@ import {
   type Edge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Card, type PositionMap } from '../lib/api';
 import { CardNode } from './CardNode';
 import { applyAnchorPositions, buildGraph, computeBackbone, resolveCollisions } from '../lib/cardGraph';
@@ -78,10 +78,13 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange }: Props
   }, [backboneIds, focusedCardId]);
 
   // tag-related 是 first-class（默认显示），不受 showPotential 影响——所以总要拉
+  // keepPreviousData：focusedCardId 切换时新 query 在飞，先沿用旧数据避免 buildGraph 拿空对象
+  // 否则会闪烁回退到"backbone 内每对都连"的混乱样子
   const relatedBatchQ = useQuery({
     queryKey: ['related-batch', relatedIds],
     queryFn: () => api.relatedBatch(relatedIds, 3),
     enabled: relatedIds.length > 0,
+    placeholderData: keepPreviousData,
   });
 
   // 工作区里涉及 backbone 卡片的边：作为 potential 风格的叠加显示在画布上
@@ -89,6 +92,7 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange }: Props
     queryKey: ['ws-links-batch', backboneIds],
     queryFn: () => api.workspaceLinksBatch(backboneIds),
     enabled: backboneIds.length > 0,
+    placeholderData: keepPreviousData,
   });
 
   // 位置按 box 隔离：不同 box 即使是同一张卡，也有各自独立的位置

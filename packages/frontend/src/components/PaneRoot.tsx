@@ -1,7 +1,56 @@
-import { lazy, Suspense, useCallback, useRef, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, GripVertical, Network, Settings, SplitSquareHorizontal, SplitSquareVertical, Tag, X, XSquare } from 'lucide-react';
 import { Canvas } from './Canvas';
 import { usePaneStore, type LeafPane, type Pane, type SplitPane, type Tab } from '../store/paneStore';
+
+/**
+ * 跨 pane 拖 tab 的 dataTransfer mime 类型 + 序列化协议
+ */
+const TAB_DRAG_MIME = 'application/x-zk-tab';
+
+interface TabDragData {
+  fromPaneId: string;
+  tabId: string;
+}
+
+function readTabDrag(e: React.DragEvent): TabDragData | null {
+  const raw = e.dataTransfer.getData(TAB_DRAG_MIME);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as TabDragData;
+  } catch {
+    return null;
+  }
+}
+
+function isTabDrag(e: React.DragEvent): boolean {
+  return e.dataTransfer.types.includes(TAB_DRAG_MIME);
+}
+
+/**
+ * 根据光标在 pane 内的相对位置算出"边缘 split 区"或"中心 move 区"。
+ * 边缘阈值：距某边 < 25% 算那一边。
+ */
+type DropZone = 'top' | 'bottom' | 'left' | 'right' | 'center' | null;
+
+function pickDropZone(rect: DOMRect, x: number, y: number): DropZone {
+  const dx = x - rect.left;
+  const dy = y - rect.top;
+  const fx = dx / rect.width;
+  const fy = dy / rect.height;
+  const EDGE = 0.25;
+  // 优先按"距哪条边最近"判，避免角上同时命中两边
+  const distLeft = fx;
+  const distRight = 1 - fx;
+  const distTop = fy;
+  const distBottom = 1 - fy;
+  const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+  if (minDist > EDGE) return 'center';
+  if (minDist === distLeft) return 'left';
+  if (minDist === distRight) return 'right';
+  if (minDist === distTop) return 'top';
+  return 'bottom';
+}
 
 const SettingsView = lazy(() =>
   import('./SettingsView').then((m) => ({ default: m.SettingsView })),
@@ -99,8 +148,39 @@ function SplitPaneView({ pane }: { pane: SplitPane }) {
 function LeafPaneView({ pane }: { pane: LeafPane }) {
   const setActiveLeaf = usePaneStore((s) => s.setActiveLeaf);
   const activeLeafId = usePaneStore((s) => s.activeLeafId);
+  const moveTab = usePaneStore((s) => s.moveTab);
+  const moveTabToSplit = usePaneStore((s) => s.moveTabToSplit);
   const isActive = activeLeafId === pane.id;
   const activeTab = pane.tabs.find((t) => t.id === pane.activeTabId) ?? null;
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [zone, setZone] = useState<DropZone>(null);
+
+  const onBodyDragOver = (e: React.DragEvent) => {
+    if (!isTabDrag(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = bodyRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setZone(pickDropZone(rect, e.clientX, e.clientY));
+  };
+  const onBodyDragLeave = (e: React.DragEvent) => {
+    // 离开 pane 边界时才清；冒泡内部子元素 leave 不算
+    if (e.currentTarget === e.target) setZone(null);
+  };
+  const onBodyDrop = (e: React.DragEvent) => {
+    const data = readTabDrag(e);
+    if (!data) return;
+    e.preventDefault();
+    const z = zone;
+    setZone(null);
+    if (!z) return;
+    if (z === 'center') {
+      // append 到本 pane（已存在则去重）
+      moveTab(data.fromPaneId, data.tabId, pane.id);
+    } else {
+      moveTabToSplit(data.fromPaneId, data.tabId, pane.id, z);
+    }
+  };
 
   return (
     <div
@@ -112,35 +192,52 @@ function LeafPaneView({ pane }: { pane: LeafPane }) {
       }`}
     >
       <TabBar pane={pane} isActive={isActive} />
-      <div className="flex-1 relative min-h-0">
+      <div
+        ref={bodyRef}
+        onDragOver={onBodyDragOver}
+        onDragLeave={onBodyDragLeave}
+        onDrop={onBodyDrop}
+        className="flex-1 relative min-h-0"
+      >
         {activeTab ? (
           <TabContent tab={activeTab} paneId={pane.id} />
         ) : (
           <EmptyTabHint paneId={pane.id} />
         )}
+        {/* 拖拽时的 drop zone overlay —— 只在有目标区时显示 */}
+        {zone && <DropZoneOverlay zone={zone} />}
       </div>
     </div>
   );
+}
+
+/** 拖 tab 时显示的高亮预览：center/edge 都能看到落点 */
+function DropZoneOverlay({ zone }: { zone: Exclude<DropZone, null> }) {
+  const base = 'absolute z-20 pointer-events-none bg-accent/25 border-2 border-accent/70 rounded';
+  switch (zone) {
+    case 'center':
+      return <div className={`${base} inset-2`} />;
+    case 'left':
+      return <div className={`${base} left-2 top-2 bottom-2 w-1/2`} />;
+    case 'right':
+      return <div className={`${base} right-2 top-2 bottom-2 w-1/2`} />;
+    case 'top':
+      return <div className={`${base} top-2 left-2 right-2 h-1/2`} />;
+    case 'bottom':
+      return <div className={`${base} bottom-2 left-2 right-2 h-1/2`} />;
+  }
 }
 
 function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
   const setActiveTab = usePaneStore((s) => s.setActiveTab);
   const closeTab = usePaneStore((s) => s.closeTab);
   const splitPane = usePaneStore((s) => s.splitPane);
-  const reorderTab = usePaneStore((s) => s.reorderTab);
+  const moveTab = usePaneStore((s) => s.moveTab);
   const root = usePaneStore((s) => s.root);
-  const dragIdxRef = useRef<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   // 唯一 leaf 不能关；split 的孩子可以关
   const isOnlyLeaf = root.kind === 'leaf' && root.id === pane.id;
-  // 关空 pane：直接走 closeTab(_, '__phantom__') 走不通 —— 改用 setRoot via removeLeaf
-  // 简化：派一个虚拟 tabId 给 closeTab —— 它会走"找不到 tab 直接 return"
-  // 真正关：fake 一个 tab 然后立刻关掉。或者用一个专门的 closePane action。
   const closePane = () => {
-    // 直接调 closeTab on 'sentinel' 不会触发删除。我们走"先确保 tabs 列表有内容才关"
-    // 简单做法：如果还有 tab，逐个关；如果没 tab，调用 closeTab on 一个不存在的 id（无 op）
-    // 实际上 closeTab 在 tabs 为 0 时不会进 remaining 分支 —— 它直接 return（findIndex < 0）
-    // 所以我们需要一个新的"closePane"动作。临时做法：先 push 个空 tab 再关它。
-    // 改：直接调用一个新方法 removeEmptyPane（下面在 store 里加）
     usePaneStore.getState().removeEmptyPane(pane.id);
   };
 
@@ -159,23 +256,26 @@ function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
             key={tab.id}
             draggable
             onDragStart={(e) => {
-              dragIdxRef.current = i;
               e.dataTransfer.effectAllowed = 'move';
-              e.dataTransfer.setData('application/x-zk-tab', String(i));
+              e.dataTransfer.setData(
+                TAB_DRAG_MIME,
+                JSON.stringify({ fromPaneId: pane.id, tabId: tab.id }),
+              );
             }}
             onDragOver={(e) => {
-              if (e.dataTransfer.types.includes('application/x-zk-tab')) {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
-              }
-            }}
-            onDrop={(e) => {
-              const fromStr = e.dataTransfer.getData('application/x-zk-tab');
-              if (!fromStr) return;
-              const from = Number(fromStr);
-              if (!Number.isFinite(from)) return;
+              if (!isTabDrag(e)) return;
               e.preventDefault();
-              reorderTab(pane.id, from, i);
+              e.dataTransfer.dropEffect = 'move';
+              setDragOverIdx(i);
+            }}
+            onDragLeave={() => setDragOverIdx((cur) => (cur === i ? null : cur))}
+            onDrop={(e) => {
+              const data = readTabDrag(e);
+              if (!data) return;
+              e.preventDefault();
+              e.stopPropagation();
+              setDragOverIdx(null);
+              moveTab(data.fromPaneId, data.tabId, pane.id, i);
             }}
             onClick={() => setActiveTab(pane.id, tab.id)}
             className={`group relative flex items-center gap-1.5 px-3 cursor-pointer border-r border-gray-100 dark:border-[#363a4f] text-[12px] select-none min-w-0 max-w-[200px] ${
@@ -185,6 +285,9 @@ function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
             }`}
             title={tab.title}
           >
+            {dragOverIdx === i && (
+              <div className="absolute inset-y-0 left-0 w-0.5 bg-accent z-10 pointer-events-none" />
+            )}
             <TabIcon tab={tab} />
             <span className="truncate">{tab.title || '(untitled)'}</span>
             <button

@@ -68,6 +68,20 @@ interface PaneActions {
   updateTab: (paneId: string, tabId: string, patch: Partial<Tab>) => void;
   /** 强制关掉一个 pane（无视它有几个 tab）—— 唯一 leaf 时退化成空 leaf */
   removeEmptyPane: (paneId: string) => void;
+  /** 把 tab 从一个 pane 移到另一个 pane 的指定位置（同 pane 内 fromIdx→toIdx 也用这个） */
+  moveTab: (
+    fromPaneId: string,
+    tabId: string,
+    toPaneId: string,
+    toIndex?: number,
+  ) => void;
+  /** 把 tab 拖到另一个 pane 的边缘，触发 split：fromTab 走到新 pane */
+  moveTabToSplit: (
+    fromPaneId: string,
+    tabId: string,
+    targetPaneId: string,
+    side: 'top' | 'bottom' | 'left' | 'right',
+  ) => void;
   /** 重置成单 pane 单空 tab */
   reset: () => void;
 }
@@ -177,6 +191,18 @@ function mapTree(node: Pane, fn: (n: Pane) => Pane): Pane {
     return { ...next, children: [mapTree(next.children[0], fn), mapTree(next.children[1], fn)] };
   }
   return next;
+}
+
+/** 用 replacement 替换树中 id 为 leafId 的 leaf；replacement 自身不被遍历 */
+function replaceLeaf(node: Pane, leafId: string, replacement: Pane): Pane {
+  if (node.kind === 'leaf') return node.id === leafId ? replacement : node;
+  return {
+    ...node,
+    children: [
+      replaceLeaf(node.children[0], leafId, replacement),
+      replaceLeaf(node.children[1], leafId, replacement),
+    ],
+  };
 }
 
 export const usePaneStore = create<PaneStore>()(
@@ -362,6 +388,130 @@ export const usePaneStore = create<PaneStore>()(
               : n,
           ),
         });
+      },
+
+      moveTab: (fromPaneId, tabId, toPaneId, toIndex) => {
+        const { root, activeLeafId } = get();
+        const fromLeaf = findLeaf(root, fromPaneId);
+        const toLeaf = findLeaf(root, toPaneId);
+        if (!fromLeaf || !toLeaf) return;
+        const moving = fromLeaf.tabs.find((t) => t.id === tabId);
+        if (!moving) return;
+
+        // 同 pane 内 reorder
+        if (fromPaneId === toPaneId) {
+          const fromIdx = fromLeaf.tabs.indexOf(moving);
+          const next = fromLeaf.tabs.slice();
+          const [m] = next.splice(fromIdx, 1);
+          const insertAt = toIndex == null ? next.length : Math.min(toIndex, next.length);
+          if (m) next.splice(insertAt, 0, m);
+          set({
+            root: mapTree(root, (n) =>
+              n.kind === 'leaf' && n.id === fromPaneId ? { ...n, tabs: next } : n,
+            ),
+          });
+          return;
+        }
+
+        // 跨 pane 移动
+        const fromTabsAfter = fromLeaf.tabs.filter((t) => t.id !== tabId);
+        const fromActiveAfter =
+          fromLeaf.activeTabId === tabId
+            ? fromTabsAfter[0]?.id ?? null
+            : fromLeaf.activeTabId;
+        const insertAt =
+          toIndex == null ? toLeaf.tabs.length : Math.min(toIndex, toLeaf.tabs.length);
+        const toTabsAfter = toLeaf.tabs.slice();
+        toTabsAfter.splice(insertAt, 0, moving);
+
+        let nextRoot = mapTree(root, (n) => {
+          if (n.kind !== 'leaf') return n;
+          if (n.id === fromPaneId) {
+            return { ...n, tabs: fromTabsAfter, activeTabId: fromActiveAfter };
+          }
+          if (n.id === toPaneId) {
+            return { ...n, tabs: toTabsAfter, activeTabId: moving.id };
+          }
+          return n;
+        });
+
+        // 如果源 pane 现在空了，删掉它（除非是唯一 leaf）
+        let nextActive = toPaneId;
+        if (fromTabsAfter.length === 0) {
+          const isOnly = nextRoot.kind === 'leaf' && nextRoot.id === fromPaneId;
+          if (!isOnly) {
+            const removed = removeLeaf(nextRoot, fromPaneId);
+            nextRoot = removed.root;
+          }
+        }
+        set({
+          root: nextRoot,
+          activeLeafId:
+            activeLeafId === fromPaneId && fromTabsAfter.length === 0 ? nextActive : nextActive,
+        });
+      },
+
+      moveTabToSplit: (fromPaneId, tabId, targetPaneId, side) => {
+        const { root, activeLeafId } = get();
+        const fromLeaf = findLeaf(root, fromPaneId);
+        const targetLeafOrig = findLeaf(root, targetPaneId);
+        if (!fromLeaf || !targetLeafOrig) return;
+        const moving = fromLeaf.tabs.find((t) => t.id === tabId);
+        if (!moving) return;
+
+        // 同 pane 单 tab 拖自己边缘 → 没意义
+        if (fromPaneId === targetPaneId && fromLeaf.tabs.length === 1) return;
+
+        const fromTabsAfter = fromLeaf.tabs.filter((t) => t.id !== tabId);
+        const fromActiveAfter =
+          fromLeaf.activeTabId === tabId
+            ? fromTabsAfter[0]?.id ?? null
+            : fromLeaf.activeTabId;
+
+        // 同 pane 拖：target 也用更新后的 tabs
+        const targetLeafFinal: LeafPane =
+          fromPaneId === targetPaneId
+            ? { ...targetLeafOrig, tabs: fromTabsAfter, activeTabId: fromActiveAfter }
+            : targetLeafOrig;
+
+        const newLeaf: LeafPane = {
+          kind: 'leaf',
+          id: uid(),
+          tabs: [moving],
+          activeTabId: moving.id,
+        };
+        const direction: 'horizontal' | 'vertical' =
+          side === 'left' || side === 'right' ? 'horizontal' : 'vertical';
+        const newBefore = side === 'left' || side === 'top';
+        const newSplit: SplitPane = {
+          kind: 'split',
+          id: uid(),
+          direction,
+          children: newBefore ? [newLeaf, targetLeafFinal] : [targetLeafFinal, newLeaf],
+          ratio: 0.5,
+        };
+
+        // 用 replaceLeaf 把 targetPaneId 整个替换为 newSplit（不再被 mapTree 遍历）
+        let nextRoot = replaceLeaf(root, targetPaneId, newSplit);
+
+        // 不同 pane 时，还要单独更新源 pane 的 tabs
+        if (fromPaneId !== targetPaneId) {
+          nextRoot = mapTree(nextRoot, (n) =>
+            n.kind === 'leaf' && n.id === fromPaneId
+              ? { ...n, tabs: fromTabsAfter, activeTabId: fromActiveAfter }
+              : n,
+          );
+          if (fromTabsAfter.length === 0) {
+            const isOnly = nextRoot.kind === 'leaf' && nextRoot.id === fromPaneId;
+            if (!isOnly) {
+              const removed = removeLeaf(nextRoot, fromPaneId);
+              nextRoot = removed.root;
+            }
+          }
+        }
+
+        set({ root: nextRoot, activeLeafId: newLeaf.id });
+        void activeLeafId;
       },
 
       removeEmptyPane: (paneId) => {

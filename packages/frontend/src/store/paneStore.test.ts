@@ -109,6 +109,48 @@ describe('paneStore', () => {
     }
   });
 
+  it('moveTab moves between panes', () => {
+    const st = usePaneStore.getState();
+    st.openTab({ kind: 'card', title: 'A', cardBoxId: '1', cardFocusId: '1' });
+    const leaf1Id = (usePaneStore.getState().root as { id: string }).id;
+    st.splitPane(leaf1Id, 'horizontal', { kind: 'card', title: 'B', cardBoxId: '2', cardFocusId: '2' });
+    let root = usePaneStore.getState().root;
+    if (root.kind !== 'split') throw new Error('expected split');
+    const leftLeaf = root.children[0];
+    const rightLeaf = root.children[1];
+    if (leftLeaf.kind !== 'leaf' || rightLeaf.kind !== 'leaf') throw new Error('expected leaves');
+    const tabA = leftLeaf.tabs[0]!;
+    st.moveTab(leftLeaf.id, tabA.id, rightLeaf.id);
+    root = usePaneStore.getState().root;
+    // 左 pane 空了 → 整个塌陷成单 leaf（B + A 都在那里）
+    expect(root.kind).toBe('leaf');
+    if (root.kind === 'leaf') {
+      expect(root.tabs.map((t) => t.title).sort()).toEqual(['A', 'B']);
+    }
+  });
+
+  it('moveTabToSplit splits target with the moved tab', () => {
+    const st = usePaneStore.getState();
+    st.openTab({ kind: 'card', title: 'A', cardBoxId: '1', cardFocusId: '1' });
+    st.openTab({ kind: 'card', title: 'B', cardBoxId: '2', cardFocusId: '2' }, { newTab: true });
+    const root = usePaneStore.getState().root;
+    if (root.kind !== 'leaf') throw new Error('expected leaf');
+    const tabA = root.tabs[0]!;
+    // 拖 A 到自己的右边 → 该 pane 应该 split horizontal，A 在右侧新 pane
+    st.moveTabToSplit(root.id, tabA.id, root.id, 'right');
+    const after = usePaneStore.getState().root;
+    expect(after.kind).toBe('split');
+    if (after.kind === 'split') {
+      expect(after.direction).toBe('horizontal');
+      const left = after.children[0];
+      const right = after.children[1];
+      if (left.kind === 'leaf' && right.kind === 'leaf') {
+        expect(left.tabs.map((t) => t.title)).toEqual(['B']);
+        expect(right.tabs.map((t) => t.title)).toEqual(['A']);
+      }
+    }
+  });
+
   it('setRatio clamps between 0.15 and 0.85', () => {
     const st = usePaneStore.getState();
     st.openTab({ kind: 'card', title: 'A', cardBoxId: '1', cardFocusId: '1' });

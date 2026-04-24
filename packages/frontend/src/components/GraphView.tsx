@@ -175,9 +175,9 @@ function buildSimGraph(cards: CardSummary[]): { simNodes: SimNode[]; links: SimL
 /** 工厂：建一个 d3-force 模拟实例（不自动 tick，调用方控制） */
 function makeSimulation(simNodes: SimNode[], links: SimLink[]): Simulation<SimNode, SimLink> {
   const linkDistance = (k: LinkKind) =>
-    k === 'hierarchy' ? 180 : k === 'box' ? 220 : 300;
+    k === 'hierarchy' ? 140 : k === 'box' ? 200 : 280;
   const linkStrength = (k: LinkKind) =>
-    k === 'hierarchy' ? 0.7 : k === 'box' ? 0.15 : 0.05;
+    k === 'hierarchy' ? 0.9 : k === 'box' ? 0.2 : 0.05;
 
   const sim = forceSimulation(simNodes)
     .force(
@@ -189,9 +189,11 @@ function makeSimulation(simNodes: SimNode[], links: SimLink[]): Simulation<SimNo
         .distance((l) => linkDistance((l as SimLink).kind))
         .strength((l) => linkStrength((l as SimLink).kind)),
     )
-    .force('charge', forceManyBody<SimNode>().strength((n) => (n.isIndex ? -1500 : -500)))
-    .force('center', forceCenter(0, 0))
-    .force('collide', forceCollide<SimNode>(NODE_W * 0.7));
+    .force('charge', forceManyBody<SimNode>().strength((n) => (n.isIndex ? -1200 : -300)))
+    // 把节点拉向中心 —— Obsidian 的"向心力"，让整张图聚合而不是无限漂
+    .force('center', forceCenter(0, 0).strength(0.05))
+    .force('collide', forceCollide<SimNode>(NODE_W * 0.45))
+    .alphaDecay(0.03); // 默认 0.0228，提高 → 更快 settle，更省 CPU
   return sim as unknown as Simulation<SimNode, SimLink>;
 }
 
@@ -288,7 +290,7 @@ function GraphInner() {
 
   const edges: Edge[] = useMemo(() => {
     const colorByKind: Record<LinkKind, string> = {
-      hierarchy: '#94a3b8', // gray
+      hierarchy: '#475569', // 深灰，比 #94a3b8 看得清
       link: '#7c4dff', // 紫
       tag: '#10b981', // 绿
       box: '#f59e0b', // 橙
@@ -315,14 +317,16 @@ function GraphInner() {
               ? 1
               : 0.1
             : l.kind === 'hierarchy'
-              ? 0.7
-              : 0.35;
-        const strokeWidth = touchesHovered || inSelectedBox ? 2.4 : l.kind === 'hierarchy' ? 1 : 0.7;
+              ? 0.85
+              : 0.55;
+        const strokeWidth = touchesHovered || inSelectedBox ? 2.5 : l.kind === 'hierarchy' ? 1.4 : 1;
         return {
           id: `${l.kind}:${l.source}->${l.target}`,
           source: l.source,
           target: l.target,
-          type: 'default',
+          type: 'straight',
+          sourceHandle: 's',
+          targetHandle: 't',
           style: {
             stroke: baseColor,
             strokeWidth,
@@ -441,14 +445,25 @@ function EdgeToggle({
   );
 }
 
-/** 隐形 handles —— 给 React Flow 一个 anchor，否则 edges 找不到端点不显示 */
+/** 隐形 handles —— 节点中心一个，配合 'straight' edge type 让边像 Obsidian 那样
+ *  从节点四面八方"指向"另一节点的中心方向 —— 不再都从 top 发出 */
 function Anchors() {
+  const handleStyle = {
+    opacity: 0,
+    pointerEvents: 'none' as const,
+    width: 1,
+    height: 1,
+    minWidth: 0,
+    minHeight: 0,
+    border: 0,
+    background: 'transparent',
+  };
+  // 同一个 position（Top）但 source 和 target —— React Flow 用直线连接两个 Top
+  // 改用 4 方向的 handles，并通过 edge type='straight' 让 React Flow 自己选最近的
   return (
     <>
-      <Handle type="source" position={Position.Top} id="t" style={{ opacity: 0, pointerEvents: 'none' }} />
-      <Handle type="target" position={Position.Top} id="t-in" style={{ opacity: 0, pointerEvents: 'none' }} />
-      <Handle type="source" position={Position.Bottom} id="b" style={{ opacity: 0, pointerEvents: 'none' }} />
-      <Handle type="target" position={Position.Bottom} id="b-in" style={{ opacity: 0, pointerEvents: 'none' }} />
+      <Handle type="source" position={Position.Top} id="s" style={{ ...handleStyle, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+      <Handle type="target" position={Position.Top} id="t" style={{ ...handleStyle, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
     </>
   );
 }

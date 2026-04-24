@@ -5,6 +5,7 @@ import { ArrowDownToLine, ArrowUpToLine, Check, GripVertical, Layers, Pencil, St
 import { setCardDragData } from '../lib/dragCard';
 import { dialog } from '../lib/dialog';
 import { api, type Card } from '../lib/api';
+import { countWords, relativeTime } from '../lib/cardStats';
 import { attachWikilinkHandler, renderMarkdown } from '../lib/markdown';
 import type { CardNodeData } from '../lib/cardGraph';
 import { NODE_WIDTH } from '../lib/cardGraph';
@@ -463,21 +464,40 @@ export function CardNode({ data, id, selected }: NodeProps) {
             dangerouslySetInnerHTML={{ __html: html }}
           />
 
-          {tags.length > 0 && (
-            <footer className="px-5 pb-3 flex flex-wrap gap-1.5 border-t border-gray-100 pt-2">
-              {tags.slice(0, 6).map((t) => (
-                <button
-                  key={t}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setFocusTag(t);
-                  }}
-                  className="text-[9px] font-bold text-accent hover:underline cursor-pointer"
-                  title={`Show all cards tagged #${t}`}
-                >
-                  #{t}
-                </button>
-              ))}
+          {(tags.length > 0 || full) && !isGhost && (
+            <footer className="px-5 pb-3 pt-2 border-t border-gray-100 space-y-1">
+              {tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {tags.slice(0, 6).map((t) => (
+                    <button
+                      key={t}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFocusTag(t);
+                      }}
+                      className="text-[9px] font-bold text-accent hover:underline cursor-pointer"
+                      title={`Show all cards tagged #${t}`}
+                    >
+                      #{t}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {full && (
+                <div className="flex items-center gap-2 text-[9px] text-gray-400 tabular-nums">
+                  <span title="Words">{countWords(full.contentMd)}w</span>
+                  <span className="text-gray-300">·</span>
+                  <span title="Outbound [[link]]s">→ {full.crossLinks.length}</span>
+                  {(full.updatedAt || full.mtime) && (
+                    <>
+                      <span className="text-gray-300">·</span>
+                      <span title={String(full.updatedAt ?? new Date(full.mtime).toISOString())}>
+                        {relativeTime(full.updatedAt ?? full.mtime)}
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
             </footer>
           )}
         </>

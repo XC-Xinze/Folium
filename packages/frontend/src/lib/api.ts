@@ -149,6 +149,10 @@ export const api = {
   listIndexes: () => get<{ tree: IndexNode[] }>(`/indexes`),
   getTagRelated: (id: string) =>
     get<{ related: TagRelated[] }>(`/cards/${encodeURIComponent(id)}/tag-related`),
+  getTagSuggestions: (id: string) =>
+    get<{ suggestions: Array<{ name: string; score: number }> }>(
+      `/cards/${encodeURIComponent(id)}/tag-suggestions`,
+    ),
   getCardsByTag: (tag: string) =>
     get<{ tag: string; cards: Card[] }>(`/tags/${encodeURIComponent(tag)}/cards`),
   relatedBatch: async (ids: string[], potentialLimit = 5): Promise<RelatedBatch> => {

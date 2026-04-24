@@ -631,6 +631,14 @@ export function CardNode({ data, id, selected }: NodeProps) {
             onAccept={acceptAutocomplete}
             anchorRect={anchorRect}
           />
+          <TagSuggestionsRow
+            cardId={cardLuhmannId}
+            currentTags={draftTags}
+            onAddTag={(name) => {
+              const cur = draftTags.trim();
+              setDraftTags(cur ? `${cur}, ${name}` : name);
+            }}
+          />
           <input
             value={draftTags}
             onChange={(e) => setDraftTags(e.target.value)}
@@ -813,6 +821,53 @@ export function CardNode({ data, id, selected }: NodeProps) {
         </div>
       )}
 
+    </div>
+  );
+}
+
+/**
+ * 编辑模式下的"邻近卡都打了这些 tag，你也加？"建议条。
+ * 数据来自 /cards/:id/tag-suggestions（基于 tagRelated + potential 聚合）。
+ * 已经在 currentTags 里出现的不显示。
+ */
+function TagSuggestionsRow({
+  cardId,
+  currentTags,
+  onAddTag,
+}: {
+  cardId: string;
+  currentTags: string;
+  onAddTag: (name: string) => void;
+}) {
+  const q = useQuery({
+    queryKey: ['tag-suggestions', cardId],
+    queryFn: () => api.getTagSuggestions(cardId),
+    staleTime: 60_000,
+  });
+  const usedSet = new Set(
+    currentTags
+      .split(/[,，\s]+/)
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const items = (q.data?.suggestions ?? []).filter((s) => !usedSet.has(s.name.toLowerCase()));
+  if (items.length === 0) return null;
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Suggested:</span>
+      {items.map((s) => (
+        <button
+          key={s.name}
+          onClick={(e) => {
+            e.stopPropagation();
+            onAddTag(s.name);
+          }}
+          className="text-[10px] px-1.5 py-0.5 rounded-full border border-dashed border-accent/50 text-accent hover:bg-accentSoft transition-colors"
+          title={`Score ${s.score} from similar cards`}
+        >
+          + #{s.name}
+        </button>
+      ))}
     </div>
   );
 }

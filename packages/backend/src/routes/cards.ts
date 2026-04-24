@@ -307,6 +307,38 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
     return { related: getTagRelated(db, repo, card) };
   });
 
+  /**
+   * Tag 建议：根据相似卡（potential + tag-related）的 tag 频率排序，
+   * 返回当前卡还没有的 top tag。前端在编辑模式下展示 → 一键加。
+   */
+  app.get<{ Params: { id: string } }>('/cards/:id/tag-suggestions', async (req, reply) => {
+    const card = repo.getById(req.params.id);
+    if (!card) return reply.code(404).send({ error: 'not_found' });
+    const ownTags = new Set(card.tags);
+    const tagScore = new Map<string, number>();
+    const bump = (t: string, w: number) => {
+      if (ownTags.has(t)) return;
+      tagScore.set(t, (tagScore.get(t) ?? 0) + w);
+    };
+    // 信号 1: tag-related（共享 tag 的卡的其他 tag —— 同主题不同子标签）
+    for (const tr of getTagRelated(db, repo, card)) {
+      const c = repo.getById(tr.luhmannId);
+      if (!c) continue;
+      for (const t of c.tags) bump(t, tr.jaccard);
+    }
+    // 信号 2: potential（内容相似的卡的 tag）
+    for (const p of getPotentialLinks(db, repo, card, 20)) {
+      const c = repo.getById(p.luhmannId);
+      if (!c) continue;
+      for (const t of c.tags) bump(t, p.score * 0.5);
+    }
+    const suggestions = [...tagScore.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, score]) => ({ name, score: Number(score.toFixed(3)) }));
+    return { suggestions };
+  });
+
   app.get<{ Params: { tag: string } }>('/tags/:tag/cards', async (req, reply) => {
     const tag = decodeURIComponent(req.params.tag).toLowerCase();
     const ids = (db

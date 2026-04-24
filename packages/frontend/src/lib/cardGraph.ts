@@ -260,8 +260,11 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     rawEdges.push({ id: `tree:${e.source}->${e.target}`, source: e.source, target: e.target, kind: 'tree' });
   }
 
-  // 骨干上的 cross-link 边（从 fullCards 抽取）
+  // Cross-link 边：双向都画
+  //   出边（outbound）：骨干卡的 crossLinks 指向哪些卡 —— 从 fullCards 抽取
+  //   入边（inbound / backlinks）：哪些卡的 crossLinks 指向骨干 —— 用 summary 反向扫描
   if (showCrossLinks) {
+    // 出边
     for (const id of backbone.ids) {
       const full = fullCards.get(id);
       if (!full) continue;
@@ -275,7 +278,6 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
         );
         if (existsTree) continue;
         if (!rawNodes.has(target) && cardMap.has(target)) {
-          // 焦点卡若是这个 cross-flank 也要高亮
           addNode(target, target === focusedCardId ? 'focus' : 'cross-flank');
         }
         if (rawNodes.has(target)) {
@@ -286,6 +288,37 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
             kind: 'cross',
           });
         }
+      }
+    }
+    // 入边（backlinks）：扫所有卡的 summary.crossLinks，找指向骨干的
+    for (const c of allCards) {
+      if (backbone.ids.has(c.luhmannId)) continue; // 骨干内部已在出边里处理
+      if (c.status === 'INDEX') continue; // INDEX 的指向是"成员关系"，不当 cross
+      for (const target of c.crossLinks) {
+        if (!backbone.ids.has(target)) continue;
+        const existsTree = backbone.treeEdges.some(
+          (e) =>
+            (e.source === c.luhmannId && e.target === target) ||
+            (e.source === target && e.target === c.luhmannId),
+        );
+        if (existsTree) continue;
+        // 已经被出边处理过这一对就跳过
+        const exists = rawEdges.some(
+          (e) =>
+            e.kind === 'cross' &&
+            ((e.source === c.luhmannId && e.target === target) ||
+              (e.source === target && e.target === c.luhmannId)),
+        );
+        if (exists) continue;
+        if (!rawNodes.has(c.luhmannId)) {
+          addNode(c.luhmannId, c.luhmannId === focusedCardId ? 'focus' : 'cross-flank');
+        }
+        rawEdges.push({
+          id: `cross:${c.luhmannId}->${target}`,
+          source: c.luhmannId,
+          target,
+          kind: 'cross',
+        });
       }
     }
   }

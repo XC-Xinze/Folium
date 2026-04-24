@@ -216,7 +216,7 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange }: Props
       </ReactFlow>
 
       {/* 边类型开关，左上角 */}
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 px-2 py-1.5 bg-white/95 backdrop-blur-sm rounded-full shadow-md border border-gray-200">
+      <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 px-2 py-1.5 bg-white dark:bg-[#363a4f] rounded-full shadow-md border border-gray-200 dark:border-[#494d64]">
         <EdgeToggle
           color="#7c4dff"
           label="Link"

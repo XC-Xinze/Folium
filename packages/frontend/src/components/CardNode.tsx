@@ -265,23 +265,24 @@ export function CardNode({ data, id, selected }: NodeProps) {
       badge: 'bg-gray-100 dark:bg-[#494d64] text-gray-700 dark:text-[#cad3f5]',
     },
     'cross-flank': {
-      border: 'border border-accent/40 dark:border-[#c6a0f6]/60',
+      border: 'border border-accent dark:border-[#c6a0f6]',
       bg: 'bg-white dark:bg-[#363a4f]',
-      opacity: 'opacity-95',
+      opacity: 'opacity-100',
       shadow: 'shadow-md',
       badge: 'bg-accentSoft text-accent dark:bg-[#c6a0f6]/20 dark:text-[#c6a0f6]',
     },
     'tag-related': {
-      border: 'border border-emerald-300 dark:border-[#a6da95]/60',
+      border: 'border border-emerald-400 dark:border-[#a6da95]',
       bg: 'bg-white dark:bg-[#363a4f]',
-      opacity: 'opacity-95',
+      opacity: 'opacity-100',
       shadow: 'shadow-md',
       badge: 'bg-emerald-50 text-emerald-700 dark:bg-[#a6da95]/15 dark:text-[#a6da95]',
     },
     potential: {
-      border: 'border border-dashed border-gray-300 dark:border-[#6e738d]',
+      // 用虚线边框 + 较小阴影区分"弱关系"，不再用透明度
+      border: 'border border-dashed border-gray-400 dark:border-[#6e738d]',
       bg: 'bg-white dark:bg-[#363a4f]',
-      opacity: 'opacity-55',
+      opacity: 'opacity-100',
       shadow: 'shadow-sm',
       badge: 'bg-gray-100 dark:bg-[#494d64] text-gray-500 dark:text-[#a5adcb]',
     },
@@ -451,7 +452,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
           }}
           onMouseDown={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          className="nodrag nopan absolute bottom-2 right-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white/90 hover:bg-accent hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 hover:border-accent shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
+          className="nodrag nopan absolute bottom-2 right-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white dark:bg-[#363a4f] hover:bg-accent hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 dark:border-[#494d64] hover:border-accent shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
           title="Drag to workspace"
         >
           <GripVertical size={10} />

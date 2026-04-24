@@ -366,7 +366,7 @@ function WorkspaceInner({ workspaceId }: Props) {
       onDrop={onDrop}
     >
       {/* Toolbar —— 之前的 dock/fullscreen/close 按钮在 pane 系统下都被 tab 系统替代了 */}
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-1 bg-white/95 backdrop-blur-sm px-2 py-1.5 rounded-lg shadow-md border border-gray-200">
+      <div className="absolute top-4 left-4 z-10 flex items-center gap-1 bg-white px-2 py-1.5 rounded-lg shadow-md border border-gray-200">
         <RenamableName
           value={wsQ.data.name}
           onSave={(name) => {

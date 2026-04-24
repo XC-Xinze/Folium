@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BaseEdge,
   Background,
   Controls,
   Handle,
@@ -7,8 +8,11 @@ import {
   Position,
   ReactFlow,
   ReactFlowProvider,
+  useStore,
   useViewport,
   type Edge,
+  type EdgeProps,
+  type InternalNode,
   type Node,
 } from '@xyflow/react';
 import {
@@ -197,7 +201,55 @@ function makeSimulation(simNodes: SimNode[], links: SimLink[]): Simulation<SimNo
   return sim as unknown as Simulation<SimNode, SimLink>;
 }
 
+/** 计算从节点中心到目标方向的"出口点"——线 center→other 与节点矩形的交点 */
+function getNodeIntersection(
+  node: InternalNode,
+  otherCx: number,
+  otherCy: number,
+): { x: number; y: number } {
+  const w = node.measured?.width ?? (node as { width?: number }).width ?? NODE_W;
+  const h = node.measured?.height ?? (node as { height?: number }).height ?? NODE_H;
+  const cx = (node.internals?.positionAbsolute?.x ?? node.position.x) + w / 2;
+  const cy = (node.internals?.positionAbsolute?.y ?? node.position.y) + h / 2;
+  const dx = otherCx - cx;
+  const dy = otherCy - cy;
+  if (dx === 0 && dy === 0) return { x: cx, y: cy };
+  const w2 = w / 2;
+  const h2 = h / 2;
+  // 比较 |dx|/w2 与 |dy|/h2 哪个先撞到边
+  if (Math.abs(dx) * h2 > Math.abs(dy) * w2) {
+    // 先撞到左/右边
+    return { x: cx + Math.sign(dx) * w2, y: cy + (dy * w2) / Math.abs(dx) };
+  }
+  // 先撞到上/下边
+  return { x: cx + (dx * h2) / Math.abs(dy), y: cy + Math.sign(dy) * h2 };
+}
+
+/** 浮动边：source/target 不绑特定 handle，用节点中心连线与边界的交点作为端点。
+ *  视觉上像 Obsidian 的 graph：线从节点边缘"四面八方"射出。 */
+function FloatingEdge({ id, source, target, style }: EdgeProps) {
+  const sourceNode = useStore(
+    useCallback((s: { nodeLookup: Map<string, InternalNode> }) => s.nodeLookup.get(source), [source]),
+  );
+  const targetNode = useStore(
+    useCallback((s: { nodeLookup: Map<string, InternalNode> }) => s.nodeLookup.get(target), [target]),
+  );
+  if (!sourceNode || !targetNode) return null;
+  const sw = sourceNode.measured?.width ?? NODE_W;
+  const sh = sourceNode.measured?.height ?? NODE_H;
+  const tw = targetNode.measured?.width ?? NODE_W;
+  const th = targetNode.measured?.height ?? NODE_H;
+  const sCx = (sourceNode.internals?.positionAbsolute?.x ?? sourceNode.position.x) + sw / 2;
+  const sCy = (sourceNode.internals?.positionAbsolute?.y ?? sourceNode.position.y) + sh / 2;
+  const tCx = (targetNode.internals?.positionAbsolute?.x ?? targetNode.position.x) + tw / 2;
+  const tCy = (targetNode.internals?.positionAbsolute?.y ?? targetNode.position.y) + th / 2;
+  const sPt = getNodeIntersection(sourceNode, tCx, tCy);
+  const tPt = getNodeIntersection(targetNode, sCx, sCy);
+  return <BaseEdge id={id} path={`M ${sPt.x},${sPt.y} L ${tPt.x},${tPt.y}`} style={style} />;
+}
+
 const nodeTypes = { graphNode: GraphNode };
+const edgeTypes = { floating: FloatingEdge };
 
 interface EdgeToggles {
   hierarchy: boolean;
@@ -324,9 +376,7 @@ function GraphInner() {
           id: `${l.kind}:${l.source}->${l.target}`,
           source: l.source,
           target: l.target,
-          type: 'straight',
-          sourceHandle: 's',
-          targetHandle: 't',
+          type: 'floating',
           style: {
             stroke: baseColor,
             strokeWidth,
@@ -357,6 +407,7 @@ function GraphInner() {
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onNodeClick={(e, node) => {
           e.stopPropagation();
           setSelectedId((cur) => (cur === node.id ? null : node.id));
@@ -402,7 +453,7 @@ function GraphInner() {
         <MiniMap pannable zoomable position="top-right" maskColor="rgba(0,0,0,0.04)" />
       </ReactFlow>
 
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 px-2 py-1.5 bg-white/95 dark:bg-[#363a4f]/95 backdrop-blur-sm rounded-full shadow-md border border-gray-200 dark:border-[#494d64]">
+      <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 px-2 py-1.5 bg-white dark:bg-[#363a4f] rounded-full shadow-md border border-gray-200 dark:border-[#494d64]">
         <EdgeToggle color="#94a3b8" label="Hierarchy" active={toggles.hierarchy} onClick={() => flip('hierarchy')} />
         <EdgeToggle color="#7c4dff" label="Link" active={toggles.link} onClick={() => flip('link')} />
         <EdgeToggle color="#10b981" label="Tag" active={toggles.tag} onClick={() => flip('tag')} />

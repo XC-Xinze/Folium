@@ -178,20 +178,14 @@ export function App() {
         title: 'Split active pane right',
         defaultShortcut: 'Mod+\\',
         group: 'View',
-        run: () => {
-          const { activeLeafId, splitPane } = usePaneStore.getState();
-          splitPane(activeLeafId, 'horizontal');
-        },
+        run: () => splitActivePane('horizontal'),
       }),
       registerCommand({
         id: 'view.splitDown',
         title: 'Split active pane down',
         defaultShortcut: 'Mod+Shift+\\',
         group: 'View',
-        run: () => {
-          const { activeLeafId, splitPane } = usePaneStore.getState();
-          splitPane(activeLeafId, 'vertical');
-        },
+        run: () => splitActivePane('vertical'),
       }),
       registerCommand({
         id: 'tab.close',
@@ -270,4 +264,27 @@ export function App() {
       <CommandPalette />
     </div>
   );
+}
+
+/** split active pane —— 把当前 active tab 复制到新 pane，避免出空 pane */
+function splitActivePane(direction: 'horizontal' | 'vertical') {
+  const { root, activeLeafId, splitPane } = usePaneStore.getState();
+  function find(node: typeof root): typeof root | null {
+    if (node.kind === 'leaf') return node.id === activeLeafId ? node : null;
+    for (const c of node.children) {
+      const r = find(c);
+      if (r) return r;
+    }
+    return null;
+  }
+  const leaf = find(root);
+  if (!leaf || leaf.kind !== 'leaf') return;
+  const at = leaf.tabs.find((t) => t.id === leaf.activeTabId) ?? leaf.tabs[0];
+  if (!at) {
+    splitPane(activeLeafId, direction);
+    return;
+  }
+  const { id: _id, ...spec } = at;
+  void _id;
+  splitPane(activeLeafId, direction, spec);
 }

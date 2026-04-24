@@ -381,14 +381,25 @@ function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
       {pane.tabs.length > 0 && !isMobile && (
         <>
           <button
-            onClick={() => splitPane(pane.id, 'horizontal')}
+            onClick={() => {
+              // 复制当前 active tab 到右边 split —— 不留空 pane
+              const at = pane.tabs.find((t) => t.id === pane.activeTabId);
+              const { id: _id, ...spec } = at ?? pane.tabs[0]!;
+              void _id;
+              splitPane(pane.id, 'horizontal', spec);
+            }}
             className="px-2 text-gray-400 hover:text-ink dark:hover:text-[#cad3f5] hover:bg-gray-100 dark:hover:bg-[#363a4f]"
             title="Split right"
           >
             <SplitSquareHorizontal size={12} />
           </button>
           <button
-            onClick={() => splitPane(pane.id, 'vertical')}
+            onClick={() => {
+              const at = pane.tabs.find((t) => t.id === pane.activeTabId);
+              const { id: _id, ...spec } = at ?? pane.tabs[0]!;
+              void _id;
+              splitPane(pane.id, 'vertical', spec);
+            }}
             className="px-2 text-gray-400 hover:text-ink dark:hover:text-[#cad3f5] hover:bg-gray-100 dark:hover:bg-[#363a4f]"
             title="Split down"
           >

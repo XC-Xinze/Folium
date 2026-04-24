@@ -106,9 +106,16 @@ export function TabContextMenu({ pane, tabId, x, y, onClose }: Props) {
     {
       kind: 'item',
       icon: MoveRight,
-      label: 'Split this pane right',
+      label: 'Split this pane right (clone tab)',
       onClick: () => {
-        splitPane(pane.id, 'horizontal');
+        const at = pane.tabs.find((t) => t.id === tabId) ?? pane.tabs[0];
+        if (at) {
+          const { id: _id, ...spec } = at;
+          void _id;
+          splitPane(pane.id, 'horizontal', spec);
+        } else {
+          splitPane(pane.id, 'horizontal');
+        }
         onClose();
       },
     },

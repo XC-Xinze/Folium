@@ -341,7 +341,12 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     );
 
   if (showTagRelated) {
-    for (const id of backbone.ids) {
+    // 只从焦点卡发 tag 边 —— 用户期望的是"以焦点为中心的放射图"
+    // 否则同 backbone 里所有共享 tag 的卡两两相连，画面会糊
+    const tagAnchorIds = backbone.ids.has(focusedCardId)
+      ? [focusedCardId]
+      : [...backbone.ids];
+    for (const id of tagAnchorIds) {
       const rel = relatedBatch[id];
       if (!rel) continue;
       for (const tr of rel.tagRelated) {

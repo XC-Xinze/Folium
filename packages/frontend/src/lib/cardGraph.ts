@@ -361,10 +361,10 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
           }
           continue;
         }
-        // 全新 tag-related 节点
+        // 全新 tag-related 节点 —— INDEX 卡也算（INDEX 之间共享 tag 是正经关系，
+        // 不要因为"INDEX 是成员关系"就把 tag 关系一起吞掉）
         const summary = cardMap.get(tr.luhmannId);
         if (!summary) continue;
-        if (summary.status === 'INDEX') continue; // INDEX 卡不算 tag-related
         addNode(
           tr.luhmannId,
           tr.luhmannId === focusedCardId ? 'focus' : 'tag-related',

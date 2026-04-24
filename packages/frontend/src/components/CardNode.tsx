@@ -1,7 +1,7 @@
 import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { ArrowDownToLine, ArrowUpToLine, Check, GripVertical, Layers, Pencil, Trash2, X } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowDownToLine, ArrowUpToLine, Check, GripVertical, Layers, Pencil, Star, Trash2, X } from 'lucide-react';
 import { setCardDragData } from '../lib/dragCard';
 import { dialog } from '../lib/dialog';
 import { api, type Card } from '../lib/api';
@@ -30,6 +30,8 @@ export function CardNode({ data, id, selected }: NodeProps) {
   const setFocus = useUIStore((s) => s.setFocus);
   const setFocusTag = useUIStore((s) => s.setFocusTag);
   const qc = useQueryClient();
+  const starredQ = useQuery({ queryKey: ['starred'], queryFn: api.listStarred });
+  const isStarred = !!starredQ.data?.ids.includes(cardLuhmannId);
   const contentRef = useRef<HTMLDivElement>(null);
   const [promoting, setPromoting] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -44,6 +46,17 @@ export function CardNode({ data, id, selected }: NodeProps) {
   useEffect(() => { if (savedW != null) setW(savedW); }, [savedW]);
   useEffect(() => { if (savedH != null) setH(savedH); }, [savedH]);
   void id;
+
+  const toggleStar = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      if (isStarred) await api.unstar(cardLuhmannId);
+      else await api.star(cardLuhmannId);
+      qc.invalidateQueries({ queryKey: ['starred'] });
+    } catch (err) {
+      console.error('toggle star failed', err);
+    }
+  };
 
   const onPromote = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -317,6 +330,19 @@ export function CardNode({ data, id, selected }: NodeProps) {
           title={`Edit ${cardLuhmannId}`}
         >
           <Pencil size={11} />
+        </button>
+      )}
+      {!isGhost && (
+        <button
+          onClick={toggleStar}
+          className={`absolute -top-2 right-14 z-10 w-6 h-6 rounded-full shadow-md flex items-center justify-center transition-all ${
+            isStarred
+              ? 'bg-amber-400 text-white opacity-100'
+              : 'bg-gray-200 text-gray-500 opacity-0 group-hover:opacity-100 hover:bg-amber-400 hover:text-white'
+          }`}
+          title={isStarred ? `Unstar ${cardLuhmannId}` : `Star ${cardLuhmannId}`}
+        >
+          <Star size={11} fill={isStarred ? 'currentColor' : 'none'} />
         </button>
       )}
       {/* Resize: 8 handles visible on hover/select. Saved to positions.w/h */}

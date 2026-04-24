@@ -13,6 +13,7 @@ import { cardRoutes } from './routes/cards.js';
 import { attachmentRoutes } from './routes/attachments.js';
 import { positionRoutes } from './routes/positions.js';
 import { workspaceRoutes } from './routes/workspaces.js';
+import { starredRoutes } from './routes/starred.js';
 import { hooks } from './hooks.js';
 
 async function main() {
@@ -55,6 +56,7 @@ async function main() {
   await app.register(attachmentRoutes, { prefix: '/api' });
   await app.register(positionRoutes, { prefix: '/api' });
   await app.register(workspaceRoutes, { prefix: '/api' });
+  await app.register(starredRoutes, { prefix: '/api' });
 
   app.get('/api/health', async () => ({
     ok: true,

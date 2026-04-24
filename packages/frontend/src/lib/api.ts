@@ -307,6 +307,13 @@ export const api = {
       throw new Error(j.error ?? `${res.status} ${res.statusText}`);
     }
   },
+  listStarred: () => get<{ ids: string[] }>(`/starred`),
+  star: async (id: string): Promise<void> => {
+    await fetch(`${BASE}/starred/${encodeURIComponent(id)}`, { method: 'PUT' });
+  },
+  unstar: async (id: string): Promise<void> => {
+    await fetch(`${BASE}/starred/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
   openOrCreateDaily: async (date?: string): Promise<{ luhmannId: string; created: boolean }> => {
     const res = await fetch(`${BASE}/daily`, {
       method: 'POST',

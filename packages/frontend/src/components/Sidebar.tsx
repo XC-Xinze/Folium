@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, FolderTree, Tag, Trash2 } from 'lucide-react';
+import { ChevronRight, FolderTree, Star, Tag, Trash2 } from 'lucide-react';
 import { api, type IndexNode } from '../lib/api';
 import { dialog } from '../lib/dialog';
 import { useUIStore } from '../store/uiStore';
@@ -17,6 +17,7 @@ export function Sidebar() {
   const tagsQ = useQuery({ queryKey: ['tags'], queryFn: api.listTags });
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
   const indexesQ = useQuery({ queryKey: ['indexes'], queryFn: api.listIndexes });
+  const starredQ = useQuery({ queryKey: ['starred'], queryFn: api.listStarred });
   const qc = useQueryClient();
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.deleteCard(id),
@@ -42,6 +43,34 @@ export function Sidebar() {
       <header className="h-12 px-5 flex items-center border-b border-gray-100">
         <span className="font-bold text-sm tracking-tight">Vault</span>
       </header>
+
+      {/* Starred: 顶部置顶 */}
+      {(starredQ.data?.ids ?? []).length > 0 && (
+        <Section icon={<Star size={12} />} title="STARRED">
+          {(() => {
+            const cardById = new Map((cardsQ.data?.cards ?? []).map((c) => [c.luhmannId, c]));
+            return (starredQ.data?.ids ?? []).map((id) => {
+              const c = cardById.get(id);
+              return (
+                <button
+                  key={id}
+                  onClick={() => navigate(id)}
+                  className={`group w-full flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-gray-50 text-left ${
+                    focusedId === id ? 'bg-accentSoft' : ''
+                  }`}
+                  title={c?.title ?? id}
+                >
+                  <Star size={10} className="text-amber-400 fill-amber-400 shrink-0" />
+                  <span className="font-mono text-[10px] text-gray-500 w-12 shrink-0">{id}</span>
+                  <span className="text-[12px] truncate flex-1 min-w-0">
+                    {c?.title ?? <span className="italic text-gray-400">missing</span>}
+                  </span>
+                </button>
+              );
+            });
+          })()}
+        </Section>
+      )}
 
       {/* Indexes tree: top section, most important */}
       <Section icon={<FolderTree size={12} />} title="INDEXES">

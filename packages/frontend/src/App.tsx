@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RibbonBar } from './components/RibbonBar';
 import { Sidebar } from './components/Sidebar';
@@ -7,11 +7,19 @@ import { Canvas } from './components/Canvas';
 import { Dialog } from './components/Dialog';
 import { QuickSwitcher } from './components/QuickSwitcher';
 import { NewCardBar } from './components/NewCardBar';
-import { SettingsView } from './components/SettingsView';
 import { Splitter } from './components/Splitter';
-import { TagView } from './components/TagView';
-import { WorkspaceView } from './components/WorkspaceView';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
+
+// 懒加载 — 不在主 bundle 里拖慢首屏；切到 tag/workspace/settings 时才加载
+const SettingsView = lazy(() =>
+  import('./components/SettingsView').then((m) => ({ default: m.SettingsView })),
+);
+const TagView = lazy(() =>
+  import('./components/TagView').then((m) => ({ default: m.TagView })),
+);
+const WorkspaceView = lazy(() =>
+  import('./components/WorkspaceView').then((m) => ({ default: m.WorkspaceView })),
+);
 import { useUIStore } from './store/uiStore';
 import { api } from './lib/api';
 import { dialog } from './lib/dialog';
@@ -166,7 +174,9 @@ export function App() {
       <NewCardBar />
       <div className="flex-1 relative min-h-0">
         {viewMode === 'tag' && focusedTag ? (
-          <TagView tag={focusedTag} />
+          <Suspense fallback={<div className="h-full flex items-center justify-center text-sm text-gray-400">Loading tag view…</div>}>
+            <TagView tag={focusedTag} />
+          </Suspense>
         ) : focusedBoxId && focusedId ? (
           <Canvas focusedBoxId={focusedBoxId} focusedCardId={focusedId} />
         ) : (
@@ -201,7 +211,9 @@ export function App() {
         minHeight: workspaceFullscreen ? 0 : !isHorizontal ? 280 : undefined,
       }}
     >
-      <WorkspaceView workspaceId={focusedWorkspaceId} />
+      <Suspense fallback={<div className="h-full flex items-center justify-center text-sm text-gray-400">Loading workspace…</div>}>
+        <WorkspaceView workspaceId={focusedWorkspaceId} />
+      </Suspense>
     </aside>
   ) : null;
 
@@ -217,7 +229,9 @@ export function App() {
 
         {viewMode === 'settings' ? (
           <div className="overflow-y-auto h-full">
-            <SettingsView />
+            <Suspense fallback={<div className="p-10 text-sm text-gray-400">Loading settings…</div>}>
+              <SettingsView />
+            </Suspense>
           </div>
         ) : (
           <SplitContainer

@@ -10,4 +10,18 @@ export default defineConfig({
       '/vault': 'http://127.0.0.1:8000',
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // 把重的依赖单独切出去 → 主包瘦身、浏览器并行下载、长期缓存命中率高
+          'vendor-reactflow': ['@xyflow/react', 'dagre'],
+          'vendor-markdown': ['marked'],
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-query': ['@tanstack/react-query'],
+          'vendor-motion': ['framer-motion'],
+        },
+      },
+    },
+  },
 });

@@ -1,5 +1,5 @@
 import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDownToLine, ArrowUpToLine, Check, GripVertical, Layers, Pencil, Star, Trash2, X } from 'lucide-react';
 import { setCardDragData } from '../lib/dragCard';
@@ -265,7 +265,8 @@ export function CardNode({ data, id, selected }: NodeProps) {
   const showSourceLabel =
     (variant === 'cross-flank' || variant === 'tag-related' || variant === 'potential') &&
     otherBoxLabels.length > 0;
-  const html = full ? renderMarkdown(full.contentMd) : '';
+  // markdown 解析非 trivial — 只在内容变化时跑，否则 hover/resize 都会触发整段重新解析
+  const html = useMemo(() => (full ? renderMarkdown(full.contentMd) : ''), [full?.contentMd]);
 
   return (
     <div

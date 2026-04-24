@@ -33,17 +33,23 @@ export function QuickSwitcher() {
   const navigate = useNavigateToCard();
 
   const [query, setQuery] = useState('');
+  // FTS 搜索 debounce 到 200ms，避免每个按键都打后端
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedQuery(query), 200);
+    return () => window.clearTimeout(t);
+  }, [query]);
   const [activeIdx, setActiveIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
   const tagsQ = useQuery({ queryKey: ['tags'], queryFn: api.listTags });
-  // FTS 内容搜索：只在 query 长度 ≥ 2 时跑
+  // FTS 内容搜索：用 debounced query，避免每个按键都打后端
   const searchQ = useQuery({
-    queryKey: ['search', query],
-    queryFn: () => api.search(query, 15),
-    enabled: open && query.trim().length >= 2,
+    queryKey: ['search', debouncedQuery],
+    queryFn: () => api.search(debouncedQuery, 15),
+    enabled: open && debouncedQuery.trim().length >= 2,
   });
 
   // 打开时聚焦 + 重置（全局 Cmd+K 由 lib/commands 统一管理）

@@ -3,7 +3,6 @@ luhmannId: 1bb
 title: IAT 序列的隐马尔可夫建呼呼
 status: ATOMIC
 tags:
-  - hmm
   - timing
   - 概率模型
 created: 2026-01-20T00:00:00.000Z

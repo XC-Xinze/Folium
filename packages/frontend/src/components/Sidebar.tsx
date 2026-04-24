@@ -29,20 +29,24 @@ export function Sidebar() {
       qc.invalidateQueries({ queryKey: ['workspaces'] });
     },
   });
+  // tag 改名 / 删除会改写大量卡片的 frontmatter+正文，凡是缓存了卡片内容的查询都得失效
+  const invalidateAfterTagOp = () => {
+    qc.invalidateQueries({ queryKey: ['tags'] });
+    qc.invalidateQueries({ queryKey: ['cards'] });
+    qc.invalidateQueries({ queryKey: ['card'] }); // ['card', id] 单卡内容
+    qc.invalidateQueries({ queryKey: ['linked'] });
+    qc.invalidateQueries({ queryKey: ['related-batch'] });
+    qc.invalidateQueries({ queryKey: ['referenced-from'] });
+    qc.invalidateQueries({ queryKey: ['tag-cards'] });
+  };
   const renameTagMut = useMutation({
     mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>
       api.renameTag(oldName, newName),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tags'] });
-      qc.invalidateQueries({ queryKey: ['cards'] });
-    },
+    onSuccess: invalidateAfterTagOp,
   });
   const deleteTagMut = useMutation({
     mutationFn: (name: string) => api.deleteTag(name),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tags'] });
-      qc.invalidateQueries({ queryKey: ['cards'] });
-    },
+    onSuccess: invalidateAfterTagOp,
   });
 
   // 把 daily 卡和 orphan 卡（不在任何 INDEX 树里的顶层卡）从主流分离

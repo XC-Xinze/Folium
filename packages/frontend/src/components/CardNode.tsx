@@ -353,6 +353,51 @@ export function CardNode({ data, id, selected }: NodeProps) {
     });
   };
 
+  // 在光标位置插入一段文本（用于图片上传完成后的占位符替换）
+  const insertAtCaret = (insert: string, replaceFromTo?: { from: number; to: number }) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const start = replaceFromTo?.from ?? ta.selectionStart;
+    const end = replaceFromTo?.to ?? ta.selectionEnd;
+    const next = ta.value.slice(0, start) + insert + ta.value.slice(end);
+    setDraftContent(next);
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(start + insert.length, start + insert.length);
+    });
+  };
+
+  // 上传文件并替换 placeholder。失败 → 把 placeholder 删掉。
+  const handleFiles = async (files: File[]) => {
+    if (!textareaRef.current) return;
+    const ta = textareaRef.current;
+    const baseStart = ta.selectionStart;
+    // 先插占位符，让用户立刻看到反馈
+    let placeholder = '';
+    for (const f of files) placeholder += `![uploading ${f.name}…]()\n`;
+    insertAtCaret(placeholder);
+    const placeholderEnd = baseStart + placeholder.length;
+
+    let cursor = baseStart;
+    let replacement = '';
+    for (const f of files) {
+      try {
+        const up = await api.uploadAttachment(f);
+        const isImage = up.mimetype.startsWith('image/');
+        const alt = up.filename.replace(/\.[^.]+$/, '');
+        replacement += isImage
+          ? `![${alt}](${up.relativePath})\n`
+          : `[${up.filename}](${up.relativePath})\n`;
+      } catch (err) {
+        replacement += `<!-- upload failed: ${(err as Error).message} -->\n`;
+      }
+      cursor += 1;
+    }
+    void cursor;
+    // 把所有 placeholder 一次性替换掉
+    insertAtCaret(replacement, { from: baseStart, to: placeholderEnd });
+  };
+
   return (
     <div
       onMouseEnter={() => setHovered(true)}
@@ -502,6 +547,27 @@ export function CardNode({ data, id, selected }: NodeProps) {
             }}
             onKeyUp={(e) => refreshTrigger(e.currentTarget)}
             onClick={(e) => refreshTrigger(e.currentTarget)}
+            onPaste={(e) => {
+              const files = Array.from(e.clipboardData.files);
+              if (files.length > 0) {
+                e.preventDefault();
+                void handleFiles(files);
+              }
+            }}
+            onDragOver={(e) => {
+              if (e.dataTransfer.types.includes('Files')) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+              }
+            }}
+            onDrop={(e) => {
+              const files = Array.from(e.dataTransfer.files);
+              if (files.length > 0) {
+                e.preventDefault();
+                e.stopPropagation();
+                void handleFiles(files);
+              }
+            }}
             onKeyDown={(e) => {
               // 仅当 autocomplete 打开且有候选时，拦截导航键
               if (trigger && acItems.length > 0) {

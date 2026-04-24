@@ -366,6 +366,18 @@ export const api = {
     }
     return res.json();
   },
+  uploadAttachment: async (
+    file: File,
+  ): Promise<{ filename: string; relativePath: string; url: string; mimetype: string; size: number }> => {
+    const fd = new FormData();
+    fd.append('file', file, file.name);
+    const res = await fetch(`${BASE}/attachments`, { method: 'POST', body: fd });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
   workspaceLinksBatch: async (cardIds: string[]): Promise<{ links: WorkspaceLink[] }> => {
     const res = await fetch(`${BASE}/workspace-links/batch`, {
       method: 'POST',

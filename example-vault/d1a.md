@@ -3,7 +3,6 @@ luhmannId: d1a
 title: RBF 核函数优化
 status: ATOMIC
 tags:
-  - svmtest
   - ml
 crossLinks:
   - d1

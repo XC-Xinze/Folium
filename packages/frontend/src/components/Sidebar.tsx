@@ -191,6 +191,8 @@ export function Sidebar() {
                     onClick={async (e) => {
                       e.stopPropagation();
                       e.preventDefault();
+                      // eslint-disable-next-line no-console
+                      console.log('[tag-delete] click', t.name);
                       const ok = await dialog.confirm(
                         `Delete tag #${t.name} from ${t.count} card${t.count === 1 ? '' : 's'}?`,
                         {
@@ -201,10 +203,16 @@ export function Sidebar() {
                           variant: 'danger',
                         },
                       );
+                      // eslint-disable-next-line no-console
+                      console.log('[tag-delete] confirm result', ok);
                       if (!ok) return;
                       try {
-                        await deleteTagMut.mutateAsync(t.name);
+                        const result = await deleteTagMut.mutateAsync(t.name);
+                        // eslint-disable-next-line no-console
+                        console.log('[tag-delete] success', result);
                       } catch (err) {
+                        // eslint-disable-next-line no-console
+                        console.error('[tag-delete] failed', err);
                         dialog.alert((err as Error).message, { title: 'Delete failed' });
                       }
                     }}

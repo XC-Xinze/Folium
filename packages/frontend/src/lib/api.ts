@@ -307,6 +307,18 @@ export const api = {
       throw new Error(j.error ?? `${res.status} ${res.statusText}`);
     }
   },
+  openOrCreateDaily: async (date?: string): Promise<{ luhmannId: string; created: boolean }> => {
+    const res = await fetch(`${BASE}/daily`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
   workspaceLinksBatch: async (cardIds: string[]): Promise<{ links: WorkspaceLink[] }> => {
     const res = await fetch(`${BASE}/workspace-links/batch`, {
       method: 'POST',

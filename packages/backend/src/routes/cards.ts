@@ -115,6 +115,38 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  /**
+   * Daily note: GET-or-create today's journal card.
+   *   id: daily20260424 形式（canonical 化后的日期）
+   *   title: "Daily · YYYY-MM-DD"
+   *   tags: ["daily"]
+   * 前端拿到 luhmannId 后直接 navigate 过去即可。
+   */
+  app.post<{ Body: { date?: string } }>('/daily', async (req, reply) => {
+    const date = (req.body?.date ?? new Date().toISOString().slice(0, 10)).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return reply.code(400).send({ error: 'bad_date' });
+    }
+    const luhmannId = `daily${date.replace(/-/g, '')}`;
+    const existing = repo.getById(luhmannId);
+    if (existing) return reply.send({ luhmannId, created: false });
+    try {
+      const { filePath } = await writeNewCard({
+        luhmannId,
+        title: `Daily · ${date}`,
+        content: `# Daily · ${date}\n\n`,
+        tags: ['daily'],
+        status: 'ATOMIC',
+      });
+      const card = await parseCardFile(filePath);
+      if (card) repo.upsertOne(card);
+      return reply.code(201).send({ luhmannId, created: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.code(500).send({ error: 'write_failed', message: msg });
+    }
+  });
+
   app.get('/indexes', async () => {
     return { tree: buildIndexTree(db, repo) };
   });

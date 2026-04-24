@@ -1,4 +1,8 @@
-import { FolderTree, PanelLeftClose, PanelLeftOpen, Search, Settings, Sparkles } from 'lucide-react';
+import { CalendarDays, FolderTree, PanelLeftClose, PanelLeftOpen, Search, Settings, Sparkles } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { api } from '../lib/api';
+import { dialog } from '../lib/dialog';
+import { useNavigateToCard } from '../lib/useNavigateToCard';
 import { useUIStore } from '../store/uiStore';
 
 /**
@@ -16,6 +20,21 @@ export function RibbonBar() {
   const setViewMode = useUIStore((s) => s.setViewMode);
   const viewMode = useUIStore((s) => s.viewMode);
   const setQuickSwitcherOpen = useUIStore((s) => s.setQuickSwitcherOpen);
+  const navigate = useNavigateToCard();
+  const qc = useQueryClient();
+  const openToday = async () => {
+    try {
+      const { luhmannId, created } = await api.openOrCreateDaily();
+      if (created) {
+        qc.invalidateQueries({ queryKey: ['cards'] });
+        qc.invalidateQueries({ queryKey: ['indexes'] });
+        qc.invalidateQueries({ queryKey: ['tags'] });
+      }
+      navigate(luhmannId);
+    } catch (err) {
+      dialog.alert((err as Error).message, { title: 'Daily note failed' });
+    }
+  };
 
   const onTabClick = (t: 'vault' | 'workspaces') => {
     if (collapsed) {
@@ -43,6 +62,12 @@ export function RibbonBar() {
         icon={<Search size={16} />}
         onClick={() => setQuickSwitcherOpen(true)}
         title="Quick switcher (⌘K)"
+      />
+
+      <IconButton
+        icon={<CalendarDays size={16} />}
+        onClick={openToday}
+        title="Open today's daily note"
       />
 
       <IconButton

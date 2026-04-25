@@ -432,7 +432,7 @@ export async function tempToVault(
   workspaceId: string,
   nodeId: string,
   luhmannId: string,
-): Promise<{ ok: true; luhmannId: string } | { error: string }> {
+): Promise<{ ok: true; luhmannId: string; failedEdges?: string[] } | { error: string }> {
   const ws = await getWorkspace(workspaceId);
   if (!ws) return { error: 'workspace not found' };
   const node = ws.nodes.find((n) => n.id === nodeId);
@@ -470,6 +470,7 @@ export async function tempToVault(
   // Auto-materialize every workspace edge touching this temp where the other
   // end is a real vault card. Note: ws.nodes for *this* workspace was already
   // mutated above (temp → card), so the lookup below sees both ends as cards.
+  const failedEdges: string[] = [];
   const touching = await findEdgesTouching(tempNode.id);
   for (const { ws: pws, edge } of touching) {
     try {
@@ -518,8 +519,11 @@ export async function tempToVault(
       await updateWorkspace(wsNow.id, { edges: wsNow.edges });
     } catch (err) {
       console.error('failed to materialize edge', edge.id, err);
+      failedEdges.push(edge.id);
     }
   }
 
-  return { ok: true, luhmannId };
+  return failedEdges.length > 0
+    ? { ok: true, luhmannId, failedEdges }
+    : { ok: true, luhmannId };
 }

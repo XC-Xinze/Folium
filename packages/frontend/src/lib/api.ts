@@ -582,7 +582,11 @@ export const api = {
     }
     return res.json();
   },
-  tempToVault: async (workspaceId: string, nodeId: string, luhmannId: string): Promise<void> => {
+  tempToVault: async (
+    workspaceId: string,
+    nodeId: string,
+    luhmannId: string,
+  ): Promise<{ ok: true; luhmannId: string; failedEdges?: string[] }> => {
     const res = await fetch(`${BASE}/workspaces/${encodeURIComponent(workspaceId)}/temp-to-vault`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -592,5 +596,6 @@ export const api = {
       const j = await res.json().catch(() => ({}));
       throw new Error(j.error ?? `${res.status} ${res.statusText}`);
     }
+    return res.json();
   },
 };

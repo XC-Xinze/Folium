@@ -49,3 +49,12 @@ export async function unstar(id: string): Promise<void> {
 export function resetStarredCache(): void {
   cache = null;
 }
+
+/** rename / reparent 后调：把 starred 集合里的旧 id 替换成新 id */
+export async function renameStarred(oldId: string, newId: string): Promise<void> {
+  const set = await loadStarred();
+  if (!set.has(oldId)) return;
+  set.delete(oldId);
+  set.add(newId);
+  await flush();
+}

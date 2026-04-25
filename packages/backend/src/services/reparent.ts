@@ -19,6 +19,8 @@ import { canonicalize, deriveParentIdFn } from '../vault/luhmann.js';
 import { readFile, writeFile, rename } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { config } from '../config.js';
+import { renameCardInAllScopes } from './positions.js';
+import { renameStarred } from './starred.js';
 
 export interface ReparentResult {
   /** oldId → newId */
@@ -199,6 +201,13 @@ export async function reparentCard(
   for await (const file of walkMd(config.vaultPath)) {
     const card = await parseCardFile(file);
     if (card) repo.upsertOne(card);
+  }
+
+  // 4. 副作用：positions / starred 里的旧 id 改成新 id
+  // （workspaces 里的 cardId 引用暂不动 —— 用户主动改名应该不期望影响 workspace 状态）
+  for (const [oldId, newId] of renames) {
+    await renameCardInAllScopes(oldId, newId);
+    await renameStarred(oldId, newId);
   }
 
   return { renames: Object.fromEntries(renames), filesUpdated };

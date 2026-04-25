@@ -328,12 +328,19 @@ function WorkspaceInner({ workspaceId }: Props) {
           },
         );
         if (!ok) return;
-        await api.tempToVault(workspaceId, nodeId, luhmannId);
+        const result = await api.tempToVault(workspaceId, nodeId, luhmannId);
         qc.invalidateQueries({ queryKey: ['workspace', workspaceId] });
         qc.invalidateQueries({ queryKey: ['cards'] });
         qc.invalidateQueries({ queryKey: ['card'] });
         qc.invalidateQueries({ queryKey: ['linked'] });
         qc.invalidateQueries({ queryKey: ['ws-links-batch'] });
+        // 部分 edge 物化失败 → 提示用户（卡本身已建好，但 [[link]] 没写完）
+        if (result.failedEdges && result.failedEdges.length > 0) {
+          dialog.alert(
+            `Card created as ${luhmannId}, but ${result.failedEdges.length} workspace edge(s) failed to materialize: ${result.failedEdges.join(', ')}. You can manually re-apply them.`,
+            { title: 'Partial promotion' },
+          );
+        }
       } catch (err) {
         dialog.alert((err as Error).message, { title: 'Promote failed' });
       }

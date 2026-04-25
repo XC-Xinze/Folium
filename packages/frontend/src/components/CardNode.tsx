@@ -823,7 +823,11 @@ export function CardNode({ data, id, selected }: NodeProps) {
           />
 
           {variant === 'focus' && !isGhost && backlinks.length > 0 && (
-            <div className="px-5 pb-2 pt-2 border-t border-gray-100 dark:border-[#494d64]">
+            <div
+              className="nodrag nopan px-5 pb-2 pt-2 border-t border-gray-100 dark:border-[#494d64]"
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
               <button
                 onClick={(e) => {
                   e.stopPropagation();

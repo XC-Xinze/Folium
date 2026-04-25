@@ -116,6 +116,14 @@ function WorkspaceInner({ workspaceId }: Props) {
             onChange: (patch: { title?: string; content?: string }) => handlers.updateNode(n.id, patch),
             onDelete: () => handlers.deleteNode(n.id),
             onPromoteToVault: () => handlers.promoteTempToVault(n.id),
+            // 拖一张实体卡 drop 到本 temp → workspace edge
+            onCardLinkDrop: (sourceLuhmannId: string) => {
+              const sourceNode = ws.nodes.find(
+                (m) => m.kind === 'card' && (m as { cardId?: string }).cardId === sourceLuhmannId,
+              );
+              if (!sourceNode || sourceNode.id === n.id) return;
+              handlers.addEdgeBetween(sourceNode.id, n.id);
+            },
           } as unknown as Record<string, unknown>,
         };
       });

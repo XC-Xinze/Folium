@@ -2,6 +2,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpCircle, Trash2 } from 'lucide-react';
 import { renderMarkdown } from '../lib/markdown';
+import { isCardDrag, readCardDragData } from '../lib/dragCard';
 
 interface TempNodeData {
   title: string;
@@ -9,11 +10,14 @@ interface TempNodeData {
   onChange: (patch: { title?: string; content?: string }) => void;
   onDelete: () => void;
   onPromoteToVault: () => void;
+  /** 跟 CardNode 一致：拖一张实体卡 drop 到本 temp → 创建 workspace edge */
+  onCardLinkDrop?: (sourceLuhmannId: string) => void;
 }
 
 export function WorkspaceTempNode({ data }: NodeProps) {
   const d = data as unknown as TempNodeData;
   const [editing, setEditing] = useState(false);
+  const [linkDropOver, setLinkDropOver] = useState(false);
   const [draftTitle, setDraftTitle] = useState(d.title);
   const [draftContent, setDraftContent] = useState(d.content);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -31,7 +35,28 @@ export function WorkspaceTempNode({ data }: NodeProps) {
   };
 
   return (
-    <div className="group relative bg-white border-2 border-dashed border-purple-300 rounded-lg shadow-md w-[300px] min-h-[140px]">
+    <div
+      onDragOver={(e) => {
+        if (!isCardDrag(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'copy';
+        setLinkDropOver(true);
+      }}
+      onDragLeave={() => setLinkDropOver(false)}
+      onDrop={(e) => {
+        setLinkDropOver(false);
+        if (!isCardDrag(e)) return;
+        const dragged = readCardDragData(e);
+        if (!dragged) return;
+        e.preventDefault();
+        e.stopPropagation();
+        d.onCardLinkDrop?.(dragged.luhmannId);
+      }}
+      className={`group relative bg-white border-2 border-dashed border-purple-300 rounded-lg shadow-md w-[300px] min-h-[140px] ${
+        linkDropOver ? 'ring-2 ring-purple-400 ring-offset-2' : ''
+      }`}
+    >
       <Handle id="top" type="target" position={Position.Top} className="!bg-purple-400 !w-2 !h-2 !border-0" />
       <Handle id="bottom" type="source" position={Position.Bottom} className="!bg-purple-400 !w-2 !h-2 !border-0" />
       <Handle id="left-in" type="target" position={Position.Left} className="!bg-transparent !w-2 !h-2 !border-0" />

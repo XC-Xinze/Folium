@@ -350,7 +350,7 @@ function GraphInner() {
     );
 
   return (
-    <div className="w-full h-full relative">
+    <div className="w-full h-full relative bg-gray-100 dark:bg-[#181926]">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -395,7 +395,7 @@ function GraphInner() {
         proOptions={{ hideAttribution: true }}
         nodesDraggable
       >
-        <Background id="graph-bg" gap={32} size={1} color="#e5e7eb" />
+        <Background id="graph-bg" gap={32} size={1.5} color="#cbd5e1" />
         <Controls position="bottom-right" showInteractive={false} />
         <MiniMap pannable zoomable position="top-right" maskColor="rgba(0,0,0,0.04)" />
       </ReactFlow>
@@ -476,18 +476,20 @@ function GraphNode({ data }: { data: GraphNodeData }) {
           : 'normal';
 
   if (level === 'dot') {
+    // 大圆点 —— 远看清楚的色块
+    const size = isIndex ? 28 : 16;
     return (
       <>
         <Anchors />
         <div
-          className={`rounded-full transition-colors ${
-            isIndex ? 'bg-accent' : 'bg-gray-400 dark:bg-[#6e738d]'
-          } ${isSelected ? 'ring-2 ring-accent ring-offset-2' : ''}`}
+          className={`rounded-full transition-colors shadow-md ${
+            isIndex ? 'bg-accent' : 'bg-gray-500 dark:bg-[#a5adcb]'
+          } ${isSelected ? 'ring-4 ring-accent ring-offset-2 dark:ring-offset-[#1e2030]' : ''}`}
           style={{
-            width: isIndex ? 14 : 8,
-            height: isIndex ? 14 : 8,
-            marginLeft: NODE_W / 2 - (isIndex ? 7 : 4),
-            marginTop: NODE_H / 2 - (isIndex ? 7 : 4),
+            width: size,
+            height: size,
+            marginLeft: NODE_W / 2 - size / 2,
+            marginTop: NODE_H / 2 - size / 2,
           }}
           title={`${card.luhmannId} · ${card.title}`}
         />
@@ -496,53 +498,82 @@ function GraphNode({ data }: { data: GraphNodeData }) {
   }
 
   if (level === 'mini') {
+    // 圆形 id 徽章 —— 直径 64
+    const D = isIndex ? 80 : 64;
     return (
       <>
         <Anchors />
         <div
-          className={`rounded-md border ${
+          className={`rounded-full flex items-center justify-center font-mono font-bold shadow-md ${
             isSelected
-              ? 'border-accent ring-2 ring-accent/30'
-              : isIndex
-                ? 'border-accent bg-accent/10'
-                : 'border-gray-200 dark:border-[#494d64] bg-white dark:bg-[#363a4f]'
-          } px-2 py-1`}
-          style={{ width: NODE_W }}
+              ? 'ring-4 ring-accent ring-offset-2 dark:ring-offset-[#1e2030]'
+              : ''
+          } ${
+            isIndex
+              ? 'bg-accent text-white text-[14px]'
+              : 'bg-white dark:bg-[#363a4f] text-gray-700 dark:text-[#cad3f5] border-2 border-gray-300 dark:border-[#494d64] text-[12px]'
+          }`}
+          style={{
+            width: D,
+            height: D,
+            marginLeft: NODE_W / 2 - D / 2,
+            marginTop: NODE_H / 2 - D / 2,
+          }}
+          title={`${card.luhmannId} · ${card.title}`}
         >
-          <span className={`font-mono text-[10px] font-bold ${isIndex ? 'text-accent' : 'text-gray-500 dark:text-[#a5adcb]'}`}>
-            {card.luhmannId}
-          </span>
+          {card.luhmannId}
         </div>
       </>
     );
   }
 
   if (level === 'normal') {
+    // 方形圆角卡（不再宽长方形）—— 居中 id + 标题 + tag
+    const W = 140;
+    const H = 110;
     return (
       <>
         <Anchors />
         <div
-          className={`rounded-lg border ${
+          className={`rounded-2xl shadow-md flex flex-col items-center justify-center text-center px-2 py-2 ${
             isSelected
-              ? 'border-accent border-2 ring-2 ring-accent/30 bg-white dark:bg-[#363a4f]'
-              : isIndex
-                ? 'border-accent bg-accent/10'
-                : 'border-gray-200 dark:border-[#494d64] bg-white dark:bg-[#363a4f]'
-          } px-2 py-1.5 shadow-sm`}
-          style={{ width: NODE_W }}
+              ? 'ring-4 ring-accent ring-offset-2 dark:ring-offset-[#1e2030]'
+              : ''
+          } ${
+            isIndex
+              ? 'bg-accent text-white border-2 border-accent'
+              : 'bg-white dark:bg-[#363a4f] border-2 border-gray-200 dark:border-[#494d64]'
+          }`}
+          style={{
+            width: W,
+            height: H,
+            marginLeft: NODE_W / 2 - W / 2,
+            marginTop: NODE_H / 2 - H / 2,
+          }}
         >
-          <div className="flex items-baseline gap-1.5">
-            <span className={`font-mono text-[10px] font-bold ${isIndex ? 'text-accent' : 'text-gray-500 dark:text-[#a5adcb]'}`}>
-              {card.luhmannId}
-            </span>
-            <span className="text-[11px] truncate text-ink dark:text-[#cad3f5]">
-              {card.title || card.luhmannId}
-            </span>
-          </div>
+          <span
+            className={`font-mono font-bold text-[13px] ${
+              isIndex ? 'text-white' : 'text-accent'
+            }`}
+          >
+            {card.luhmannId}
+          </span>
+          <span
+            className={`text-[11px] mt-1 line-clamp-2 ${
+              isIndex ? 'text-white/90' : 'text-ink dark:text-[#cad3f5]'
+            }`}
+          >
+            {card.title || card.luhmannId}
+          </span>
           {card.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {card.tags.slice(0, 4).map((t) => (
-                <span key={t} className="text-[8px] font-bold text-accent">
+            <div className="flex flex-wrap justify-center gap-x-1 mt-1">
+              {card.tags.slice(0, 2).map((t) => (
+                <span
+                  key={t}
+                  className={`text-[8px] font-bold ${
+                    isIndex ? 'text-white/80' : 'text-accent'
+                  }`}
+                >
                   #{t}
                 </span>
               ))}

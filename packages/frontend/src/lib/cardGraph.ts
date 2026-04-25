@@ -442,9 +442,12 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     for (const link of workspaceLinks) {
       if (seenWsEdges.has(link.edgeId)) continue;
 
-      const sourceInBackbone = link.source.kind === 'card' && backbone.ids.has(link.source.id);
-      const targetInBackbone = link.target.kind === 'card' && backbone.ids.has(link.target.id);
-      if (!sourceInBackbone && !targetInBackbone) continue;
+      // backbone 或外部焦点都算"视野内"
+      const inView = (cardId: string) =>
+        backbone.ids.has(cardId) || cardId === focusedCardId;
+      const sourceInView = link.source.kind === 'card' && inView(link.source.id);
+      const targetInView = link.target.kind === 'card' && inView(link.target.id);
+      if (!sourceInView && !targetInView) continue;
       seenWsEdges.add(link.edgeId);
 
       // 找到本 link 中的 vault 卡端 + 另一端

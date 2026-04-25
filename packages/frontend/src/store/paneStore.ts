@@ -52,6 +52,9 @@ export interface LeafPane {
   id: string;
   tabs: Tab[];
   activeTabId: string | null;
+  /** Per-pane per-card flag 记忆 —— 关 tab 再开同张卡保持 toggle 状态。
+   *  分 pane 存：A pane 关 tag 不影响 B pane。key = cardBoxId */
+  cardFlagsByCard?: Record<string, Partial<CardDisplayFlags>>;
 }
 
 export interface SplitPane {
@@ -92,6 +95,13 @@ interface PaneActions {
   reorderTab: (paneId: string, fromIdx: number, toIdx: number) => void;
   /** 在 tab 上更新 payload —— 用于 box/focus 切换不开新 tab */
   updateTab: (paneId: string, tabId: string, patch: Partial<Tab>) => void;
+  /** 给 leaf pane 写一对 (cardKey, flag patch) —— 跨 tab 关闭重开仍生效 */
+  setPaneCardFlag: (
+    paneId: string,
+    cardKey: string,
+    key: keyof CardDisplayFlags,
+    value: boolean,
+  ) => void;
   /** 强制关掉一个 pane（无视它有几个 tab）—— 唯一 leaf 时退化成空 leaf */
   removeEmptyPane: (paneId: string) => void;
   /** 批量删除满足 pred 的 tab（删卡 / 删 workspace 后清理用） */
@@ -436,6 +446,24 @@ export const usePaneStore = create<PaneStore>()(
             const [moved] = next.splice(fromIdx, 1);
             if (moved) next.splice(toIdx, 0, moved);
             return { ...n, tabs: next };
+          }),
+        });
+      },
+
+      setPaneCardFlag: (paneId, cardKey, key, value) => {
+        const { root } = get();
+        set({
+          root: mapTree(root, (n) => {
+            if (n.kind !== 'leaf' || n.id !== paneId) return n;
+            const prev = n.cardFlagsByCard ?? {};
+            const cardPrev = prev[cardKey] ?? {};
+            return {
+              ...n,
+              cardFlagsByCard: {
+                ...prev,
+                [cardKey]: { ...cardPrev, [key]: value },
+              },
+            };
           }),
         });
       },

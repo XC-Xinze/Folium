@@ -448,20 +448,39 @@ function TabIcon({ tab }: { tab: Tab }) {
 
 function TabContent({ tab, paneId }: { tab: Tab; paneId: string }) {
   const updateTab = usePaneStore((s) => s.updateTab);
+  const setPaneCardFlag = usePaneStore((s) => s.setPaneCardFlag);
+  // 读 leaf pane 的 cardFlagsByCard，给 Canvas 当默认 flags（跨 tab 重开保持）
+  const paneCardFlags = usePaneStore((s) => {
+    function find(node: typeof s.root): LeafPane | null {
+      if (node.kind === 'leaf') return node.id === paneId ? node : null;
+      for (const c of node.children) {
+        const r = find(c);
+        if (r) return r;
+      }
+      return null;
+    }
+    const leaf = find(s.root);
+    return leaf?.cardFlagsByCard;
+  });
   switch (tab.kind) {
     case 'card':
       if (tab.cardBoxId && tab.cardFocusId) {
+        // tab 自己的 cardFlags 优先（兼容旧数据），其次 pane-card 记忆
+        const persistedFlags = paneCardFlags?.[tab.cardBoxId];
+        const mergedFlags = { ...(persistedFlags ?? {}), ...(tab.cardFlags ?? {}) };
         return (
           <Canvas
             focusedBoxId={tab.cardBoxId}
             focusedCardId={tab.cardFocusId}
-            flags={tab.cardFlags}
+            flags={mergedFlags}
             focusDepth={tab.cardFocusDepth}
-            onFlagChange={(key, value) =>
+            onFlagChange={(key, value) => {
+              // 同时写 tab 和 pane-card —— tab 给当前会话用，pane-card 给重开后用
               updateTab(paneId, tab.id, {
                 cardFlags: { ...(tab.cardFlags ?? {}), [key]: value },
-              })
-            }
+              });
+              if (tab.cardBoxId) setPaneCardFlag(paneId, tab.cardBoxId, key, value);
+            }}
           />
         );
       }

@@ -569,15 +569,47 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
   };
   const FLANK_STEP_Y = NODE_HEIGHT + 30;
 
-  // 为每个待定位节点找它"挂在哪张骨干卡上"
+  // 焦点卡若是外部（不在 backbone）—— 给它一个位置（贴在与它有边的某张 backbone 卡旁边），
+  // 这样它就能作为 tag-related 节点的锚，避免堆叠
+  if (rawNodes.has(focusedCardId) && !positions.has(focusedCardId)) {
+    // 找它与 backbone 之间的边（cross/tag 都行）
+    const bridge = rawEdges.find(
+      (e) =>
+        (e.source === focusedCardId && backbone.ids.has(e.target)) ||
+        (e.target === focusedCardId && backbone.ids.has(e.source)),
+    );
+    const anchorBackbone = bridge
+      ? (backbone.ids.has(bridge.source) ? bridge.source : bridge.target)
+      : [...backbone.ids][0];
+    if (anchorBackbone) {
+      const anchor = positions.get(anchorBackbone);
+      if (anchor) {
+        // 放在 anchor 右侧第一个 flank 槽位
+        positions.set(focusedCardId, {
+          x: anchor.x + NODE_WIDTH + FLANK_OFFSET_X,
+          y: anchor.y,
+        });
+        // 占用 anchor 右侧第一个槽位计数
+        bumpFlank(`${anchorBackbone}::R`);
+        // 更新 row bounds 让后续 flank 算的时候知道焦点占了位置
+        const row = rowBounds.get(anchor.y);
+        if (row) row.maxX = Math.max(row.maxX, anchor.x + NODE_WIDTH + FLANK_OFFSET_X);
+      }
+    }
+  }
+
+  // 为每个待定位节点找它"挂在哪张已定位的卡上"。
+  // 锚候选 = backbone ∪ {focusedCardId}（焦点是外部卡时它也是合法锚）
+  const anchorCandidates = new Set<string>(backbone.ids);
+  if (positions.has(focusedCardId)) anchorCandidates.add(focusedCardId);
   const findAnchor = (id: string) => {
     const edge = rawEdges.find(
       (e) =>
-        (e.source === id && backbone.ids.has(e.target)) ||
-        (e.target === id && backbone.ids.has(e.source)),
+        (e.source === id && anchorCandidates.has(e.target)) ||
+        (e.target === id && anchorCandidates.has(e.source)),
     );
     if (!edge) return null;
-    return backbone.ids.has(edge.source) ? edge.source : edge.target;
+    return anchorCandidates.has(edge.source) ? edge.source : edge.target;
   };
 
   // Pass 1: cross-flanks 和 tag-related 一起布局（同等"侧翼"地位），左右交替

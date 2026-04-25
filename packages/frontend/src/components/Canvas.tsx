@@ -147,31 +147,37 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
 
   // 切换 box 时清缓存（避免跨 box 的位置串联）；同 box 内切换焦点时保留位置
   const prevBoxRef = useRef(focusedBoxId);
-  // 会话级 sticky 位置缓存：只要节点出现过就锁住位置，不让 buildGraph 重排时挪它
-  // key = box-scoped id，避免不同 box 串
+  const prevFocusRef = useRef(focusedCardId);
+  // 会话级 sticky 位置缓存：节点已经摆好的位置不被 buildGraph 重排挪动
   const stickyPosRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   useEffect(() => {
     const boxChanged = prevBoxRef.current !== focusedBoxId;
+    const focusChanged = prevFocusRef.current !== focusedCardId;
     prevBoxRef.current = focusedBoxId;
+    prevFocusRef.current = focusedCardId;
     if (boxChanged) stickyPosRef.current.clear();
+    // 焦点变了 → 失效 sticky 中的"新焦点卡"位置，让它跟着 buildGraph 重新摆到
+    // 跟新邻居贴近的位置（否则它停在老位置，新拉来的 tag-related 在远处看不出关联）
+    if (focusChanged && !boxChanged) {
+      stickyPosRef.current.delete(focusedCardId);
+    }
     setNodes((prev) => {
       if (boxChanged) {
-        // box 变了 → 完全重新布局，并把新位置写入 sticky
         for (const n of graph.nodes) stickyPosRef.current.set(n.id, n.position);
         return graph.nodes;
       }
-      // 同 box 内：保留 React Flow 现有位置 + sticky 缓存（覆盖 buildGraph 给的新位置）
       const prevPos = new Map(prev.map((n) => [n.id, n.position]));
       const merged = graph.nodes.map((n) => {
+        // 新焦点卡用 buildGraph 给的位置（不复用 prevPos / sticky），其他节点正常 sticky
+        if (focusChanged && n.id === focusedCardId) return n;
         const cached = prevPos.get(n.id) ?? stickyPosRef.current.get(n.id);
         return cached ? { ...n, position: cached } : n;
       });
-      // 把所有最终位置写入 sticky，下次 buildGraph 又来时还认这个
       for (const n of merged) stickyPosRef.current.set(n.id, n.position);
       return merged;
     });
     setEdges(graph.edges);
-  }, [graph, focusedBoxId, setNodes, setEdges]);
+  }, [graph, focusedBoxId, focusedCardId, setNodes, setEdges]);
 
   // 拖拽结束 → 乐观更新 + 异步写磁盘（scope 限定）
   const onNodeDragStop = useCallback(

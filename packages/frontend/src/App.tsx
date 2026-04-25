@@ -18,6 +18,7 @@ import { dialog } from './lib/dialog';
 import { registerCommand, useGlobalCommands } from './lib/commands';
 import { loadAllPlugins } from './lib/pluginLoader';
 import { usePaneBootstrap, usePaneSync, useStaleTabCleanup } from './lib/usePaneSync';
+import { popAndRunUndo } from './lib/undoStack';
 
 export function App() {
   const focusedId = useUIStore((s) => s.focusedCardId);
@@ -199,6 +200,23 @@ export function App() {
         defaultShortcut: 'Mod+Shift+t',
         group: 'Tab',
         run: () => usePaneStore.getState().reopenLastClosed(),
+      }),
+      registerCommand({
+        id: 'edit.undo',
+        title: 'Undo last destructive action',
+        defaultShortcut: 'Mod+z',
+        group: 'Edit',
+        run: async () => {
+          try {
+            const action = await popAndRunUndo();
+            if (action) {
+              // 用一个简短的 toast —— 复用 dialog.alert 但加最短描述
+              await dialog.alert(`Undone: ${action.description}`, { title: 'Undo' });
+            }
+          } catch (err) {
+            await dialog.alert((err as Error).message, { title: 'Undo failed' });
+          }
+        },
       }),
       registerCommand({
         id: 'tab.back',

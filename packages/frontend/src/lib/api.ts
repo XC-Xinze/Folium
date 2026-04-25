@@ -296,6 +296,13 @@ export const api = {
   deleteWorkspace: async (id: string): Promise<void> => {
     await fetch(`${BASE}/workspaces/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
+  restoreWorkspace: async (id: string): Promise<void> => {
+    const res = await fetch(`${BASE}/workspaces/${encodeURIComponent(id)}/restore`, { method: 'POST' });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? `${res.status} ${res.statusText}`);
+    }
+  },
   applyEdge: async (workspaceId: string, edgeId: string): Promise<void> => {
     const res = await fetch(`${BASE}/workspaces/${encodeURIComponent(workspaceId)}/apply-edge`, {
       method: 'POST',

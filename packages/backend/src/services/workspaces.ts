@@ -139,10 +139,36 @@ export async function updateWorkspace(
   return next;
 }
 
+/** 软删 —— 删的 workspace 完整 JSON 推到内存 trash 里给 undo 用 */
+const wsTrash: Array<{ ts: number; ws: Workspace }> = [];
+const WS_TRASH_MAX = 50;
+
 export async function deleteWorkspace(id: string): Promise<void> {
   const map = await loadAll();
+  const ws = map[id];
   delete map[id];
   await flush(map);
+  if (ws) {
+    wsTrash.push({ ts: Date.now(), ws });
+    if (wsTrash.length > WS_TRASH_MAX) wsTrash.shift();
+  }
+}
+
+/** 恢复某个被软删的 workspace（按 id） */
+export async function restoreWorkspace(id: string): Promise<Workspace | null> {
+  const idx = wsTrash.findIndex((e) => e.ws.id === id);
+  if (idx < 0) return null;
+  const removed = wsTrash.splice(idx, 1)[0];
+  if (!removed) return null;
+  const ws = removed.ws;
+  const map = await loadAll();
+  map[ws.id] = ws;
+  await flush(map);
+  return ws;
+}
+
+export function listDeletedWorkspaces(): Array<{ ts: number; ws: Workspace }> {
+  return [...wsTrash].sort((a, b) => b.ts - a.ts);
 }
 
 /**

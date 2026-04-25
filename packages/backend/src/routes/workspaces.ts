@@ -8,6 +8,7 @@ import {
   getWorkspace,
   listWorkspaces,
   listWorkspaceLinksFor,
+  restoreWorkspace,
   tempToVault,
   unapplyEdge,
   updateWorkspace,
@@ -61,6 +62,13 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
   app.delete<{ Params: { id: string } }>('/workspaces/:id', async (req) => {
     await deleteWorkspace(req.params.id);
     return { ok: true };
+  });
+
+  // 撤销删 workspace —— 从内存软删栈里恢复
+  app.post<{ Params: { id: string } }>('/workspaces/:id/restore', async (req, reply) => {
+    const ws = await restoreWorkspace(req.params.id);
+    if (!ws) return reply.code(404).send({ error: 'not_in_trash' });
+    return ws;
   });
 
   // Apply edge to vault

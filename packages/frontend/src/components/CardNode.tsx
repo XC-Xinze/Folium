@@ -13,6 +13,7 @@ import { useNavigateToCard } from '../lib/useNavigateToCard';
 import { useUIStore } from '../store/uiStore';
 import { usePaneStore as usePaneStoreImported } from '../store/paneStore';
 import { applyTrigger, detectTrigger, formatInsertion, type Trigger } from '../lib/editorAutocomplete';
+import { pushUndo } from '../lib/undoStack';
 import { fuzzyScore } from '../lib/fuzzy';
 import { EditorAutocomplete, type AutocompleteItem } from './EditorAutocomplete';
 
@@ -207,10 +208,20 @@ export function CardNode({ data, id, selected }: NodeProps) {
       qc.invalidateQueries({ queryKey: ['positions'] });
       qc.invalidateQueries({ queryKey: ['tags'] });
       qc.invalidateQueries({ queryKey: ['workspaces'] });
-      // 清掉指向被删卡片的 tab，避免下次激活时崩
       usePaneStoreImported.getState().removeTabsWhere(
         (t) => t.kind === 'card' && (t.cardBoxId === cardLuhmannId || t.cardFocusId === cardLuhmannId),
       );
+      // 注册 undo：从 trash 找最近一条对应这张卡的，restore 即可
+      pushUndo({
+        description: `Deleted card ${cardLuhmannId}`,
+        undo: async () => {
+          const trash = await api.listTrash();
+          const entry = trash.entries.find((e) => e.luhmannId === cardLuhmannId);
+          if (!entry) throw new Error('Trash entry not found');
+          await api.restoreTrash(entry.fileName);
+          qc.invalidateQueries();
+        },
+      });
     } catch (err) {
       dialog.alert((err as Error).message, { title: 'Delete failed' });
     } finally {

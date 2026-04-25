@@ -3,6 +3,7 @@ import { Plus, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '../lib/api';
 import { dialog } from '../lib/dialog';
 import { usePaneStore } from '../store/paneStore';
+import { pushUndo } from '../lib/undoStack';
 import { RenamableName } from './RenamableName';
 
 /**
@@ -27,12 +28,22 @@ export function WorkspacesSidebar() {
   });
 
   const deleteMut = useMutation({
-    mutationFn: (id: string) => api.deleteWorkspace(id),
-    onSuccess: (_data, id) => {
+    mutationFn: async (ws: { id: string; name: string }) => {
+      await api.deleteWorkspace(ws.id);
+      return ws;
+    },
+    onSuccess: (ws) => {
       qc.invalidateQueries({ queryKey: ['workspaces'] });
       usePaneStore
         .getState()
-        .removeTabsWhere((t) => t.kind === 'workspace' && t.workspaceId === id);
+        .removeTabsWhere((t) => t.kind === 'workspace' && t.workspaceId === ws.id);
+      pushUndo({
+        description: `Deleted workspace "${ws.name}"`,
+        undo: async () => {
+          await api.restoreWorkspace(ws.id);
+          qc.invalidateQueries({ queryKey: ['workspaces'] });
+        },
+      });
     },
   });
 
@@ -99,7 +110,7 @@ export function WorkspacesSidebar() {
                     confirmLabel: 'Delete',
                     variant: 'danger',
                   });
-                  if (ok) deleteMut.mutate(ws.id);
+                  if (ok) deleteMut.mutate({ id: ws.id, name: ws.name });
                 }}
                 className="p-0.5 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                 title="Delete"

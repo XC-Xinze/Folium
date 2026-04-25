@@ -45,6 +45,22 @@ function deriveTitle(content: string): string {
  *   1 (末尾 num)    → 1a, 1b, 1c...
  *   1a2 (末尾 num)  → 1a2a, 1a2b...
  */
+/** Folgezettel 父：剥掉末尾连续的同类（数字 / 字母）一段
+ *   1c → 1, 1c2 → 1c, 1c2b → 1c2, 1 → null
+ *   非纯字母数字（如 daily20260424）→ null */
+function parentOfId(id: string): string | null {
+  if (!id || !/^[\da-z]+$/i.test(id)) return null;
+  if (/\d$/.test(id)) {
+    const p = id.replace(/\d+$/, '');
+    return p || null;
+  }
+  if (/[a-z]$/i.test(id)) {
+    const p = id.replace(/[a-z]+$/i, '');
+    return p || null;
+  }
+  return null;
+}
+
 function nextChildId(parentId: string, existing: Set<string>): string {
   if (!parentId) return nextTopLevelId(existing);
   const lastIsNum = /\d$/.test(parentId);
@@ -289,6 +305,26 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
     ? `Auto-suggested as a child of ${focusedId}. Click to override.`
     : 'Auto-suggested as a new top-level card. Click to override.';
 
+  // 计算 luhmannId 的祖先链 —— 给用户看"这张卡是谁的孩子"
+  const ancestorChain = useMemo(() => {
+    if (!luhmannId.trim()) return [] as string[];
+    const chain: string[] = [];
+    let cur = luhmannId.trim();
+    chain.unshift(cur);
+    while (true) {
+      const p = parentOfId(cur);
+      if (!p) break;
+      chain.unshift(p);
+      cur = p;
+      if (chain.length > 10) break; // 防意外
+    }
+    return chain;
+  }, [luhmannId]);
+  const existingIds = useMemo(
+    () => new Set((cardsQ.data?.cards ?? []).map((c) => c.luhmannId)),
+    [cardsQ.data],
+  );
+
   return (
     <div className="px-2 pt-2 pb-2 shrink-0">
       <div
@@ -415,6 +451,32 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
             </button>
           )}
 
+          {ancestorChain.length > 1 && (
+            <span className="text-[10px] text-gray-400 ml-2 flex items-center gap-1 truncate">
+              <span className="font-bold uppercase tracking-widest text-[8px]">path</span>
+              {ancestorChain.map((id, i) => {
+                const isLast = i === ancestorChain.length - 1;
+                const exists = existingIds.has(id);
+                return (
+                  <span key={id} className="flex items-center gap-1">
+                    {i > 0 && <span className="text-gray-300">›</span>}
+                    <span
+                      className={`font-mono ${
+                        isLast
+                          ? 'font-bold text-accent'
+                          : exists
+                            ? 'text-gray-600'
+                            : 'text-red-400 line-through'
+                      }`}
+                      title={exists ? `${id} exists` : `${id} doesn't exist yet`}
+                    >
+                      {id}
+                    </span>
+                  </span>
+                );
+              })}
+            </span>
+          )}
           <span className="text-[10px] text-gray-400 ml-2 hidden md:inline">
             #tag · [[1a]] · drop image
           </span>

@@ -1,7 +1,7 @@
 import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDownToLine, ArrowUpToLine, ArrowLeft, Check, GripVertical, Layers, Pencil, Star, Trash2, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpToLine, ArrowLeft, Check, GripVertical, Image, Layers, Pencil, Star, Trash2, X } from 'lucide-react';
 import { setCardDragData } from '../lib/dragCard';
 import { dialog } from '../lib/dialog';
 import { api, type Card } from '../lib/api';
@@ -649,6 +649,27 @@ export function CardNode({ data, id, selected }: NodeProps) {
             onAccept={acceptAutocomplete}
             anchorRect={anchorRect}
           />
+          {/* 编辑工具条：插入图片 / 提示 */}
+          <div className="flex items-center gap-2 text-[10px] text-gray-400">
+            <label className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-accent">
+              <Image size={11} />
+              <span className="font-bold">Image</span>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const files = e.target.files;
+                  if (files && files.length > 0) {
+                    void handleFiles(Array.from(files));
+                    e.target.value = '';
+                  }
+                }}
+              />
+            </label>
+            <span>or just paste / drag image into the box</span>
+          </div>
           <TagSuggestionsRow
             cardId={cardLuhmannId}
             currentTags={draftTags}

@@ -8,7 +8,6 @@ import { QuickSwitcher } from './components/QuickSwitcher';
 import { SettingsModal } from './components/SettingsModal';
 import { CreateCardModal } from './components/CreateCardModal';
 import { CommandPalette } from './components/CommandPalette';
-import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { EmptyVault } from './components/EmptyVault';
 import { PaneRoot } from './components/PaneRoot';
 import { useIsMobile } from './lib/useIsMobile';
@@ -295,7 +294,6 @@ export function App() {
             <span>New card</span>
           </button>
           <div className="flex-1" />
-          <WorkspaceSwitcher />
         </div>
         {isVaultEmpty ? <EmptyVault /> : <PaneRoot />}
       </main>

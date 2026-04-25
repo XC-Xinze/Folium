@@ -294,6 +294,35 @@ export const usePaneStore = create<PaneStore>()(
         const sameKind = activeTab && activeTab.kind === spec.kind;
         const replace = !opts?.newTab && !!sameKind;
 
+        // 替换路径：保留 history —— back 应该能回到旧 tab 的内容
+        // 仅 card→card 替换时维护 cardHistory；其他类型暂不需要
+        if (replace && newTab.kind === 'card' && activeTab?.kind === 'card') {
+          const prevHistory = activeTab.cardHistory ?? [];
+          const prevIdx = activeTab.cardHistoryIndex ?? -1;
+          // 旧 tab 自身的 entry 若没入栈先补上
+          let base = prevHistory.slice(0, prevIdx + 1);
+          if (
+            base.length === 0 &&
+            activeTab.cardBoxId &&
+            activeTab.cardFocusId
+          ) {
+            base = [{ box: activeTab.cardBoxId, focus: activeTab.cardFocusId }];
+          }
+          // 推入新 tab 的 entry
+          if (newTab.cardBoxId && newTab.cardFocusId) {
+            const newEntry = { box: newTab.cardBoxId, focus: newTab.cardFocusId };
+            // 跟当前末尾相同就不重复推
+            const last = base[base.length - 1];
+            if (!last || last.box !== newEntry.box || last.focus !== newEntry.focus) {
+              base = [...base, newEntry];
+            }
+          }
+          // 限栈深 50
+          if (base.length > 50) base = base.slice(base.length - 50);
+          newTab.cardHistory = base;
+          newTab.cardHistoryIndex = base.length - 1;
+        }
+
         set({
           root: mapTree(root, (n) => {
             if (n.kind !== 'leaf' || n.id !== leaf.id) return n;

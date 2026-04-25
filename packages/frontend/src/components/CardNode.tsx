@@ -459,8 +459,8 @@ export function CardNode({ data, id, selected }: NodeProps) {
         navigate(cardLuhmannId);
       }}
     >
-      {/* 拖拽手柄：右下角；workspace 内不显示，ghost 也不显示 */}
-      {!nodeData.isInWorkspace && !isGhost && (
+      {/* 拖拽手柄：右下角；workspace 内不显示，ghost 不显示，编辑时也隐藏避免跟 Done 按钮叠 */}
+      {!nodeData.isInWorkspace && !isGhost && !editing && (
         <div
           draggable
           onDragStart={(e) => {

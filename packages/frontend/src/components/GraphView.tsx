@@ -406,7 +406,19 @@ function GraphInner() {
     );
 
   return (
-    <div className="w-full h-full relative bg-gray-100 dark:bg-[#181926]">
+    <div className="w-full h-full flex flex-col bg-gray-100 dark:bg-[#181926]">
+      {/* 顶部 inline 工具栏 —— 不浮动避免分屏挤碎 */}
+      <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-[#1e2030] border-b border-gray-200 dark:border-[#363a4f] overflow-x-auto">
+        <EdgeToggle color="#94a3b8" label="Hierarchy" active={toggles.hierarchy} onClick={() => flip('hierarchy')} />
+        <EdgeToggle color="#7c4dff" label="Link" active={toggles.link} onClick={() => flip('link')} />
+        <EdgeToggle color="#10b981" label="Tag" active={toggles.tag} onClick={() => flip('tag')} />
+        <EdgeToggle color="#f59e0b" label="Box" active={toggles.box} onClick={() => flip('box')} />
+        <div className="flex-1" />
+        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+          {cardsQ.data.cards.length} cards
+        </span>
+      </div>
+      <div className="flex-1 relative min-h-0">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -456,14 +468,6 @@ function GraphInner() {
         <MiniMap pannable zoomable position="top-right" maskColor="rgba(0,0,0,0.04)" />
       </ReactFlow>
 
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 px-2 py-1.5 bg-white dark:bg-[#363a4f] rounded-full shadow-md border border-gray-200 dark:border-[#494d64]">
-        <EdgeToggle color="#94a3b8" label="Hierarchy" active={toggles.hierarchy} onClick={() => flip('hierarchy')} />
-        <EdgeToggle color="#7c4dff" label="Link" active={toggles.link} onClick={() => flip('link')} />
-        <EdgeToggle color="#10b981" label="Tag" active={toggles.tag} onClick={() => flip('tag')} />
-        <EdgeToggle color="#f59e0b" label="Box" active={toggles.box} onClick={() => flip('box')} />
-        <span className="ml-1 text-[10px] text-gray-400 dark:text-[#a5adcb]">
-          {cardsQ.data.cards.length} cards
-        </span>
       </div>
     </div>
   );

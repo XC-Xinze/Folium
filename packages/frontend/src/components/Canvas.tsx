@@ -198,62 +198,20 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
   if (boxQ.error) return <FullCenter error>Box {focusedBoxId} not found</FullCenter>;
 
   return (
-    <div className="w-full h-full relative">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onNodeDragStop={onNodeDragStop}
-        fitView
-        fitViewOptions={{ padding: 0.2, maxZoom: 1, minZoom: 0.2 }}
-        minZoom={0.1}
-        maxZoom={2}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background id={`vault-bg-${focusedBoxId}`} gap={24} size={1.5} color="#e5e7eb" />
-        <Controls position="bottom-right" showInteractive={false} />
-        <MiniMap pannable zoomable position="top-right" maskColor="rgba(0,0,0,0.05)" />
-      </ReactFlow>
-
-      {/* 边类型开关，左上角 */}
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 px-2 py-1.5 bg-white dark:bg-[#363a4f] rounded-full shadow-md border border-gray-200 dark:border-[#494d64]">
-        <EdgeToggle
-          color="#7c4dff"
-          label="Link"
-          active={showCrossLinks}
-          onClick={() => setShowCrossLinks(!showCrossLinks)}
-          title="Manual [[link]] edges (purple)"
-        />
-        <EdgeToggle
-          color="#10b981"
-          label="Tag"
-          active={showTagRelated}
-          onClick={() => setShowTagRelated(!showTagRelated)}
-          title="Tag co-occurrence edges (green)"
-        />
-        <EdgeToggle
-          color="#cbd5e1"
-          label="Potential"
-          active={showPotential}
-          onClick={() => setShowPotential(!showPotential)}
-          title="Text-similarity potential edges (gray dashed)"
-        />
-        <EdgeToggle
-          color="#a78bfa"
-          label="Temp"
-          active={showWorkspaceLinks}
-          onClick={() => setShowWorkspaceLinks(!showWorkspaceLinks)}
-          title="Workspace temp ghost cards & their links"
-        />
-      </div>
-
-      {/* 探索深度指示 + 加到工作区 + 前进后退 —— 右上角 */}
-      <div className="absolute top-4 right-12 z-10 flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-[#363a4f] rounded-full shadow-md border border-gray-200 dark:border-[#494d64]">
+    <div className="w-full h-full flex flex-col">
+      {/* Canvas 顶部工具栏 —— 实色 inline，不再浮动避免分屏时跟其他东西重叠 */}
+      <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-[#1e2030] border-b border-gray-200 dark:border-[#363a4f] overflow-x-auto">
         <HistoryButtons />
-        <span className="w-px h-3 bg-gray-200 dark:bg-[#494d64]" />
+        <span className="w-px h-4 bg-gray-200 dark:bg-[#494d64]" />
+        <div className="flex items-center gap-1.5">
+          <EdgeToggle color="#7c4dff" label="Link" active={showCrossLinks} onClick={() => setShowCrossLinks(!showCrossLinks)} title="Manual [[link]] edges (purple)" />
+          <EdgeToggle color="#10b981" label="Tag" active={showTagRelated} onClick={() => setShowTagRelated(!showTagRelated)} title="Tag co-occurrence edges (green)" />
+          <EdgeToggle color="#cbd5e1" label="Potential" active={showPotential} onClick={() => setShowPotential(!showPotential)} title="Text-similarity potential edges (gray dashed)" />
+          <EdgeToggle color="#a78bfa" label="Temp" active={showWorkspaceLinks} onClick={() => setShowWorkspaceLinks(!showWorkspaceLinks)} title="Workspace temp ghost cards & their links" />
+        </div>
+        <span className="w-px h-4 bg-gray-200 dark:bg-[#494d64]" />
         <FocusDepthBadge depth={focusDepth} max={MAX_FOCUS_DEPTH} />
+        <div className="flex-1" />
         <button
           draggable
           onDragStart={(e) => {
@@ -263,11 +221,31 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
               JSON.stringify({ luhmannId: focusedCardId, title: '' }),
             );
           }}
-          className="text-[10px] font-bold flex items-center gap-1 px-2 py-0.5 rounded-full bg-accentSoft text-accent hover:bg-accent hover:text-white transition-colors cursor-grab active:cursor-grabbing"
+          className="shrink-0 text-[10px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full bg-accentSoft text-accent hover:bg-accent hover:text-white transition-colors cursor-grab active:cursor-grabbing"
           title="Drag onto a workspace tab to add this card"
         >
           + Workspace
         </button>
+      </div>
+
+      <div className="flex-1 relative min-h-0">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeDragStop={onNodeDragStop}
+          fitView
+          fitViewOptions={{ padding: 0.2, maxZoom: 1, minZoom: 0.2 }}
+          minZoom={0.1}
+          maxZoom={2}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background id={`vault-bg-${focusedBoxId}`} gap={24} size={1.5} color="#e5e7eb" />
+          <Controls position="bottom-right" showInteractive={false} />
+          <MiniMap pannable zoomable position="top-right" maskColor="rgba(0,0,0,0.05)" />
+        </ReactFlow>
       </div>
     </div>
   );

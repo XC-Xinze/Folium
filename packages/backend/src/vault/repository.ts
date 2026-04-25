@@ -65,18 +65,41 @@ export class CardRepository {
 
   list(): Card[] {
     const rows = this.db.prepare(`SELECT * FROM cards ORDER BY sort_key`).all() as RawCardRow[];
-    return rows.map((r) => this.hydrate(r));
+    // Derive status: 一张卡是 INDEX iff 有任何卡的 parent_id 指向它（自然生长）。
+    // 一次查询拿到所有"被当过 parent"的 id，rows 自己 lookup。
+    const indexIds = new Set(
+      (
+        this.db
+          .prepare(`SELECT DISTINCT parent_id FROM cards WHERE parent_id IS NOT NULL`)
+          .all() as { parent_id: string }[]
+      ).map((r) => r.parent_id),
+    );
+    return rows.map((r) => this.hydrate(r, indexIds.has(r.luhmann_id)));
   }
 
   getById(luhmannId: string): Card | null {
     const row = this.db.prepare(`SELECT * FROM cards WHERE luhmann_id = ?`).get(luhmannId) as
       | RawCardRow
       | undefined;
-    return row ? this.hydrate(row) : null;
+    if (!row) return null;
+    const isIndex =
+      this.db.prepare(`SELECT 1 FROM cards WHERE parent_id = ? LIMIT 1`).get(luhmannId) !==
+      undefined;
+    return this.hydrate(row, isIndex);
   }
 
   count(): number {
     return (this.db.prepare(`SELECT COUNT(*) as n FROM cards`).get() as { n: number }).n;
+  }
+
+  /** vault 切换专用：清空所有衍生数据，让重扫从空开始。FTS 由触发器自动跟随 cards。 */
+  truncateAll(): void {
+    this.db.exec(`
+      DELETE FROM cross_links;
+      DELETE FROM card_tags;
+      DELETE FROM tags;
+      DELETE FROM cards;
+    `);
   }
 
   removeOrphans(existingPaths: Set<string>): number {
@@ -96,7 +119,7 @@ export class CardRepository {
     return removed;
   }
 
-  private hydrate(row: RawCardRow): Card {
+  private hydrate(row: RawCardRow, isIndex: boolean): Card {
     const tags = (this.db.prepare(`SELECT tag FROM card_tags WHERE luhmann_id = ?`).all(row.luhmann_id) as {
       tag: string;
     }[]).map((t) => t.tag);
@@ -107,7 +130,7 @@ export class CardRepository {
     // 动态索引：INDEX 卡正文里的 <!-- @members tag:xxx --> 自动展开
     // 仅 INDEX 卡跑（atomic 卡写这个没意义）；对其他类型 0 开销
     let autoMembers: string[] = [];
-    if (row.status === 'INDEX' && row.content_md.includes('@members')) {
+    if (isIndex && row.content_md.includes('@members')) {
       autoMembers = getDynamicMembers(this.db, row.luhmann_id, row.content_md).filter(
         (id) => !manualLinks.includes(id),
       );
@@ -116,7 +139,9 @@ export class CardRepository {
     return {
       luhmannId: row.luhmann_id,
       title: row.title,
-      status: row.status,
+      // status 是 derived from structure：有 Folgezettel 子卡就是 INDEX，否则 ATOMIC。
+      // frontmatter 的 status 字段被彻底忽略（旧文件里的也没影响）。
+      status: isIndex ? 'INDEX' : 'ATOMIC',
       parentId: row.parent_id,
       sortKey: row.sort_key,
       depth: row.depth,

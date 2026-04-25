@@ -2,11 +2,11 @@ import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDownToLine, ArrowUpToLine, ArrowLeft, Check, GripVertical, Image, Layers, Pencil, Star, Trash2, X } from 'lucide-react';
-import { setCardDragData } from '../lib/dragCard';
+import { isCardDrag, readCardDragData, setCardDragData } from '../lib/dragCard';
 import { dialog } from '../lib/dialog';
 import { api, type Card } from '../lib/api';
 import { countWords, relativeTime } from '../lib/cardStats';
-import { attachTransclusion, attachWikilinkHandler, renderMarkdown } from '../lib/markdown';
+import { attachAttachmentClickHandler, attachTransclusion, attachWikilinkHandler, renderMarkdown } from '../lib/markdown';
 import type { CardNodeData } from '../lib/cardGraph';
 import { NODE_WIDTH } from '../lib/cardGraph';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
@@ -24,6 +24,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
   const savedH = nodeData.savedH;
   // scope 从 nodeData 来（Canvas/TagView 注入），不读全局 useUIStore —— 避免多 pane 串
   const focusedBoxId = useUIStore((s) => s.focusedBoxId); // 仅用于 sharedBoxes 标签判断
+  const focusedCardId = useUIStore((s) => s.focusedCardId); // promote-to-link 需要知道源卡
   const scope = nodeData.scope ?? `box:${focusedBoxId ?? ''}`;
   // 关键：用 card.luhmannId 拉取，不用 React Flow 的 node id
   // 因为 workspace 里节点 id 是 workspace 本地 uuid，不是 luhmannId
@@ -73,7 +74,9 @@ export function CardNode({ data, id, selected }: NodeProps) {
     }
     const nextDepth = (activeTab.cardFocusDepth ?? 0) + 1;
     if (nextDepth > MAX_DEPTH) {
-      navigate(cardId);
+      // 已到最大深度 —— 不再让外部链接继续向更深扩散：
+      // 不切 box（避免画布整片重置），不增 depth，不动 focus。
+      // 用户想继续探索就 ⌘[ 退一步，或在 sidebar 跳到目标 box。
       return;
     }
     navigateInTab(leaf.id, leaf.activeTabId, { box: activeTab.cardBoxId, focus: cardId });
@@ -89,8 +92,9 @@ export function CardNode({ data, id, selected }: NodeProps) {
   const [draftTitle, setDraftTitle] = useState('');
   const [draftContent, setDraftContent] = useState('');
   const [draftTags, setDraftTags] = useState('');
-  const [draftStatus, setDraftStatus] = useState<'ATOMIC' | 'INDEX'>('ATOMIC');
+  // status 不再可编辑 —— 它从结构派生（有 Folgezettel 子卡 = INDEX）
   const [hovered, setHovered] = useState(false);
+  const [linkDropOver, setLinkDropOver] = useState(false); // 拖卡到本卡 → 加 [[link]] 时的 hover 高亮
   // Autocomplete 状态：编辑模式下用
   const [trigger, setTrigger] = useState<Trigger | null>(null);
   const [acIdx, setAcIdx] = useState(0);
@@ -144,7 +148,6 @@ export function CardNode({ data, id, selected }: NodeProps) {
     setDraftTitle(full.title);
     setDraftContent(full.contentMd);
     setDraftTags(full.tags.join(', '));
-    setDraftStatus(full.status);
     setEditing(true);
   };
 
@@ -159,7 +162,6 @@ export function CardNode({ data, id, selected }: NodeProps) {
         title: draftTitle,
         content: draftContent,
         tags: tagsList,
-        status: draftStatus,
       });
       // 写完先把这张卡的 query 内容直接替换掉，再 invalidate 让其他视图统一刷
       qc.setQueryData(['card', cardLuhmannId], updated);
@@ -257,6 +259,16 @@ export function CardNode({ data, id, selected }: NodeProps) {
     if (!contentRef.current) return;
     return attachWikilinkHandler(contentRef.current, (target) => navigate(target));
   }, [navigate, full?.luhmannId]);
+
+  // 普通 markdown 链接 [label](attachments/foo.pdf) → 调系统 open（不在浏览器内打开）
+  useEffect(() => {
+    if (!contentRef.current) return;
+    return attachAttachmentClickHandler(contentRef.current, (rel) => {
+      api.openAttachment(rel).catch((err) => {
+        console.error('open attachment failed', err);
+      });
+    });
+  }, [full?.luhmannId]);
 
   // ![[id]] 嵌入：内容 / 渲染完成后异步填充
   useEffect(() => {
@@ -435,7 +447,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
     let replacement = '';
     for (const f of files) {
       try {
-        const up = await api.uploadAttachment(f);
+        const up = await api.uploadAttachment(f, focusedBoxId);
         const isImage = up.mimetype.startsWith('image/');
         const alt = up.filename.replace(/\.[^.]+$/, '');
         replacement += isImage
@@ -451,11 +463,47 @@ export function CardNode({ data, id, selected }: NodeProps) {
     insertAtCaret(replacement, { from: baseStart, to: placeholderEnd });
   };
 
+  // 顶级卡（单字符 id）。两个顶级卡之间互拖不允许（用户：顶级 index 之间不能链）
+  const isTopLevel = cardLuhmannId.length === 1 && /^[\da-z]$/i.test(cardLuhmannId);
   return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className={`group relative rounded-xl ${styles.border} ${styles.bg} ${styles.shadow} ${styles.opacity} cursor-default flex flex-col`}
+      onDragOver={(e) => {
+        // dragOver 阶段大多数浏览器禁止读 dataTransfer.getData —— 只能用 .types 判 mime。
+        // 自身/顶级 vs 顶级 这些精细规则等到 drop 才检查。
+        if (!isCardDrag(e) || isGhost) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'copy';
+        setLinkDropOver(true);
+      }}
+      onDragLeave={() => setLinkDropOver(false)}
+      onDrop={async (e) => {
+        if (!isCardDrag(e) || isGhost) return;
+        const dragged = readCardDragData(e);
+        setLinkDropOver(false);
+        if (!dragged || dragged.luhmannId === cardLuhmannId) return;
+        const draggedTop = dragged.luhmannId.length === 1 && /^[\da-z]$/i.test(dragged.luhmannId);
+        if (isTopLevel && draggedTop) return;
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          const { alreadyLinked } = await api.appendCrossLink(cardLuhmannId, dragged.luhmannId);
+          qc.invalidateQueries({ queryKey: ['card', cardLuhmannId] });
+          qc.invalidateQueries({ queryKey: ['cards'] });
+          qc.invalidateQueries({ queryKey: ['linked'] });
+          qc.invalidateQueries({ queryKey: ['related-batch'] });
+          if (alreadyLinked) {
+            // 静默 —— 已有链接没必要打扰
+          }
+        } catch (err) {
+          dialog.alert((err as Error).message, { title: 'Link failed' });
+        }
+      }}
+      className={`group relative rounded-xl ${styles.border} ${styles.bg} ${styles.shadow} ${styles.opacity} cursor-default flex flex-col ${
+        linkDropOver ? 'ring-2 ring-purple-400 ring-offset-2' : ''
+      }`}
       style={{
         width: w ?? NODE_WIDTH,
         height: h,
@@ -470,7 +518,11 @@ export function CardNode({ data, id, selected }: NodeProps) {
         navigate(cardLuhmannId);
       }}
     >
-      {/* 拖拽手柄：右下角；workspace 内不显示，ghost 不显示，编辑时也隐藏避免跟 Done 按钮叠 */}
+      {/* 拖拽手柄：右下角通用 DRAG 手柄。
+           - 拖到另一张 canvas 卡 → 写 [[link]]
+           - 拖到 sidebar Folgezettel 节点 → reparent + 重编号
+           - 拖到 workspace → 加进 workspace
+           workspace 内不显示，ghost 不显示，编辑时隐藏避免跟 Done 按钮叠 */}
       {!nodeData.isInWorkspace && !isGhost && !editing && (
         <div
           draggable
@@ -480,11 +532,11 @@ export function CardNode({ data, id, selected }: NodeProps) {
           }}
           onMouseDown={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          className="nodrag nopan absolute bottom-2 right-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white dark:bg-[#363a4f] hover:bg-accent hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 dark:border-[#494d64] hover:border-accent shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
-          title="Drag to workspace"
+          className="nodrag nopan absolute bottom-2 right-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white dark:bg-[#363a4f] hover:bg-purple-500 hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 dark:border-[#494d64] hover:border-purple-500 shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
+          title="Drag handle: drop on another card to link, on sidebar tree to reparent, on workspace to add"
         >
           <GripVertical size={10} />
-          <span>WS</span>
+          <span>DRAG</span>
         </div>
       )}
 
@@ -529,6 +581,8 @@ export function CardNode({ data, id, selected }: NodeProps) {
           <Pencil size={11} />
         </button>
       )}
+      {/* Promote potential → real [[link]] 按钮已迁移到 potential 边中点（CanvasEdges.PotentialEdge）。
+           跟卡角其他按钮不重叠，并且对边的 "source-target" 语义更清晰。 */}
       {!isGhost && (
         <button
           onClick={toggleStar}
@@ -582,14 +636,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
               className="flex-1 text-[13px] font-bold px-2 py-1 border border-gray-200 rounded focus:border-accent outline-none"
               placeholder="Title"
             />
-            <select
-              value={draftStatus}
-              onChange={(e) => setDraftStatus(e.target.value as 'ATOMIC' | 'INDEX')}
-              className="text-[10px] font-bold px-1 py-0.5 border border-gray-200 rounded outline-none"
-            >
-              <option value="ATOMIC">Atomic</option>
-              <option value="INDEX">Index</option>
-            </select>
+            {/* status 是 derived（有子卡 = INDEX），不在编辑面板里 */}
           </div>
           <textarea
             ref={textareaRef}
@@ -719,7 +766,20 @@ export function CardNode({ data, id, selected }: NodeProps) {
                   Temp
                 </span>
               ) : (
-                <span className={`font-mono text-[11px] font-bold px-1.5 py-0.5 rounded ${styles.badge}`}>
+                // luhmann id 徽章本身就是 link drag handle ——
+                // 拖它到另一张卡 = 写 [[thisId]] 进对方 body。
+                // nodrag 阻止 React Flow 把 mousedown 当节点位置拖；HTML5 drag 仍然 fire。
+                <span
+                  draggable
+                  onDragStart={(e) => {
+                    e.stopPropagation();
+                    setCardDragData(e, { luhmannId: cardLuhmannId, title: display.title });
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className={`nodrag nopan font-mono text-[11px] font-bold px-1.5 py-0.5 rounded cursor-grab active:cursor-grabbing hover:ring-2 hover:ring-purple-400 ${styles.badge}`}
+                  title={`Drag ${display.luhmannId} to another card to add [[${display.luhmannId}]]`}
+                >
                   {display.luhmannId}
                 </span>
               )}

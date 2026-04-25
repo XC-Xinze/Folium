@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Node } from '@xyflow/react';
-import type { Card, CardSummary } from './api';
+import type { CardSummary } from './api';
 import {
   NODE_WIDTH,
   computeBackbone,
@@ -19,57 +19,34 @@ function summary(luhmannId: string, opts: Partial<CardSummary> = {}): CardSummar
   };
 }
 
-describe('computeBackbone (ATOMIC focus)', () => {
-  it('walks up to root then collects subtree', () => {
+describe('computeBackbone', () => {
+  it('box = Folgezettel subtree of focused id; does NOT climb to root', () => {
     // Tree: 1 → 1a → 1a1, 1a → 1a2
+    // 焦点 1a → 只看 1a 子树（1a + 1a1 + 1a2），不要把 1 拉进来
     const cards = [summary('1'), summary('1a'), summary('1a1'), summary('1a2')];
     const bb = computeBackbone('1a', cards, new Map());
 
-    expect([...bb.ids].sort()).toEqual(['1', '1a', '1a1', '1a2']);
-    // tree edges connect parent → child
+    expect([...bb.ids].sort()).toEqual(['1a', '1a1', '1a2']);
     const pairs = bb.treeEdges.map((e) => `${e.source}->${e.target}`).sort();
-    expect(pairs).toContain('1->1a');
     expect(pairs).toContain('1a->1a1');
     expect(pairs).toContain('1a->1a2');
+    expect(pairs).not.toContain('1->1a');
   });
-});
 
-describe('computeBackbone (INDEX focus)', () => {
-  it('expands only direct crossLinks, not sub-INDEX members', () => {
-    // i0 (INDEX) crossLinks → [i1, 2]
-    // i1 (INDEX) crossLinks → [3]   ← should NOT be auto-expanded
+  it('crossLinks do NOT introduce backbone members; box is structural', () => {
+    // 1 是 INDEX（derived：有子 1a），其 crossLinks 指向 2 和 3 不属于 1 的 Folgezettel 子树
+    // 那 2 和 3 不应进入 box 1 的 backbone（它们走 cross-flank 边渲染）
     const cards = [
-      summary('i0', { status: 'INDEX', crossLinks: ['i1', '2'] }),
-      summary('i1', { status: 'INDEX', crossLinks: ['3'] }),
+      summary('1', { status: 'INDEX', crossLinks: ['2', '3'] }),
+      summary('1a', { depth: 2 }),
       summary('2'),
       summary('3'),
     ];
-    const fullCards = new Map<string, Card>([
-      [
-        'i0',
-        {
-          luhmannId: 'i0',
-          title: 'i0',
-          status: 'INDEX',
-          parentId: null,
-          sortKey: 'i0',
-          depth: 1,
-          contentMd: '',
-          tags: [],
-          crossLinks: ['i1', '2'],
-          filePath: '',
-          mtime: 0,
-          createdAt: null,
-          updatedAt: null,
-        },
-      ],
-    ]);
-    const bb = computeBackbone('i0', cards, fullCards);
+    const bb = computeBackbone('1', cards, new Map());
 
-    expect(bb.ids.has('i0')).toBe(true);
-    expect(bb.ids.has('i1')).toBe(true);
-    expect(bb.ids.has('2')).toBe(true);
-    // sub-INDEX i1 's member 3 should NOT be pulled in
+    expect(bb.ids.has('1')).toBe(true);
+    expect(bb.ids.has('1a')).toBe(true); // Folgezettel 子
+    expect(bb.ids.has('2')).toBe(false); // crossLink 但不是 Folgezettel 子
     expect(bb.ids.has('3')).toBe(false);
   });
 });

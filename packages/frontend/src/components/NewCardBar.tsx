@@ -6,13 +6,11 @@ import { usePaneStore } from '../store/paneStore';
 import { makeMarkdownInsert, uploadAttachment } from '../lib/uploadAttachment';
 import { api } from '../lib/api';
 
-type Status = 'ATOMIC' | 'INDEX';
-
+// status 是 derived from structure（有 Folgezettel 子卡 = INDEX），用户不再手动选
 interface CreateBody {
   luhmannId: string;
   title: string;
   content: string;
-  status?: Status;
 }
 
 async function createCard(body: CreateBody): Promise<{ luhmannId: string }> {
@@ -97,7 +95,6 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
   const [luhmannId, setLuhmannId] = useState('');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [status, setStatus] = useState<Status>('ATOMIC');
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -177,27 +174,18 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
       qc.invalidateQueries({ queryKey: ['hubs'] });
       qc.invalidateQueries({ queryKey: ['tags'] });
       qc.invalidateQueries({ queryKey: ['indexes'] });
-      // INDEX cards switch the focused box；ATOMIC 只换 focus（保留当前 box）
+      // 新卡总是 ATOMIC（无子卡），所以保留当前 box，只换 focus。
+      // 等用户在它下面再建子卡时，它自动升级成 INDEX（derived）。
       const tabTitle = title.trim() || newId;
-      if (status === 'INDEX') {
-        usePaneStore.getState().openTab({
-          kind: 'card',
-          title: tabTitle,
-          cardBoxId: newId,
-          cardFocusId: newId,
-        });
-      } else {
-        usePaneStore.getState().openTab({
-          kind: 'card',
-          title: tabTitle,
-          cardBoxId: focusedBoxId ?? newId,
-          cardFocusId: newId,
-        });
-      }
+      usePaneStore.getState().openTab({
+        kind: 'card',
+        title: tabTitle,
+        cardBoxId: focusedBoxId ?? newId,
+        cardFocusId: newId,
+      });
       setLuhmannId('');
       setTitle('');
       setContent('');
-      setStatus('ATOMIC');
       setEditingId(false); // 重新交还给自动推算
       onCreated?.();
     },
@@ -224,7 +212,8 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
     setUploading(true);
     try {
       for (const file of Array.from(files)) {
-        const result = await uploadAttachment(file);
+        // 当前焦点 box 给后端，per-box 模式下落到子目录
+        const result = await uploadAttachment(file, focusedBoxId);
         insertAtCursor('\n' + makeMarkdownInsert(result) + '\n');
       }
     } finally {
@@ -263,7 +252,6 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
       luhmannId: luhmannId.trim(),
       title: finalTitle,
       content,
-      status,
     });
   };
 
@@ -483,24 +471,7 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
 
           <div className="flex-1" />
 
-          {/* status: Atom / Index */}
-          <div className="flex items-center bg-gray-100 rounded-full p-0.5">
-            {(['ATOMIC', 'INDEX'] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatus(s)}
-                className={`text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full transition-colors ${
-                  status === s
-                    ? s === 'INDEX'
-                      ? 'bg-accent text-white shadow-sm'
-                      : 'bg-white text-ink shadow-sm'
-                    : 'text-gray-400 hover:text-ink'
-                }`}
-              >
-                {s === 'ATOMIC' ? 'Atom' : 'Index'}
-              </button>
-            ))}
-          </div>
+          {/* status 是 derived（有子卡 = INDEX），不再让用户选 */}
 
           {/* Attachments */}
           <input

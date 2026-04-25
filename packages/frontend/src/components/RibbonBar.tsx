@@ -1,4 +1,4 @@
-import { CalendarDays, FilePlus, FolderTree, Network, PanelLeftClose, PanelLeftOpen, Search, Settings, Sparkles } from 'lucide-react';
+import { CalendarDays, FolderTree, Network, PanelLeftClose, PanelLeftOpen, Search, Settings, Sparkles } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { dialog } from '../lib/dialog';
@@ -82,11 +82,7 @@ export function RibbonBar() {
         title="Quick switcher (⌘K)"
       />
 
-      <IconButton
-        icon={<FilePlus size={16} />}
-        onClick={() => useUIStore.getState().setNewCardOpen(true)}
-        title="New card (⌘N)"
-      />
+      {/* New card 入口在顶部 bar，这里不重复 */}
 
       <IconButton
         icon={<CalendarDays size={16} />}

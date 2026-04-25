@@ -5,6 +5,7 @@ import { CardRepository } from '../vault/repository.js';
 import { getLinkedCards, getPotentialLinks, getReferencedFrom, getTagRelated } from '../services/links.js';
 import { buildIndexTree } from '../services/indexes.js';
 import { demoteCard, promoteCard } from '../services/promote.js';
+import { planReparent, reparentCard } from '../services/reparent.js';
 import { deleteVaultCard } from '../services/deleteCard.js';
 import { runSearchReplace } from '../services/searchReplace.js';
 import { findDiscoveryClusters } from '../services/discoveries.js';
@@ -175,7 +176,6 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
     content: z.string().default(''),
     tags: z.array(z.string()).optional(),
     crossLinks: z.array(z.string()).optional(),
-    status: z.enum(['ATOMIC', 'INDEX']).optional(),
   });
 
   app.post('/cards', async (req, reply) => {
@@ -215,7 +215,6 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
         title: `Daily · ${date}`,
         content: `# Daily · ${date}\n\n`,
         tags: ['daily'],
-        status: 'ATOMIC',
       });
       const card = await parseCardFile(filePath);
       if (card) repo.upsertOne(card);
@@ -240,11 +239,102 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  /**
+   * Reparent: 把一张卡（连同子树）挪到另一个父级下，按 Folgezettel 自动重编号。
+   * Body: { sourceId, newParentId: string|null, dryRun?: boolean }
+   *   dryRun=true → 只算 rename map 不动文件，给前端预览/确认
+   */
+  app.post<{ Body: { sourceId: string; newParentId: string | null; dryRun?: boolean } }>(
+    '/cards/reparent',
+    async (req, reply) => {
+      const { sourceId, newParentId, dryRun } = req.body ?? {};
+      if (!sourceId || (newParentId !== null && typeof newParentId !== 'string')) {
+        return reply.code(400).send({ error: 'sourceId required; newParentId must be string|null' });
+      }
+      try {
+        if (dryRun) {
+          const plan = planReparent(repo, sourceId, newParentId);
+          return { renames: Object.fromEntries(plan.renames), filesUpdated: 0, dryRun: true };
+        }
+        const result = await reparentCard(db, repo, sourceId, newParentId);
+        return result;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return reply.code(400).send({ error: 'reparent_failed', message: msg });
+      }
+    },
+  );
+
+  /**
+   * 把一条 potential（文本相似/被 mention）关系提升成真正的双链：
+   * 在 source 卡 body 末尾追加 [[targetId]]。重复调用幂等。
+   */
+  app.post<{ Params: { id: string }; Body: { targetId: string } }>(
+    '/cards/:id/append-link',
+    async (req, reply) => {
+      const card = repo.getById(req.params.id);
+      if (!card) return reply.code(404).send({ error: 'not_found' });
+      const targetId = req.body?.targetId?.trim();
+      if (!targetId) return reply.code(400).send({ error: 'targetId required' });
+      // 已含 [[targetId]] → 幂等返回
+      const linkRe = new RegExp(`\\[\\[${targetId.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}(?:\\|[^\\]]+)?\\]\\]`);
+      if (linkRe.test(card.contentMd)) {
+        return { card, alreadyLinked: true };
+      }
+      const newBody = card.contentMd.replace(/\s+$/, '') + `\n\n[[${targetId}]]\n`;
+      try {
+        await updateCardFile(card.filePath, { content: newBody });
+        const reparsed = await parseCardFile(card.filePath);
+        if (reparsed) repo.upsertOne(reparsed);
+        return { card: reparsed ?? card, alreadyLinked: false };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return reply.code(400).send({ error: 'append_failed', message: msg });
+      }
+    },
+  );
+
+  /**
+   * 取消双链：移除 source 卡 body 里指向 targetId 的 [[link]]（含可选 |alias）。
+   * 顺手清掉因此可能留下的空行。幂等：找不到也返回 ok。
+   */
+  app.post<{ Params: { id: string }; Body: { targetId: string } }>(
+    '/cards/:id/remove-link',
+    async (req, reply) => {
+      const card = repo.getById(req.params.id);
+      if (!card) return reply.code(404).send({ error: 'not_found' });
+      const targetId = req.body?.targetId?.trim();
+      if (!targetId) return reply.code(400).send({ error: 'targetId required' });
+      const escaped = targetId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // 整行只有 [[link]] → 删整行（连同换行），否则只把 [[link]] / [[link|alias]] 移除
+      const body = card.contentMd;
+      const standaloneRe = new RegExp(
+        `^[ \\t]*\\[\\[${escaped}(?:\\|[^\\]]+)?\\]\\][ \\t]*\\r?\\n?`,
+        'gm',
+      );
+      const inlineRe = new RegExp(`\\[\\[${escaped}(?:\\|[^\\]]+)?\\]\\]`, 'g');
+      let mut = body.replace(standaloneRe, '');
+      mut = mut.replace(inlineRe, '');
+      // 多个连续空行折成一个
+      mut = mut.replace(/\n{3,}/g, '\n\n');
+      const removed = mut !== body;
+      if (!removed) return { card, removed: false };
+      try {
+        await updateCardFile(card.filePath, { content: mut });
+        const reparsed = await parseCardFile(card.filePath);
+        if (reparsed) repo.upsertOne(reparsed);
+        return { card: reparsed ?? card, removed: true };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return reply.code(400).send({ error: 'remove_failed', message: msg });
+      }
+    },
+  );
+
   const updateSchema = z.object({
     title: z.string().optional(),
     content: z.string().optional(),
     tags: z.array(z.string()).optional(),
-    status: z.enum(['ATOMIC', 'INDEX']).optional(),
   });
 
   app.patch<{ Params: { id: string } }>('/cards/:id', async (req, reply) => {

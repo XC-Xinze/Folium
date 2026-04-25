@@ -128,6 +128,12 @@ export interface PotentialLink {
   reasons: string[];
 }
 
+export interface VaultEntry {
+  id: string;
+  path: string;
+  name: string;
+}
+
 const BASE = '/api';
 
 async function get<T>(path: string): Promise<T> {
@@ -228,7 +234,7 @@ export const api = {
   },
   updateCard: async (
     id: string,
-    patch: { title?: string; content?: string; tags?: string[]; status?: 'ATOMIC' | 'INDEX' },
+    patch: { title?: string; content?: string; tags?: string[] },
   ): Promise<Card> => {
     const res = await fetch(`${BASE}/cards/${encodeURIComponent(id)}`, {
       method: 'PATCH',
@@ -392,7 +398,6 @@ export const api = {
     content?: string;
     tags?: string[];
     crossLinks?: string[];
-    status?: 'ATOMIC' | 'INDEX';
   }): Promise<{ luhmannId: string }> => {
     const res = await fetch(`${BASE}/cards`, {
       method: 'POST',
@@ -440,13 +445,85 @@ export const api = {
   },
   uploadAttachment: async (
     file: File,
+    boxId?: string | null,
   ): Promise<{ filename: string; relativePath: string; url: string; mimetype: string; size: number }> => {
     const fd = new FormData();
     fd.append('file', file, file.name);
-    const res = await fetch(`${BASE}/attachments`, { method: 'POST', body: fd });
+    const url = boxId
+      ? `${BASE}/attachments?boxId=${encodeURIComponent(boxId)}`
+      : `${BASE}/attachments`;
+    const res = await fetch(url, { method: 'POST', body: fd });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
       throw new Error(j.message ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+  reparentCard: async (
+    sourceId: string,
+    newParentId: string | null,
+    opts?: { dryRun?: boolean },
+  ): Promise<{ renames: Record<string, string>; filesUpdated: number; dryRun?: boolean }> => {
+    const res = await fetch(`${BASE}/cards/reparent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceId, newParentId, dryRun: opts?.dryRun }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+  removeCrossLink: async (sourceId: string, targetId: string): Promise<{ removed: boolean }> => {
+    const res = await fetch(`${BASE}/cards/${encodeURIComponent(sourceId)}/remove-link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetId }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+  appendCrossLink: async (sourceId: string, targetId: string): Promise<{ alreadyLinked: boolean }> => {
+    const res = await fetch(`${BASE}/cards/${encodeURIComponent(sourceId)}/append-link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetId }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+  openAttachment: async (relativePath: string): Promise<{ ok: boolean }> => {
+    const res = await fetch(`${BASE}/attachments/open`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ relativePath }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+  getVaultSettings: () =>
+    get<{ settings: { attachmentPolicy: 'global' | 'per-box' } }>(`/vault-settings`),
+  patchVaultSettings: async (
+    patch: Partial<{ attachmentPolicy: 'global' | 'per-box' }>,
+  ): Promise<{ settings: { attachmentPolicy: 'global' | 'per-box' } }> => {
+    const res = await fetch(`${BASE}/vault-settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? `${res.status} ${res.statusText}`);
     }
     return res.json();
   },
@@ -457,6 +534,40 @@ export const api = {
       body: JSON.stringify({ cardIds }),
     });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.json();
+  },
+  listVaults: () => get<{ vaults: VaultEntry[]; active: VaultEntry | null }>(`/vaults`),
+  getActiveVault: () => get<{ active: VaultEntry | null }>(`/vaults/active`),
+  registerVault: async (path: string, name?: string): Promise<{ vault: VaultEntry }> => {
+    const res = await fetch(`${BASE}/vaults`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, name }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+  unregisterVault: async (id: string): Promise<{ removed: VaultEntry; switchedTo: VaultEntry | null }> => {
+    const res = await fetch(`${BASE}/vaults/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+  switchVault: async (id: string): Promise<{ active: VaultEntry; cards: number; durationMs: number }> => {
+    const res = await fetch(`${BASE}/vaults/switch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? `${res.status} ${res.statusText}`);
+    }
     return res.json();
   },
   tempToVault: async (workspaceId: string, nodeId: string, luhmannId: string): Promise<void> => {

@@ -1,10 +1,11 @@
 import { lazy, Suspense, useCallback, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, GripVertical, Network, Plus, Settings, SplitSquareHorizontal, SplitSquareVertical, Tag, X, XSquare } from 'lucide-react';
+import { ChevronDown, Crown, GripVertical, Network, Settings, SplitSquareHorizontal, SplitSquareVertical, Tag, X, XSquare } from 'lucide-react';
 import { Canvas } from './Canvas';
 import { usePaneStore, type LeafPane, type Pane, type SplitPane, type Tab } from '../store/paneStore';
 import { useIsMobile } from '../lib/useIsMobile';
 import { TabContextMenu } from './TabContextMenu';
 import { useUIStore as useUIStoreMod } from '../store/uiStore';
+import { MASTER_BOX_ID } from '../lib/cardGraph';
 
 /** 在 pane 树里找当前 active leaf */
 function findActiveLeaf(node: Pane, id: string): LeafPane | null {
@@ -283,10 +284,23 @@ function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
 
   return (
     <div
-      className={`shrink-0 flex items-stretch h-9 border-b ${
+      onDragOver={(e) => {
+        if (!isTabDrag(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+      }}
+      onDrop={(e) => {
+        // Drop 到 tab 栏空白处（包括对面 pane 的空 tab 栏） → 追加到末尾
+        // 注意：单个 tab 自己的 onDrop 用 stopPropagation 已经处理了"插到 i 位"的情况
+        const data = readTabDrag(e);
+        if (!data) return;
+        e.preventDefault();
+        moveTab(data.fromPaneId, data.tabId, pane.id);
+      }}
+      className={`shrink-0 flex items-stretch h-7 border-b ${
         isActive
-          ? 'bg-white dark:bg-[#1e2030] border-gray-200 dark:border-[#363a4f]'
-          : 'bg-gray-50 dark:bg-[#181926] border-gray-100 dark:border-[#363a4f]'
+          ? 'bg-gray-50 dark:bg-[#181926] border-gray-200 dark:border-[#363a4f]'
+          : 'bg-gray-100/60 dark:bg-[#181926] border-gray-100 dark:border-[#363a4f]'
       } overflow-x-auto`}
     >
       {pane.tabs.map((tab, i) => {
@@ -342,12 +356,12 @@ function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
                 closeTab(pane.id, tab.id);
               }
             }}
-            className={`group relative flex items-center gap-1.5 px-3 cursor-pointer border-r border-gray-100 dark:border-[#363a4f] text-[12px] select-none min-w-0 max-w-[200px] transition-opacity ${
+            className={`group relative flex items-center gap-1.5 px-2.5 cursor-pointer border-r border-gray-200/70 dark:border-[#363a4f] text-[11px] select-none min-w-0 max-w-[200px] transition-all ${
               draggingTabId === tab.id ? 'opacity-30' : ''
             } ${
               isActiveTab
-                ? 'bg-white dark:bg-[#1e2030] text-ink dark:text-[#cad3f5]'
-                : 'bg-gray-100/60 dark:bg-[#24273a] text-gray-500 dark:text-[#a5adcb] hover:bg-gray-100 dark:hover:bg-[#1e2030]'
+                ? 'bg-white dark:bg-[#1e2030] text-ink dark:text-[#cad3f5] border-b-2 border-b-accent -mb-px font-semibold'
+                : 'bg-transparent text-gray-500 dark:text-[#a5adcb] hover:bg-white/60 dark:hover:bg-[#24273a]'
             }`}
             title={tab.title}
           >
@@ -370,14 +384,7 @@ function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
         );
       })}
       <div className="flex-1" />
-      {/* + 新 tab：开一张空 graph 还是空 card 都不合适，所以触发"新建卡片"弹窗 */}
-      <button
-        onClick={() => useUIStoreMod.getState().setNewCardOpen(true)}
-        className="px-2 text-gray-400 hover:text-ink dark:hover:text-[#cad3f5] hover:bg-gray-100 dark:hover:bg-[#363a4f]"
-        title="New card (⌘N)"
-      >
-        <Plus size={12} />
-      </button>
+      {/* 新 card 入口在顶部 bar 已有，这里不重复 */}
       {pane.tabs.length > 0 && !isMobile && (
         <>
           <button
@@ -432,6 +439,10 @@ function TabBar({ pane, isActive }: { pane: LeafPane; isActive: boolean }) {
 
 function TabIcon({ tab }: { tab: Tab }) {
   const cls = 'shrink-0';
+  // Master tab：cardBoxId === '__MASTER__' 的 card tab，icon 显示 crown
+  if (tab.kind === 'card' && tab.cardBoxId === MASTER_BOX_ID) {
+    return <Crown size={11} className={`${cls} text-amber-500`} />;
+  }
   switch (tab.kind) {
     case 'graph':
       return <Network size={11} className={cls} />;

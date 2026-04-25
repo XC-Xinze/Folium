@@ -29,25 +29,23 @@ export function EmptyVault() {
     setCreating(true);
     try {
       // 建一组示范卡片，让用户看到 Folgezettel 长啥样
+      // status 不再传 —— 它从结构派生（1 因为有 1a/1b 子卡，自动是 INDEX）
       const seeds: Array<{
         luhmannId: string;
         title: string;
         content: string;
-        status: 'ATOMIC' | 'INDEX';
         tags: string[];
       }> = [
         {
           luhmannId: '1',
           title: 'Welcome to your Zettelkasten',
-          status: 'INDEX',
           tags: ['welcome'],
           content:
-            "# Welcome\n\nThis is an INDEX card. Index cards organize ideas — they reference [[1a]] and [[1b]].\n\nTry these:\n\n- Press ⌘K to quickly jump anywhere\n- Press ⌘B to toggle the sidebar\n- Click the Settings cog to tweak theme & hotkeys\n",
+            "# Welcome\n\nThis card has children (1a, 1b), so it acts as an INDEX. Status is derived from structure — no need to mark it.\n\nTry these:\n\n- Press ⌘K to quickly jump anywhere\n- Press ⌘B to toggle the sidebar\n- Click the Settings cog to tweak theme & hotkeys\n",
         },
         {
           luhmannId: '1a',
           title: 'How Folgezettel IDs work',
-          status: 'ATOMIC',
           tags: ['welcome'],
           content:
             "Cards are identified by **Folgezettel** ids: alternating digits and letters.\n\n- `1`, `2`, `3` are top-level cards\n- `1a`, `1b` are children of `1`\n- `1a1`, `1a2` are children of `1a`\n\nEach card has its own .md file. The system parses ids from filenames.\n",
@@ -55,7 +53,6 @@ export function EmptyVault() {
         {
           luhmannId: '1b',
           title: 'Linking ideas',
-          status: 'ATOMIC',
           tags: ['welcome'],
           content:
             "Two ways to link:\n\n1. **Manual** — `[[1a]]` or `[[some-other-id]]` in the body\n2. **Tags** — group cards across the tree, e.g. `#welcome`\n\nBacklinks show automatically on the focused card. Try editing me and adding `[[1]]`.\n",
@@ -93,7 +90,6 @@ export function EmptyVault() {
         luhmannId: id.trim(),
         title: title.trim(),
         content: '',
-        status: 'ATOMIC',
         tags: [],
       });
       refreshAll();

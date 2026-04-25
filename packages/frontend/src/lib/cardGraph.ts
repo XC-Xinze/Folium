@@ -52,6 +52,13 @@ export function computeSharedBoxes(allCards: CardSummary[]): Map<string, string[
   return result;
 }
 
+/**
+ * Sentinel box id：虚拟 "Master" 盒子。它不是 vault 里真存在的卡，
+ * computeBackbone 看到它就把所有顶级 Folgezettel 卡（1, 2, 3...）当作 backbone 成员。
+ * Canvas/boxQ/focusQ 看到这个 id 也跳过真卡 fetch。
+ */
+export const MASTER_BOX_ID = '__MASTER__';
+
 export interface BuildGraphInput {
   allCards: CardSummary[];
   fullCards: Map<string, Card>;
@@ -59,6 +66,13 @@ export interface BuildGraphInput {
   focusedBoxId: string;
   /** 当前焦点卡（决定哪张卡有 'focus' 高亮） */
   focusedCardId: string;
+  /**
+   * Tag 锚点 trail：本 box 会话期间出现过的、有 tag 的焦点卡集合。
+   * 每个锚都各自展开自己的 tagRelated，结果在画布上累加 ——
+   * 焦点切到下一张 tag 卡，老锚的邻居不消失，新锚的邻居也加进来。
+   * Box 切换会重置为 [boxId]。Potential 卡（无 tag）不进 trail。
+   */
+  tagAnchorIds: string[];
   /** 每张骨干卡的关联（仅 backbone 外部的卡才会被采用为 potential） */
   relatedBatch: RelatedBatch;
   showPotential: boolean;
@@ -104,98 +118,49 @@ export function computeBackbone(
   allCards: CardSummary[],
   fullCards: Map<string, Card>,
 ): Backbone {
-  const cardMap = new Map(allCards.map((c) => [c.luhmannId, c]));
-  const focusCard = cardMap.get(focusedId);
-  const focusIsIndex = focusCard?.status === 'INDEX';
-
   const ids = new Set<string>();
   const treeEdges: { source: string; target: string }[] = [];
   const depth = new Map<string, number>();
 
-  if (focusIsIndex) {
-    // INDEX 焦点：
-    //   1. 收集 focused 通过 [[link]] 引用的所有卡（递归 INDEX→sub-INDEX）
-    //   2. 对每张被引用卡，根据 Folgezettel 关系决定 tree parent：
-    //      - 它的 Folgezettel 父也在集合中 → 父就是 Folgezettel 父
-    //      - 否则 → 父是引入它的 INDEX
-    //   这样 i1 引用 [1, 1a, 1a1] 时，会形成 i1 → 1 → 1a → 1a1，而不是 i1 平铺三个
+  // Master 模式：backbone 只有顶级卡（没 Folgezettel 父，或父在 vault 里不存在）。
+  // 不展开子树 —— 用户说 master 只装最顶级 index，不显示更深的子卡。
+  // 同时排除 daily 卡（它们走 Sidebar 的 DAILY 区独立展示）。
+  if (focusedId === MASTER_BOX_ID) {
+    const cardSet = new Set(allCards.map((c) => c.luhmannId));
+    const dailyRe = /^daily\d{8}/;
+    for (const c of allCards) {
+      if (!/^[\da-z]+$/i.test(c.luhmannId)) continue;
+      if (dailyRe.test(c.luhmannId)) continue;
+      const parent = deriveParentId(c.luhmannId);
+      if (!parent || !cardSet.has(parent)) {
+        ids.add(c.luhmannId);
+        depth.set(c.luhmannId, 0);
+      }
+    }
+    void fullCards;
+    return { ids, treeEdges, depth };
+  }
 
-    // Step 1: 收集 focused INDEX 直接引用的卡片（不递归 sub-INDEX 的内部）
-    // 例：点 i0 → 只展开 i0 的引用 [i1, i2]；要看 i1 的内容请点击 i1
-    const introducedBy = new Map<string, string>(); // 卡 id → 引入它的 INDEX id
-    ids.add(focusedId);
-    const focusCard = cardMap.get(focusedId);
-    if (focusCard) {
-      const targets = focusCard.crossLinks
-        .map((t) => cardMap.get(t))
-        .filter((c): c is CardSummary => !!c);
-      for (const target of targets) {
-        if (!ids.has(target.luhmannId)) {
-          ids.add(target.luhmannId);
-          introducedBy.set(target.luhmannId, focusedId);
-        }
+  // 普通 box：以 focusedBoxId 为根，BFS 收集 Folgezettel 后代。
+  // INDEX 现在是 derived（有 Folgezettel 子卡的卡），子卡靠 id 自动归属。
+  // crossLinks 不再参与 backbone 收集 —— 它们走 cross-flank 边渲染。
+  ids.add(focusedId);
+  depth.set(focusedId, 0);
+  const queue: string[] = [focusedId];
+  while (queue.length) {
+    const cur = queue.shift()!;
+    const curDepth = depth.get(cur)!;
+    for (const c of allCards) {
+      if (deriveParentId(c.luhmannId) === cur && !ids.has(c.luhmannId)) {
+        ids.add(c.luhmannId);
+        treeEdges.push({ source: cur, target: c.luhmannId });
+        depth.set(c.luhmannId, curDepth + 1);
+        queue.push(c.luhmannId);
       }
-    }
-
-    // Step 2: 为每张卡决定 tree parent
-    for (const id of ids) {
-      if (id === focusedId) {
-        depth.set(id, 0);
-        continue;
-      }
-      const folgParent = deriveParentId(id);
-      let treeParent: string;
-      if (folgParent && ids.has(folgParent)) {
-        treeParent = folgParent;
-      } else {
-        treeParent = introducedBy.get(id) ?? focusedId;
-      }
-      treeEdges.push({ source: treeParent, target: id });
-    }
-
-    // Step 3: BFS 计算 depth
-    const queue: string[] = [focusedId];
-    while (queue.length) {
-      const cur = queue.shift()!;
-      const curDepth = depth.get(cur)!;
-      for (const e of treeEdges) {
-        if (e.source === cur && !depth.has(e.target)) {
-          depth.set(e.target, curDepth + 1);
-          queue.push(e.target);
-        }
-      }
-    }
-  } else {
-    // ATOMIC 焦点：上溯 Folgezettel 父，再下挖整棵子树
-    let rootId = focusedId;
-    while (true) {
-      const p = deriveParentId(rootId);
-      if (!p || !cardMap.has(p)) break;
-      rootId = p;
-    }
-    // BFS 收集所有以 rootId 为前缀的卡
-    const queue: string[] = [rootId];
-    ids.add(rootId);
-    while (queue.length) {
-      const cur = queue.shift()!;
-      // 找直接 Folgezettel 子（parentId === cur）
-      for (const c of allCards) {
-        if (deriveParentId(c.luhmannId) === cur && !ids.has(c.luhmannId)) {
-          ids.add(c.luhmannId);
-          treeEdges.push({ source: cur, target: c.luhmannId });
-          queue.push(c.luhmannId);
-        }
-      }
-    }
-    // 用 Folgezettel depth 减 focused depth 作为逻辑深度
-    const focusedDepth = focusCard?.depth ?? 1;
-    for (const id of ids) {
-      const c = cardMap.get(id);
-      if (c) depth.set(id, c.depth - focusedDepth);
     }
   }
 
-  void fullCards; // 当前实现只用到 summary 的 crossLinks（已含）
+  void fullCards;
   return { ids, treeEdges, depth };
 }
 
@@ -207,6 +172,7 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     fullCards,
     focusedBoxId,
     focusedCardId,
+    tagAnchorIds,
     relatedBatch,
     showPotential,
     showTagRelated = true,
@@ -283,9 +249,9 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     for (const id of radialIds) {
       const full = fullCards.get(id);
       if (!full) continue;
-      // INDEX 卡的 [[link]] 本质是"成员关系"，已经体现在 tree 结构里了；
-      // 不要再画一遍 cross 边，否则会和 tree 边重叠或冗余
-      if (full.status === 'INDEX') continue;
+      // 注意：旧版本会因为 full.status === 'INDEX' 就 continue（旧 INDEX 卡 [[link]] = 成员关系）。
+      // 现在 box 是纯结构性 Folgezettel，INDEX 的 crossLinks 就是普通引用，应该正常渲染 cross 边。
+      // 否则用户给 INDEX 卡（如 2a）添加 [[link]] 时画布上看不到结果。
       for (const target of full.crossLinks) {
         if (target === id) continue;
         const existsTree = backbone.treeEdges.some(
@@ -308,7 +274,7 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     // 入边（backlinks）：扫所有卡的 summary.crossLinks，找指向骨干（或外部焦点）的
     for (const c of allCards) {
       if (radialIds.has(c.luhmannId)) continue; // 已在出边里处理
-      if (c.status === 'INDEX') continue; // INDEX 的指向是"成员关系"，不当 cross
+      // 同上：INDEX 卡的 crossLinks 现在也是普通引用，要画 backlink 边
       for (const target of c.crossLinks) {
         if (!radialIds.has(target)) continue;
         const existsTree = backbone.treeEdges.some(
@@ -353,11 +319,13 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     );
 
   if (showTagRelated) {
-    // 只从焦点卡发 tag 边 —— 用户期望的是"以焦点为中心的放射图"
-    // 焦点卡可能在 backbone 内（普通情况）也可能在外（被 tag-related 拉进来后再点选），
-    // 只要 relatedBatch 里有它的数据就用它当锚点
-    const tagAnchorIds = relatedBatch[focusedCardId] ? [focusedCardId] : [...backbone.ids];
-    for (const id of tagAnchorIds) {
+    // Trail 模式：每个 tag 锚点都各自展开 tag-related，结果在画布上联合显示
+    // —— 焦点切到下一张 tag 卡时，老锚的邻居不消失，新锚的邻居也加进来。
+    // Canvas 维护 trail；这里只用 batch 里有数据的那些（缺数据时跳过该锚）。
+    // trail 为空时 fallback backbone。
+    const anchors = tagAnchorIds.filter((id) => relatedBatch[id]);
+    const effectiveAnchors = anchors.length > 0 ? anchors : [...backbone.ids];
+    for (const id of effectiveAnchors) {
       const rel = relatedBatch[id];
       if (!rel) continue;
       for (const tr of rel.tagRelated) {
@@ -398,7 +366,7 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
   }
 
   // Potential：unlinked references。骨干外的内容卡作为 potential 节点拉进来；
-  // 骨干内部之间的 potential 关系也要画一条灰虚线（之前 continue 跳过了导致 7 看不到 potential）。
+  // 骨干内部之间的 potential 关系也要画一条灰虚线。
   // 优先级：tree > cross > tag > potential。如果这对节点已经有更"硬"的边，就别叠加 potential。
   if (showPotential) {
     for (const id of radialIds) {
@@ -754,13 +722,16 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     const style = touchesFocus
       ? { ...baseStyle, strokeWidth: baseStyle.strokeWidth + 1.5, opacity: 1 }
       : { ...baseStyle, opacity: 0.6 };
+    // potential / cross 用自定义 edge type（带中点 link/unlink 按钮），其余 bezier
+    const type =
+      e.kind === 'potential' ? 'potential' : e.kind === 'cross' ? 'cross' : 'default';
     return {
       id: e.id,
       source: e.source,
       target: e.target,
       sourceHandle,
       targetHandle,
-      type: 'default', // 全部用 bezier，不再用 smoothstep 的硬拐角
+      type,
       animated: false,
       style,
       data: { kind: e.kind, touchesFocus },

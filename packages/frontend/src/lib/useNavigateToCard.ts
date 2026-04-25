@@ -30,26 +30,11 @@ function findFolgezettelRoot(cardId: string, allCards: CardSummary[]): string {
 }
 
 /** 判断一张卡是否在某个 box 的可视范围内：
- *  - box 是 INDEX：cardId 在 INDEX.crossLinks 或它们的 Folgezettel 子树
- *  - box 是 atomic（用作 Folgezettel 根 box）：cardId 是该 root 自己或其 Folgezettel 子孙
+ *  严格按 Folgezettel —— cardId 是 boxId 自己或其 Folgezettel 后代。
+ *  不再走 INDEX crossLinks 路径（box 现在纯结构性，跟 INDEX 状态无关）。
  */
-function isCardInBox(cardId: string, boxId: string, allCards: CardSummary[]): boolean {
+function isCardInBox(cardId: string, boxId: string): boolean {
   if (cardId === boxId) return true;
-  const box = allCards.find((c) => c.luhmannId === boxId);
-  if (!box) return false;
-  if (box.status === 'INDEX') {
-    const directRefs = new Set<string>(box.crossLinks);
-    if (directRefs.has(cardId)) return true;
-    let current = cardId;
-    while (true) {
-      const parent = deriveParentId(current);
-      if (!parent) break;
-      if (directRefs.has(parent)) return true;
-      current = parent;
-    }
-    return false;
-  }
-  // atomic box：检查 cardId 是不是 boxId 的 Folgezettel 后代
   let current = cardId;
   while (true) {
     const parent = deriveParentId(current);
@@ -81,17 +66,17 @@ export function useNavigateToCard() {
         boxId = id;
         focusId = id;
       } else if (card.status === 'INDEX') {
+        // INDEX 卡（derived：有 Folgezettel 子卡的卡）：点它就是进它这个 box，focus 它自己
         boxId = id;
         focusId = id;
       } else {
         // ATOMIC：保留"在当前 box 内只动 focus"的语义
         const currentBox = useUIStore.getState().focusedBoxId;
-        if (!opts?.newTab && currentBox && isCardInBox(id, currentBox, allCards)) {
+        if (!opts?.newTab && currentBox && isCardInBox(id, currentBox)) {
           focusId = id;
           boxId = currentBox;
         } else {
           // 严格按 Folgezettel：5 是自己的 box；5a 的 box 是 5；1a2b 的 box 是 1
-          // 不再因为某个 INDEX 引用了它就把它塞进那个 INDEX 的 box
           boxId = findFolgezettelRoot(id, allCards);
           focusId = id;
         }

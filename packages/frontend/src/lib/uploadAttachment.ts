@@ -6,10 +6,15 @@ export interface UploadResult {
   size: number;
 }
 
-export async function uploadAttachment(file: File): Promise<UploadResult> {
+/**
+ * 上传附件。可选 boxId —— 如果 vault 设置 attachmentPolicy === 'per-box'，
+ * 后端会落到 attachments/<boxId>/ 子目录里。
+ */
+export async function uploadAttachment(file: File, boxId?: string | null): Promise<UploadResult> {
   const fd = new FormData();
   fd.append('file', file, file.name);
-  const res = await fetch('/api/attachments', {
+  const url = boxId ? `/api/attachments?boxId=${encodeURIComponent(boxId)}` : '/api/attachments';
+  const res = await fetch(url, {
     method: 'POST',
     body: fd,
   });

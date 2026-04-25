@@ -9,7 +9,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { CreateCardModal } from './components/CreateCardModal';
 import { CommandPalette } from './components/CommandPalette';
 import { NewCardBar } from './components/NewCardBar';
-import { CalendarDays, Network, Search } from 'lucide-react';
+import { CalendarDays, Maximize2, Network, Search } from 'lucide-react';
 import { EmptyVault } from './components/EmptyVault';
 import { PaneRoot } from './components/PaneRoot';
 import { useIsMobile } from './lib/useIsMobile';
@@ -356,19 +356,20 @@ function TopBar() {
     <div className="shrink-0 border-b border-gray-100/60 dark:border-[#363a4f]/60 bg-[#fafafa] dark:bg-[#24273a]">
       <div className="flex items-center gap-1.5 px-4 py-1.5">
         <button
-          onClick={() => setExpanded((v) => !v)}
+          onClick={() => setNewCardOpen(true)}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent text-white text-[12px] font-bold hover:bg-accent/90 shadow-sm"
-          title={expanded ? 'Collapse new-card editor' : 'Expand new-card editor'}
+          title="New card (⌘N)"
         >
-          <span className="text-[14px] leading-none">{expanded ? '−' : '+'}</span>
+          <span className="text-[14px] leading-none">+</span>
           <span>New card</span>
         </button>
         <button
-          onClick={() => setNewCardOpen(true)}
-          className="text-[10px] font-bold px-2 py-1 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-[#363a4f] hover:text-accent"
-          title="New card in modal (⌘N)"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-[#363a4f] hover:text-accent border border-transparent hover:border-accent/30 transition-colors"
+          title={expanded ? 'Collapse inline editor' : 'Expand inline editor'}
         >
-          modal
+          <Maximize2 size={11} />
+          <span>{expanded ? 'Hide inline' : 'Inline'}</span>
         </button>
         <div className="w-px h-4 bg-gray-200 dark:bg-[#363a4f] mx-1" />
         <TopBarBtn

@@ -171,6 +171,12 @@ export function listDeletedWorkspaces(): Array<{ ts: number; ws: Workspace }> {
   return [...wsTrash].sort((a, b) => b.ts - a.ts);
 }
 
+/** vault 切换时调，清空 in-memory cache 让下次 loadAll 从新 vault 的 .zettel/ 读 */
+export function resetWorkspacesCache(): void {
+  cache = null;
+  wsTrash.length = 0;
+}
+
 /**
  * Delete a workspace edge. If it was applied (i.e. wrote a [[link]] into a vault
  * .md file), unapply first to clean up the source card before removing the edge.
@@ -442,7 +448,6 @@ export async function tempToVault(
       luhmannId,
       title: tempNode.title,
       content: tempNode.content,
-      status: 'ATOMIC',
     });
     createdFile = result.filePath;
   } catch (err) {

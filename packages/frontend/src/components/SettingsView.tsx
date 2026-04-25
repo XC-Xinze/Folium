@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Moon, Sun, Monitor, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
 import { useUIStore, type Theme } from '../store/uiStore';
+import { api } from '../lib/api';
 import { PluginRegistry } from '../lib/pluginRegistry';
 import { listLoadedPlugins, reloadPlugins, type LoadedPlugin } from '../lib/pluginLoader';
 import { HotkeysPanel } from './HotkeysPanel';
@@ -58,6 +60,10 @@ export function SettingsView() {
         <Field label="Vault path" hint="Configured via the VAULT_PATH env var when the backend starts">
           <code className="text-[12px] bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded">{`(env: VAULT_PATH)`}</code>
         </Field>
+      </Section>
+
+      <Section title="Attachments">
+        <AttachmentPolicyField />
       </Section>
 
       <Section title="Hotkeys">
@@ -180,5 +186,39 @@ function Field({
       </div>
       {children}
     </div>
+  );
+}
+
+function AttachmentPolicyField() {
+  const qc = useQueryClient();
+  const settingsQ = useQuery({ queryKey: ['vault-settings'], queryFn: api.getVaultSettings });
+  const policy = settingsQ.data?.settings.attachmentPolicy ?? 'global';
+  const mut = useMutation({
+    mutationFn: (next: 'global' | 'per-box') =>
+      api.patchVaultSettings({ attachmentPolicy: next }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['vault-settings'] }),
+  });
+  return (
+    <Field
+      label="Attachment location"
+      hint="Where pasted/uploaded files land. per-box puts them under attachments/<focused-box-id>/"
+    >
+      <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-full p-1">
+        {(['global', 'per-box'] as const).map((value) => (
+          <button
+            key={value}
+            onClick={() => mut.mutate(value)}
+            disabled={mut.isPending}
+            className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${
+              policy === value
+                ? 'bg-white dark:bg-gray-700 text-ink dark:text-gray-100 shadow-sm'
+                : 'text-gray-500 dark:text-gray-400 hover:text-ink dark:hover:text-gray-200'
+            }`}
+          >
+            {value === 'global' ? 'Global' : 'Per-box'}
+          </button>
+        ))}
+      </div>
+    </Field>
   );
 }

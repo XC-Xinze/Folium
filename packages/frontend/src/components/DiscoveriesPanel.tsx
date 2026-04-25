@@ -86,11 +86,12 @@ export function DiscoveriesPanel() {
                     const body =
                       `# ${name.trim()}\n\n自动从内容相似簇生成。\n\n` +
                       cluster.cards.map((c) => `- [[${c.luhmannId}]] ${c.title}`).join('\n');
+                    // status 不再传：当用户给这张新 INDEX-意图卡新建子卡（如 1a/1b）时
+                    // 它自动升级成 INDEX。这里只是先把卡本身建出来。
                     await api.createCard({
                       luhmannId: luhmannId.trim(),
                       title: name.trim(),
                       content: body,
-                      status: 'INDEX',
                       tags: cluster.hintTags,
                     });
                     qc.invalidateQueries();

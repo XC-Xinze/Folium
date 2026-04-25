@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   Controls,
@@ -14,10 +14,12 @@ import '@xyflow/react/dist/style.css';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Card, type PositionMap } from '../lib/api';
 import { CardNode } from './CardNode';
-import { applyAnchorPositions, buildGraph, computeBackbone, resolveCollisions } from '../lib/cardGraph';
+import { CrossEdge, PotentialEdge } from './CanvasEdges';
+import { applyAnchorPositions, buildGraph, computeBackbone, MASTER_BOX_ID, resolveCollisions } from '../lib/cardGraph';
 import { DEFAULT_CARD_FLAGS, usePaneStore as usePaneStoreImported, type CardDisplayFlags } from '../store/paneStore';
 
 const nodeTypes = { card: CardNode };
+const edgeTypes = { potential: PotentialEdge, cross: CrossEdge };
 
 interface Props {
   focusedBoxId: string;
@@ -46,17 +48,25 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
   const setShowWorkspaceLinks = (v: boolean) => setFlag('workspaceLinks', v);
   const qc = useQueryClient();
 
+  const isMaster = focusedBoxId === MASTER_BOX_ID;
+
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
   // 同时拿 box 和 focus 的完整内容（box 用于 INDEX 展开 cross-link）
-  const boxQ = useQuery({ queryKey: ['card', focusedBoxId], queryFn: () => api.getCard(focusedBoxId) });
+  // Master 是虚拟 box，没真卡，跳过。
+  const boxQ = useQuery({
+    queryKey: ['card', focusedBoxId],
+    queryFn: () => api.getCard(focusedBoxId),
+    enabled: !isMaster,
+  });
   const focusQ = useQuery({
     queryKey: ['card', focusedCardId],
     queryFn: () => api.getCard(focusedCardId),
-    enabled: focusedCardId !== focusedBoxId,
+    enabled: focusedCardId !== focusedBoxId && focusedCardId !== MASTER_BOX_ID,
   });
   const linkedQ = useQuery({
     queryKey: ['linked', focusedBoxId],
     queryFn: () => api.getLinked(focusedBoxId),
+    enabled: !isMaster,
   });
 
   const fullCards = useMemo(() => {
@@ -68,18 +78,37 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
   }, [boxQ.data, focusQ.data, linkedQ.data]);
 
   const backboneIds = useMemo(() => {
-    if (!cardsQ.data || !boxQ.data) return [] as string[];
+    if (!cardsQ.data) return [] as string[];
+    if (!isMaster && !boxQ.data) return [] as string[]; // 普通 box 等真卡数据
     const bb = computeBackbone(focusedBoxId, cardsQ.data.cards, fullCards);
     return [...bb.ids];
-  }, [cardsQ.data, boxQ.data, fullCards, focusedBoxId]);
+  }, [cardsQ.data, boxQ.data, fullCards, focusedBoxId, isMaster]);
+
+  // Tag trail：本 box 会话期间出现过的、有 tag 的焦点卡集合。
+  // Trail 累加：焦点每切到一张有 tag 的卡，把它加进去；
+  // 老锚的 tag-related 邻居不消失，新锚的也加进画布。
+  // Box 切换 → 重置为 [boxId]。Potential 卡（无 tag）不进 trail。
+  const [tagTrailIds, setTagTrailIds] = useState<string[]>(() => [focusedBoxId]);
+  // box 切了 → 重置 trail
+  useEffect(() => {
+    setTagTrailIds([focusedBoxId]);
+  }, [focusedBoxId]);
+  // 焦点切到一张有 tag 的卡 → 加进 trail（去重）
+  useEffect(() => {
+    const focusCard = cardsQ.data?.cards.find((c) => c.luhmannId === focusedCardId);
+    if (!focusCard || focusCard.tags.length === 0) return;
+    setTagTrailIds((prev) => (prev.includes(focusedCardId) ? prev : [...prev, focusedCardId]));
+  }, [focusedCardId, cardsQ.data]);
 
   // 焦点卡若是从外部 tag-related 拉进来的（不在 backbone 里），单独把它加进 relatedBatch
   // 否则它的 tagRelated 拿不到 → buildGraph 退化成"所有 backbone 卡两两连"
+  // 同时把 tag trail 全部锚也加进来，保证 buildGraph 能拿到每个锚的 batch 数据
   const relatedIds = useMemo(() => {
     const set = new Set(backboneIds);
     if (focusedCardId) set.add(focusedCardId);
+    for (const id of tagTrailIds) set.add(id);
     return [...set];
-  }, [backboneIds, focusedCardId]);
+  }, [backboneIds, focusedCardId, tagTrailIds]);
 
   // tag-related 是 first-class（默认显示），不受 showPotential 影响——所以总要拉
   // 不用 keepPreviousData：会让旧焦点的 tagRelated 卡住，新焦点的边永远画不出来
@@ -105,17 +134,20 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
   });
 
   const graph = useMemo(() => {
-    if (!cardsQ.data || !boxQ.data) return { nodes: [] as Node[], edges: [] as Edge[] };
+    if (!cardsQ.data) return { nodes: [] as Node[], edges: [] as Edge[] };
+    if (!isMaster && !boxQ.data) return { nodes: [] as Node[], edges: [] as Edge[] };
     const raw = buildGraph({
       allCards: cardsQ.data.cards,
       fullCards,
       focusedBoxId,
       focusedCardId,
+      tagAnchorIds: tagTrailIds,
       relatedBatch: relatedBatchQ.data ?? {},
-      showPotential,
-      showTagRelated,
-      showCrossLinks,
-      workspaceLinks: showWorkspaceLinks ? workspaceLinksQ.data?.links ?? [] : [],
+      // Master 视图：只展示顶级卡的纯净网格，关掉所有关联层
+      showPotential: isMaster ? false : showPotential,
+      showTagRelated: isMaster ? false : showTagRelated,
+      showCrossLinks: isMaster ? false : showCrossLinks,
+      workspaceLinks: showWorkspaceLinks && !isMaster ? workspaceLinksQ.data?.links ?? [] : [],
     });
     const anchored = applyAnchorPositions(raw.nodes, raw.edges, positionsQ.data ?? {});
     // 一次性碰撞解算：把自动布局产生的重叠抹掉，但锁定用户手动拖过的位置
@@ -133,6 +165,8 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
     fullCards,
     focusedBoxId,
     focusedCardId,
+    isMaster,
+    tagTrailIds,
     relatedBatchQ.data,
     showPotential,
     showTagRelated,
@@ -156,28 +190,46 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
     prevBoxRef.current = focusedBoxId;
     prevFocusRef.current = focusedCardId;
     if (boxChanged) stickyPosRef.current.clear();
-    // 焦点变了 → 失效 sticky 中的"新焦点卡"位置，让它跟着 buildGraph 重新摆到
-    // 跟新邻居贴近的位置（否则它停在老位置，新拉来的 tag-related 在远处看不出关联）
-    if (focusChanged && !boxChanged) {
-      stickyPosRef.current.delete(focusedCardId);
-    }
+
     setNodes((prev) => {
       if (boxChanged) {
         for (const n of graph.nodes) stickyPosRef.current.set(n.id, n.position);
         return graph.nodes;
       }
       const prevPos = new Map(prev.map((n) => [n.id, n.position]));
+      // 反复点已经在画布上的卡不会让它跳来跳去：所有节点优先用 sticky/prevPos，
+      // 真·首次出现的卡（buildGraph 给的新位置）才用 layout 位置。
       const merged = graph.nodes.map((n) => {
-        // 新焦点卡用 buildGraph 给的位置（不复用 prevPos / sticky），其他节点正常 sticky
-        if (focusChanged && n.id === focusedCardId) return n;
         const cached = prevPos.get(n.id) ?? stickyPosRef.current.get(n.id);
         return cached ? { ...n, position: cached } : n;
       });
+
+      // 焦点切换时 relatedBatch 会 refetch（key 含 focusedCardId），
+      // refetch 期间 batch 数据是 undefined → buildGraph 算出的 graph.nodes 临时少了
+      // tag-related / cross-flank / potential。这一段会把"prev 有但本次 graph 没有"
+      // 的节点暂时保留在画布上，等 batch 回来 graph 重建时再正常 merge。
+      // 这样用户连续点外部卡时不会看到 "全部外部卡瞬间消失" 的闪烁。
+      if (focusChanged && !boxChanged && relatedBatchQ.isFetching) {
+        const currentIds = new Set(merged.map((n) => n.id));
+        const carry = prev.filter((n) => !currentIds.has(n.id));
+        if (carry.length > 0) merged.push(...carry);
+      }
+
       for (const n of merged) stickyPosRef.current.set(n.id, n.position);
       return merged;
     });
-    setEdges(graph.edges);
-  }, [graph, focusedBoxId, focusedCardId, setNodes, setEdges]);
+    // 边同理：refetch 期间，把 prev 有但本次 graph 没有的边一并保留，
+    // 不然刚才 carry 进来的节点就是孤岛
+    setEdges((prev) => {
+      if (boxChanged) return graph.edges;
+      if (focusChanged && relatedBatchQ.isFetching) {
+        const currentEdgeIds = new Set(graph.edges.map((e) => e.id));
+        const carry = prev.filter((e) => !currentEdgeIds.has(e.id));
+        return carry.length > 0 ? [...graph.edges, ...carry] : graph.edges;
+      }
+      return graph.edges;
+    });
+  }, [graph, focusedBoxId, focusedCardId, relatedBatchQ.isFetching, setNodes, setEdges]);
 
   // 拖拽结束 → 乐观更新 + 异步写磁盘（scope 限定）
   const onNodeDragStop = useCallback(
@@ -200,8 +252,9 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
   if (cardsQ.error) return <FullCenter error>{String(cardsQ.error)}</FullCenter>;
   if (!cardsQ.data?.cards.length)
     return <FullCenter>The vault is empty. Drop some .md files in example-vault/ to get started.</FullCenter>;
-  if (boxQ.isLoading) return <FullCenter>Loading box {focusedBoxId}…</FullCenter>;
-  if (boxQ.error) return <FullCenter error>Box {focusedBoxId} not found</FullCenter>;
+  // 普通 box 才 gate 在 boxQ 上；master 是虚拟 box 没真卡可拉
+  if (!isMaster && boxQ.isLoading) return <FullCenter>Loading box {focusedBoxId}…</FullCenter>;
+  if (!isMaster && boxQ.error) return <FullCenter error>Box {focusedBoxId} not found</FullCenter>;
 
   return (
     <div className="w-full h-full flex flex-col">
@@ -239,6 +292,7 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeDragStop={onNodeDragStop}
@@ -341,7 +395,7 @@ function FocusDepthBadge({ depth, max }: { depth: number; max: number }) {
         ))}
       </div>
       <span className={`text-[10px] font-bold uppercase tracking-widest ${color}`}>
-        {atMax ? 'Next ext → switch box' : `Depth ${depth}/${max}`}
+        {atMax ? `Depth ${depth}/${max} · max` : `Depth ${depth}/${max}`}
       </span>
     </div>
   );

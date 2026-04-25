@@ -122,6 +122,11 @@ export async function clearScope(scope: string): Promise<void> {
   await flush(all);
 }
 
+/** vault 切换时清 in-memory cache，下次 load 会从新 vault 的 .zettel/ 重读 */
+export function resetPositionsCache(): void {
+  cache = null;
+}
+
 /** 提权时：把所有 scope 中 oldId 的位置改名为 newId */
 export async function renameCardInAllScopes(
   oldId: string,

@@ -58,6 +58,33 @@ export function attachWikilinkHandler(
 }
 
 /**
+ * 拦截普通 markdown 链接（[label](relativePath)）的点击。
+ * 指向 vault 内附件（/vault/...）的非图片链接 → 调系统 open；
+ * 其他外链让浏览器照常处理。
+ */
+export function attachAttachmentClickHandler(
+  root: HTMLElement,
+  openInSystem: (relativePath: string) => void,
+): () => void {
+  const VAULT_PREFIX = '/vault/';
+  const onClick = (e: Event) => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    const a = target.closest<HTMLAnchorElement>('a[href]');
+    if (!a) return;
+    const href = a.getAttribute('href') ?? '';
+    // 仅处理 vault 内的附件链接（renderMarkdown 已重写过 attachments/* → /vault/attachments/*）
+    if (!href.startsWith(VAULT_PREFIX)) return;
+    // 排除被嵌入的图片（点 <img> 上的话 closest('a') 还可能拿到外层 a，但通常图片不在 a 里）
+    e.preventDefault();
+    const rel = href.slice(VAULT_PREFIX.length);
+    openInSystem(rel);
+  };
+  root.addEventListener('click', onClick);
+  return () => root.removeEventListener('click', onClick);
+}
+
+/**
  * 把 ![[id]] 渲染出来的占位 .transclude div 异步填充实际卡片内容。
  *   - getCard: 拉一张卡（一般直接传 api.getCard）
  *   - 防递归：传入 visited Set 拦截嵌入循环

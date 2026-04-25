@@ -6,7 +6,10 @@ import { dialog } from '../lib/dialog';
 import { useUIStore } from '../store/uiStore';
 import { usePaneStore } from '../store/paneStore';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
-import { setCardDragData } from '../lib/dragCard';
+import { isCardDrag, readCardDragData, setCardDragData } from '../lib/dragCard';
+import { pushUndo } from '../lib/undoStack';
+import { VaultPicker } from './VaultPicker';
+import { MASTER_BOX_ID } from '../lib/cardGraph';
 
 /** Folgezettel 父：剥末尾连续同类（数字 / 字母）。daily 这种非 luhmann 返 null */
 function parentOfId(id: string): string | null {
@@ -16,19 +19,13 @@ function parentOfId(id: string): string | null {
   return null;
 }
 
-/** 算 master INDEX：没被任何其他 INDEX 引用的 INDEX 卡 */
-function findMasterIndexes(cards: CardSummary[]): CardSummary[] {
-  const indexes = cards.filter((c) => c.status === 'INDEX');
-  const referenced = new Set<string>();
-  for (const c of indexes) for (const t of c.crossLinks) referenced.add(t);
-  return indexes.filter((c) => !referenced.has(c.luhmannId));
-}
-
 /**
  * 算 Folgezettel 树：每张卡按 id 推导父子。父若不存在就追溯到最近存在的祖先；
  * 还是没有就放在 root。结果：parentId → children id list（按 sortKey 排）
  *
- * 包不包含 master INDEX 由调用方决定 —— 通常 sidebar 会把 master 单独按钮化
+ * Master 是虚拟概念（无 luhmannId），不是某张卡 —— Sidebar 顶部的"Vault"
+ * 就是 master 入口。所以这棵树包含所有非 daily 卡，顶级 luhmannId（1/2/3...）
+ * 自然作为 root 节点出现。
  */
 function buildFolgezettelTree(
   cards: CardSummary[],
@@ -80,8 +77,81 @@ export function Sidebar() {
         .removeTabsWhere(
           (t) => t.kind === 'card' && (t.cardBoxId === id || t.cardFocusId === id),
         );
+      pushUndo({
+        description: `Deleted card ${id}`,
+        undo: async () => {
+          const trash = await api.listTrash();
+          const entry = trash.entries.find((e) => e.luhmannId === id);
+          if (!entry) throw new Error('Trash entry not found');
+          await api.restoreTrash(entry.fileName);
+          qc.invalidateQueries();
+        },
+      });
     },
   });
+
+  /**
+   * Reparent 流程：
+   *   1. dryRun 拿 rename map
+   *   2. 弹 confirm 显示 map 让用户看清楚
+   *   3. 真做 + 全量 invalidate（id 改了所有 query 都得刷）
+   *   4. paneStore tabs 里指向旧 id 的也要修：用 removeTabsWhere 清掉（最稳，避免半残状态）
+   */
+  const reparentCard = async (sourceId: string, newParentId: string | null) => {
+    if (sourceId === newParentId) return;
+    try {
+      const plan = await api.reparentCard(sourceId, newParentId, { dryRun: true });
+      const renames = plan.renames;
+      const entries = Object.entries(renames);
+      if (entries.length === 0) {
+        // 已经是目标位置 → 无操作
+        return;
+      }
+      const summary = entries.map(([o, n]) => `  ${o} → ${n}`).join('\n');
+      const targetLabel = newParentId === null ? '(top-level)' : newParentId;
+      const ok = await dialog.confirm(
+        `Move ${sourceId} under ${targetLabel}?\n\n${entries.length} card${entries.length === 1 ? '' : 's'} will be renumbered:\n${summary}`,
+        {
+          title: 'Reparent + renumber',
+          description:
+            'All [[link]] references to renamed ids in any card body will be rewritten too.',
+          confirmLabel: 'Reparent',
+          variant: 'danger',
+        },
+      );
+      if (!ok) return;
+      const result = await api.reparentCard(sourceId, newParentId, { dryRun: false });
+      // id 大改 → 整个 cache 都不可信，全清
+      qc.invalidateQueries();
+      // 任何 tab 指向被改名的卡 → 清掉避免点了 404
+      const renamedSet = new Set(Object.keys(result.renames));
+      usePaneStore.getState().removeTabsWhere(
+        (t) =>
+          t.kind === 'card' &&
+          ((t.cardBoxId !== undefined && renamedSet.has(t.cardBoxId)) ||
+            (t.cardFocusId !== undefined && renamedSet.has(t.cardFocusId))),
+      );
+    } catch (err) {
+      dialog.alert((err as Error).message, { title: 'Reparent failed' });
+    }
+  };
+
+  const handleDeleteCard = async (id: string) => {
+    const card = (cardsQ.data?.cards ?? []).find((c) => c.luhmannId === id);
+    const ok = await dialog.confirm(`Delete ${id}?`, {
+      title: card ? `Delete "${card.title}"` : 'Delete card',
+      description:
+        'The .md file will be removed and crossLinks from other cards cleaned up. ⌘Z to undo.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await deleteMut.mutateAsync(id);
+    } catch (err) {
+      dialog.alert((err as Error).message, { title: 'Delete failed' });
+    }
+  };
   // tag 改名 / 删除会改写大量卡片的 frontmatter+正文，凡是缓存了卡片内容的查询都得失效
   // 用 refetchQueries 而不是 invalidateQueries——前者立刻强制重发请求，
   // 后者只标 stale 等下次观察时再发，碰到边界情况可能延迟刷新
@@ -111,22 +181,15 @@ export function Sidebar() {
     },
   });
 
-  // 把 daily 卡和 orphan 卡（不在任何 INDEX 树里的顶层卡）从主流分离
-  // Master INDEX = 没被任何其他 INDEX 引用的 INDEX 卡
-  const masters = useMemo(
-    () => findMasterIndexes(cardsQ.data?.cards ?? []),
-    [cardsQ.data],
-  );
-
-  // Folgezettel 树：把 master INDEX + dailies 排除（它们单独展示）
+  // Folgezettel 树：包含所有非 daily 卡。顶级（1/2/3...）自然作为 root。
+  // Master 不再是某张卡 —— 是 Sidebar 顶部的"Vault"标题这个虚拟入口。
   const folgezettelTree = useMemo(() => {
     const allCards = cardsQ.data?.cards ?? [];
     const dailyRe = /^daily(\d{8})/;
     const exclude = new Set<string>();
-    for (const m of masters) exclude.add(m.luhmannId);
     for (const c of allCards) if (dailyRe.test(c.luhmannId)) exclude.add(c.luhmannId);
     return buildFolgezettelTree(allCards, exclude);
-  }, [cardsQ.data, masters]);
+  }, [cardsQ.data]);
 
   const dailies = useMemo(() => {
     const allCards = cardsQ.data?.cards ?? [];
@@ -147,6 +210,30 @@ export function Sidebar() {
       <header className="h-12 px-5 flex items-center border-b border-gray-100">
         <span className="font-bold text-sm tracking-tight">Vault</span>
       </header>
+
+      {/* Master 按钮：vault 入口。Master 是个虚拟 box，只装顶级 index 卡（1/2/3...） */}
+      <button
+        onClick={() => {
+          const isActive = focusedBoxId === MASTER_BOX_ID;
+          openTabFromStore({
+            kind: 'card',
+            title: 'Master Index',
+            cardBoxId: MASTER_BOX_ID,
+            cardFocusId: MASTER_BOX_ID,
+          });
+          void isActive;
+        }}
+        className={`flex items-center gap-2 px-5 py-2.5 border-b border-gray-100 dark:border-[#363a4f] text-left hover:bg-amber-50 dark:hover:bg-amber-900/10 group transition-colors ${
+          focusedBoxId === MASTER_BOX_ID ? 'bg-amber-50 dark:bg-amber-900/10' : ''
+        }`}
+        title="Open master index — vault root"
+      >
+        <Crown size={14} className="text-amber-500 shrink-0" />
+        <span className="text-[12px] font-bold text-ink dark:text-[#cad3f5] flex-1">
+          Master Index
+        </span>
+        <span className="text-[10px] text-gray-400 group-hover:text-amber-600">→</span>
+      </button>
 
       {/* Starred: 顶部置顶 */}
       {(starredQ.data?.ids ?? []).length > 0 && (
@@ -176,31 +263,24 @@ export function Sidebar() {
         </Section>
       )}
 
-      {/* Master INDEX 按钮条：tier-0 INDEX 卡作为快捷入口，不在树里 */}
-      {masters.length > 0 && (
-        <Section icon={<Crown size={12} />} title="MASTERS">
-          <div className="flex flex-wrap gap-1.5">
-            {masters.map((m) => (
-              <button
-                key={m.luhmannId}
-                onClick={(e) => navigate(m.luhmannId, modifiersToOpts(e))}
-                className={`flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold transition-colors ${
-                  focusedBoxId === m.luhmannId
-                    ? 'bg-amber-500 text-white'
-                    : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
-                }`}
-                title={m.title}
-              >
-                <Crown size={10} />
-                <span className="font-mono text-[10px]">{m.luhmannId}</span>
-                <span className="truncate max-w-[120px]">{m.title}</span>
-              </button>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {/* Folgezettel 树：按 id parentOf 自动算父子，所有非 master 卡 */}
+      {/* Folgezettel 树：自动按 id 算父子；顶级 luhmannId（1/2/3...）作为根节点。
+           Master 是 Sidebar 顶部"Vault"标签这个虚拟概念，不再是某张卡。
+           整个 Section 容器接 drop —— 拖到树空白处 = 提升为 top-level（newParentId=null） */}
+      <div
+        onDragOver={(e) => {
+          if (!isCardDrag(e)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        }}
+        onDrop={(e) => {
+          const dragged = readCardDragData(e);
+          if (!dragged) return;
+          // 只在事件没被某个 FolgezettelNode 截掉时才 fire（节点 onDrop 用 stopPropagation）
+          e.preventDefault();
+          reparentCard(dragged.luhmannId, null);
+        }}
+        className="contents"
+      >
       <Section icon={<FolderTree size={12} />} title="FOLGEZETTEL" scroll>
         {(folgezettelTree.get(null) ?? []).length === 0 ? (
           <div className="text-[11px] text-gray-400 px-3 py-1.5 leading-relaxed">
@@ -217,10 +297,13 @@ export function Sidebar() {
               focusedId={focusedId}
               focusedBoxId={focusedBoxId}
               onSelect={navigate}
+              onDelete={handleDeleteCard}
+              onReparent={reparentCard}
             />
           ))
         )}
       </Section>
+      </div>
 
       {/* Tags: 内联 chips，自动换行；右键改名 */}
       <Section icon={<Tag size={12} />} title="TAGS">
@@ -337,6 +420,8 @@ export function Sidebar() {
 
       {/* 旧 ORPHANS section 移除 —— Folgezettel 树自动包含所有非 master 卡，
            没父的会作为 root 出现，不再需要单独 orphan 概念 */}
+
+      <VaultPicker />
     </aside>
   );
 }
@@ -350,6 +435,8 @@ function FolgezettelNode({
   focusedId,
   focusedBoxId,
   onSelect,
+  onDelete,
+  onReparent,
 }: {
   id: string;
   level: number;
@@ -358,10 +445,13 @@ function FolgezettelNode({
   focusedId: string | null;
   focusedBoxId: string | null;
   onSelect: (id: string, opts?: { newTab?: boolean; splitDirection?: 'horizontal' | 'vertical' }) => void;
+  onDelete: (id: string) => void;
+  onReparent: (sourceId: string, newParentId: string | null) => void;
 }) {
   const card = cardById.get(id);
   const children = tree.get(id) ?? [];
   const [expanded, setExpanded] = useState(level < 1);
+  const [dropOver, setDropOver] = useState(false);
   const hasChildren = children.length > 0;
   const isIndex = card?.status === 'INDEX';
   const highlighted = isIndex
@@ -370,9 +460,27 @@ function FolgezettelNode({
   return (
     <div>
       <div
-        className={`flex items-center gap-1 rounded-md text-left hover:bg-gray-50 ${
+        onDragOver={(e) => {
+          // 注意：dragOver 阶段大多数浏览器禁止读 dataTransfer.getData，
+          // 所以这里只用 .types 判断 mime；身份比对（同 id）等到 drop 才做。
+          if (!isCardDrag(e)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = 'copy';
+          setDropOver(true);
+        }}
+        onDragLeave={() => setDropOver(false)}
+        onDrop={(e) => {
+          setDropOver(false);
+          const dragged = readCardDragData(e);
+          if (!dragged || dragged.luhmannId === id) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onReparent(dragged.luhmannId, id);
+        }}
+        className={`group flex items-center gap-1 rounded-md text-left hover:bg-gray-50 ${
           highlighted ? 'bg-accentSoft' : ''
-        }`}
+        } ${dropOver ? 'ring-2 ring-accent ring-offset-1 bg-accentSoft' : ''}`}
         style={{ paddingLeft: 4 + level * 14 }}
       >
         {hasChildren ? (
@@ -407,6 +515,18 @@ function FolgezettelNode({
             {card?.title ?? <span className="italic text-gray-400">missing</span>}
           </span>
         </button>
+        {card && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(id);
+            }}
+            className="p-0.5 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+            title={`Delete ${id}`}
+          >
+            <Trash2 size={11} />
+          </button>
+        )}
       </div>
       {expanded && hasChildren && (
         <div>
@@ -420,6 +540,8 @@ function FolgezettelNode({
               focusedId={focusedId}
               focusedBoxId={focusedBoxId}
               onSelect={onSelect}
+              onDelete={onDelete}
+              onReparent={onReparent}
             />
           ))}
         </div>

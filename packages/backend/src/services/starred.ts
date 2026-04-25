@@ -44,3 +44,8 @@ export async function unstar(id: string): Promise<void> {
   if (!set.delete(id)) return;
   await flush();
 }
+
+/** vault 切换时清 cache */
+export function resetStarredCache(): void {
+  cache = null;
+}

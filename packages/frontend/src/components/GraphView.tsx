@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { renderMarkdown } from '../lib/markdown';
 import {
   forceCenter,
   forceCollide,
@@ -186,6 +187,7 @@ const EDGE_COLOR: Record<LinkKind, string> = {
 function GraphInner() {
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
   const navigate = useNavigateToCard();
+  const qc = useQueryClient();
   const svgRef = useRef<SVGSVGElement>(null);
   const [toggles, setToggles] = useState<EdgeToggles>(DEFAULT_TOGGLES);
   const togglesRef = useRef(toggles);
@@ -390,6 +392,88 @@ function GraphInner() {
     }
   }, [selectedId, cardsQ.data]);
 
+  // 选中卡 → 在节点位置原地展开为完整 markdown 卡片（foreignObject）
+  // d3-zoom 的 transform 会自然带着 foreignObject 一起缩放，体验跟 Obsidian
+  // hover preview 类似
+  useEffect(() => {
+    if (!svgRef.current || !cardsQ.data) return;
+    const svg = select(svgRef.current);
+    const nodeLayer = svg.select('.nodes');
+
+    // 清掉所有现存的展开卡
+    nodeLayer.selectAll('foreignObject.expanded-card').remove();
+    nodeLayer.selectAll('g.node').selectAll('circle, text').style('display', '');
+
+    if (!selectedId) return;
+
+    let cancelled = false;
+    void qc
+      .fetchQuery({
+        queryKey: ['card', selectedId],
+        queryFn: () => api.getCard(selectedId),
+      })
+      .then((card) => {
+        if (cancelled || !svgRef.current) return;
+        const svg2 = select(svgRef.current);
+        const targetG = svg2
+          .select('.nodes')
+          .selectAll<SVGGElement, SimNode>('g.node')
+          .filter((d) => d.id === selectedId);
+        if (targetG.empty()) return;
+
+        // 隐藏选中节点的 circle 和 text，腾出位置给展开卡
+        targetG.selectAll('circle, text').style('display', 'none');
+
+        const W = 320;
+        const H = 240;
+        const fo = targetG
+          .append('foreignObject')
+          .attr('class', 'expanded-card')
+          .attr('x', -W / 2)
+          .attr('y', -H / 2)
+          .attr('width', W)
+          .attr('height', H)
+          .style('pointer-events', 'auto');
+
+        const html = renderMarkdown(card.contentMd);
+        const isIndex = card.status === 'INDEX';
+        const fg = isIndex ? '#fff' : '#0f172a';
+        const bg = isIndex ? '#7c4dff' : '#fff';
+        const accent = isIndex ? 'rgba(255,255,255,0.3)' : '#e5e7eb';
+
+        // 用 div 装 —— 边框、padding、滚动
+        const div = fo
+          .append('xhtml:div' as 'div')
+          .attr('class', 'expanded-card-inner')
+          .style('width', '100%')
+          .style('height', '100%')
+          .style('background', bg)
+          .style('color', fg)
+          .style('border', `2px solid ${accent}`)
+          .style('border-radius', '12px')
+          .style('box-shadow', '0 8px 24px rgba(0,0,0,0.18)')
+          .style('overflow', 'hidden')
+          .style('display', 'flex')
+          .style('flex-direction', 'column');
+
+        div.html(`
+          <div style="padding:8px 12px;display:flex;align-items:baseline;gap:8px;border-bottom:1px solid ${accent};flex-shrink:0">
+            <span style="font-family:ui-monospace,monospace;font-weight:700;font-size:12px;${isIndex ? 'color:rgba(255,255,255,0.85)' : 'color:#7c4dff'}">${escape(card.luhmannId)}</span>
+            <span style="font-weight:700;font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escape(card.title || card.luhmannId)}</span>
+          </div>
+          <div style="padding:10px 12px;font-size:11px;line-height:1.55;overflow-y:auto;flex:1" class="prose-card">${html}</div>
+          ${card.tags.length > 0 ? `<div style="padding:6px 12px;border-top:1px solid ${accent};display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0">${card.tags.slice(0, 6).map((t) => `<span style="font-size:9px;font-weight:700;${isIndex ? 'color:rgba(255,255,255,0.85)' : 'color:#7c4dff'}">#${escape(t)}</span>`).join('')}</div>` : ''}
+        `);
+      })
+      .catch(() => {
+        // 静默 —— 卡可能被删了
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, cardsQ.data, qc]);
+
   // 缩放 → 标题文本可见性
   useEffect(() => {
     if (!svgRef.current) return;
@@ -439,6 +523,14 @@ function fillFor(d: SimNode, selected: boolean): string {
 
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+
+function escape(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function EdgeToggle({

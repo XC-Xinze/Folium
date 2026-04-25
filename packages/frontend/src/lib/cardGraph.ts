@@ -729,12 +729,19 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
       sourceHandleCount.set(srcKey, srcUsed + 1);
     }
 
-    // 焦点卡的连线加粗 + 不透明度满，让用户切焦点时一眼看到关联
+    // 焦点卡的连线加粗 + 不透明度满，让用户切焦点时一眼看到关联。
+    // 不触焦点的边大幅淡化（0.18） + 比基础再细一档 —— 用户反馈 0.6 还是太抢戏。
+    // tree 边稍特殊：哪怕不触焦点也保留较高 opacity（0.5），不然结构感会断。
     const touchesFocus = e.source === focusedCardId || e.target === focusedCardId;
     const baseStyle = edgeStyles[e.kind];
-    const style = touchesFocus
-      ? { ...baseStyle, strokeWidth: baseStyle.strokeWidth + 1.5, opacity: 1 }
-      : { ...baseStyle, opacity: 0.6 };
+    let style: { stroke: string; strokeWidth: number; strokeDasharray?: string; opacity: number };
+    if (touchesFocus) {
+      style = { ...baseStyle, strokeWidth: baseStyle.strokeWidth + 1.5, opacity: 1 };
+    } else if (e.kind === 'tree') {
+      style = { ...baseStyle, opacity: 0.5 };
+    } else {
+      style = { ...baseStyle, strokeWidth: Math.max(0.8, baseStyle.strokeWidth - 0.3), opacity: 0.18 };
+    }
     // potential / cross 用自定义 edge type（带中点 link/unlink 按钮），其余 bezier
     const type =
       e.kind === 'potential' ? 'potential' : e.kind === 'cross' ? 'cross' : 'default';

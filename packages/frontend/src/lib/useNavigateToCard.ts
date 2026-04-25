@@ -17,40 +17,46 @@ function deriveParentId(luhmannId: string): string | null {
   return null;
 }
 
-/** 找一张卡的"主盒子"——优先直接被引用的 INDEX，其次沿 Folgezettel 父链上找 */
-function findPrimaryBox(cardId: string, allCards: CardSummary[]): string | null {
-  const indexes = allCards.filter((c) => c.status === 'INDEX');
-  const directlyReferencing = indexes.find((idx) => idx.crossLinks.includes(cardId));
-  if (directlyReferencing) return directlyReferencing.luhmannId;
-  // 沿 Folgezettel 父链向上找
-  let current = cardId;
+/** 找一张卡的 Folgezettel 根（沿父链一直爬到顶或爬到 vault 不存在的那个父）—— 严格按 id 算，不看 INDEX 引用 */
+function findFolgezettelRoot(cardId: string, allCards: CardSummary[]): string {
+  const cardSet = new Set(allCards.map((c) => c.luhmannId));
+  let cur = cardId;
   while (true) {
-    const parent = deriveParentId(current);
-    if (!parent) break;
-    if (!allCards.find((c) => c.luhmannId === parent)) break;
-    const idx = indexes.find((i) => i.crossLinks.includes(parent));
-    if (idx) return idx.luhmannId;
-    current = parent;
+    const parent = deriveParentId(cur);
+    if (!parent) return cur; // 已经是顶层 luhmann id（如 5、6、7）
+    if (!cardSet.has(parent)) return cur; // 父在 vault 里不存在 → cur 是该子树最顶
+    cur = parent;
   }
-  return null;
 }
 
-/** 判断一张卡是否在某个 box 的可视范围内（box 引用的卡片 + 它们的 Folgezettel 子树） */
+/** 判断一张卡是否在某个 box 的可视范围内：
+ *  - box 是 INDEX：cardId 在 INDEX.crossLinks 或它们的 Folgezettel 子树
+ *  - box 是 atomic（用作 Folgezettel 根 box）：cardId 是该 root 自己或其 Folgezettel 子孙
+ */
 function isCardInBox(cardId: string, boxId: string, allCards: CardSummary[]): boolean {
   if (cardId === boxId) return true;
   const box = allCards.find((c) => c.luhmannId === boxId);
-  if (!box || box.status !== 'INDEX') return false;
-  const directRefs = new Set<string>(box.crossLinks);
-  if (directRefs.has(cardId)) return true;
-  // 检查是不是某个 directRef 的 Folgezettel 后代（不严格，简单前缀）
+  if (!box) return false;
+  if (box.status === 'INDEX') {
+    const directRefs = new Set<string>(box.crossLinks);
+    if (directRefs.has(cardId)) return true;
+    let current = cardId;
+    while (true) {
+      const parent = deriveParentId(current);
+      if (!parent) break;
+      if (directRefs.has(parent)) return true;
+      current = parent;
+    }
+    return false;
+  }
+  // atomic box：检查 cardId 是不是 boxId 的 Folgezettel 后代
   let current = cardId;
   while (true) {
     const parent = deriveParentId(current);
-    if (!parent) break;
-    if (directRefs.has(parent)) return true;
+    if (!parent) return false;
+    if (parent === boxId) return true;
     current = parent;
   }
-  return false;
 }
 
 /**
@@ -84,8 +90,9 @@ export function useNavigateToCard() {
           focusId = id;
           boxId = currentBox;
         } else {
-          const primary = findPrimaryBox(id, allCards);
-          boxId = primary ?? id;
+          // 严格按 Folgezettel：5 是自己的 box；5a 的 box 是 5；1a2b 的 box 是 1
+          // 不再因为某个 INDEX 引用了它就把它塞进那个 INDEX 的 box
+          boxId = findFolgezettelRoot(id, allCards);
           focusId = id;
         }
       }

@@ -200,11 +200,6 @@ export function Sidebar() {
   }, [cardsQ.data]);
   void indexesQ; // 保留 query（其他地方用）但 sidebar 不再用 INDEXES 树了
 
-  const formatDailyDate = (id: string) => {
-    const m = id.match(/^daily(\d{4})(\d{2})(\d{2})$/);
-    return m ? `${m[1]}-${m[2]}-${m[3]}` : id;
-  };
-
   return (
     <aside className="w-72 h-full border-r border-gray-200 bg-white dark:bg-[#1e2030] dark:border-[#363a4f] flex flex-col">
       <header className="h-12 px-5 flex items-center border-b border-gray-100">
@@ -240,19 +235,26 @@ export function Sidebar() {
         <Section icon={<Star size={12} />} title="STARRED">
           {(() => {
             const cardById = new Map((cardsQ.data?.cards ?? []).map((c) => [c.luhmannId, c]));
+            const dailyRe = /^daily(\d{4})(\d{2})(\d{2})$/;
             return (starredQ.data?.ids ?? []).map((id) => {
               const c = cardById.get(id);
+              const dailyMatch = id.match(dailyRe);
+              const displayId = dailyMatch ? `${dailyMatch[1]}-${dailyMatch[2]}-${dailyMatch[3]}` : id;
               return (
                 <button
                   key={id}
                   onClick={(e) => navigate(id, modifiersToOpts(e))}
-                  className={`group w-full flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-gray-50 text-left ${
+                  className={`group w-full flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-gray-50 text-left min-w-0 ${
                     focusedId === id ? 'bg-accentSoft' : ''
                   }`}
                   title={c?.title ?? id}
                 >
                   <Star size={10} className="text-amber-400 fill-amber-400 shrink-0" />
-                  <span className="font-mono text-[10px] text-gray-500 w-12 shrink-0">{id}</span>
+                  {/* id/日期：固定宽度太小 daily20260425 这种长 id 会撞标题。
+                       daily 卡显示成 YYYY-MM-DD，普通卡用 max-w 限制 + truncate */}
+                  <span className="font-mono text-[10px] text-gray-500 shrink-0 max-w-[80px] truncate">
+                    {displayId}
+                  </span>
                   <span className="text-[12px] truncate flex-1 min-w-0">
                     {c?.title ?? <span className="italic text-gray-400">missing</span>}
                   </span>
@@ -395,28 +397,27 @@ export function Sidebar() {
       </Section>
 
       {/* DAILY: 最近的每日笔记，时间倒序 */}
-      {dailies.length > 0 && (
-        <Section icon={<CalendarDays size={12} />} title="DAILY">
-          {dailies.slice(0, 7).map((c) => (
-            <button
-              key={c.luhmannId}
-              onClick={(e) => navigate(c.luhmannId, modifiersToOpts(e))}
-              className={`w-full flex items-center gap-2 px-3 py-1 rounded-md hover:bg-gray-50 text-left ${
-                focusedId === c.luhmannId ? 'bg-accentSoft' : ''
-              }`}
-            >
-              <span className="font-mono text-[10px] text-gray-500 shrink-0">
-                {formatDailyDate(c.luhmannId)}
-              </span>
-            </button>
-          ))}
-          {dailies.length > 7 && (
-            <div className="text-[10px] text-gray-400 px-3 pt-1">
-              + {dailies.length - 7} earlier
-            </div>
-          )}
-        </Section>
-      )}
+      <Section icon={<CalendarDays size={12} />} title="DAILY">
+        <DailyMiniCalendar
+          dailies={dailies}
+          focusedId={focusedId}
+          onOpen={(date) => {
+            void (async () => {
+              try {
+                const { luhmannId, created } = await api.openOrCreateDaily(date);
+                if (created) {
+                  qc.invalidateQueries({ queryKey: ['cards'] });
+                  qc.invalidateQueries({ queryKey: ['indexes'] });
+                  qc.invalidateQueries({ queryKey: ['tags'] });
+                }
+                navigate(luhmannId);
+              } catch (err) {
+                dialog.alert((err as Error).message, { title: 'Daily failed' });
+              }
+            })();
+          }}
+        />
+      </Section>
 
       {/* 旧 ORPHANS section 移除 —— Folgezettel 树自动包含所有非 master 卡，
            没父的会作为 root 出现，不再需要单独 orphan 概念 */}
@@ -670,6 +671,12 @@ function IndexNodeView({
   );
 }
 
+/**
+ * 可折叠 Section：title 是 button，点了在 localStorage 里存 collapsed 状态。
+ *  - scroll=true 的 section 折叠时变成只剩 header；展开时占 flex-1 并内部滚动
+ *  - 其他 section 折叠时只剩 header；展开时自然撑高
+ * 这样用户能折掉不常看的 section（比如 Tags 太多），把空间留给 Folgezettel 树。
+ */
 function Section({
   icon,
   title,
@@ -681,17 +688,162 @@ function Section({
   children: React.ReactNode;
   scroll?: boolean;
 }) {
+  const storageKey = title ? `sidebar.section.collapsed.${title}` : null;
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (!storageKey) return false;
+    try {
+      return localStorage.getItem(storageKey) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggle = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    if (storageKey) {
+      try {
+        localStorage.setItem(storageKey, next ? '1' : '0');
+      } catch {}
+    }
+  };
+  // collapsed → 把 flex-1 拿掉，shrink to header 高度
+  const containerCls = scroll && !collapsed ? 'flex-1 overflow-y-auto min-h-0' : '';
   return (
-    <div className={`px-4 py-4 border-b border-gray-100 ${scroll ? 'flex-1 overflow-y-auto' : ''}`}>
-      {title && (
-        <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3 px-1">
+    <div className={`border-b border-gray-100 ${containerCls}`}>
+      {title ? (
+        <button
+          onClick={toggle}
+          className="w-full flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-gray-400 px-5 py-2.5 hover:text-ink dark:hover:text-[#cad3f5] transition-colors"
+          title={collapsed ? `Expand ${title}` : `Collapse ${title}`}
+        >
+          <ChevronRight
+            size={10}
+            className={`transition-transform ${collapsed ? '' : 'rotate-90'}`}
+          />
           {icon}
           <span>{title}</span>
-        </div>
-      )}
-      <div className="space-y-0.5">{children}</div>
+        </button>
+      ) : null}
+      {!collapsed && <div className="px-4 pb-3 space-y-0.5">{children}</div>}
     </div>
   );
+}
+
+/**
+ * Daily 区的 mini 日历：当前月所有日期的 7 列网格 + 月份切换。
+ *  - 有 daily 卡的日期 → accent 高亮
+ *  - 今天 → 厚边框
+ *  - 当前焦点 daily → bg-accent
+ *  - 点任意日期 → 打开/创建该日 daily（onOpen 回调）
+ *  顶部"Today"按钮直跳今天。
+ */
+function DailyMiniCalendar({
+  dailies,
+  focusedId,
+  onOpen,
+}: {
+  dailies: CardSummary[];
+  focusedId: string | null;
+  onOpen: (date: string) => void;
+}) {
+  const today = useMemo(() => new Date(), []);
+  const todayKey = ymd(today);
+  const [view, setView] = useState({ y: today.getFullYear(), m: today.getMonth() });
+  // dailies 按日期 key 索引
+  const dailyByDate = useMemo(() => {
+    const map = new Map<string, string>(); // 'YYYY-MM-DD' → luhmannId
+    const re = /^daily(\d{4})(\d{2})(\d{2})$/;
+    for (const c of dailies) {
+      const m = c.luhmannId.match(re);
+      if (m) map.set(`${m[1]}-${m[2]}-${m[3]}`, c.luhmannId);
+    }
+    return map;
+  }, [dailies]);
+
+  // 当月日历网格：从本月 1 号所在周一开始，6 行 × 7 列
+  const cells = useMemo(() => {
+    const first = new Date(view.y, view.m, 1);
+    const startDay = (first.getDay() + 6) % 7; // 周一为首
+    const start = new Date(first);
+    start.setDate(1 - startDay);
+    const out: Date[] = [];
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      out.push(d);
+    }
+    return out;
+  }, [view]);
+
+  const monthLabel = `${view.y}-${String(view.m + 1).padStart(2, '0')}`;
+  const focusedDateKey = (() => {
+    if (!focusedId) return null;
+    const m = focusedId.match(/^daily(\d{4})(\d{2})(\d{2})$/);
+    return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+  })();
+
+  return (
+    <div className="space-y-2">
+      <button
+        onClick={() => onOpen(todayKey)}
+        className="w-full text-[11px] font-bold px-3 py-1.5 rounded-md bg-accent text-white hover:bg-accent/90 shadow-sm"
+      >
+        Open today ({todayKey})
+      </button>
+
+      <div className="flex items-center justify-between text-[10px] font-bold text-gray-500 px-1">
+        <button
+          onClick={() => setView((v) => (v.m === 0 ? { y: v.y - 1, m: 11 } : { ...v, m: v.m - 1 }))}
+          className="px-1 hover:text-ink dark:hover:text-[#cad3f5]"
+          title="Previous month"
+        >‹</button>
+        <button
+          onClick={() => setView({ y: today.getFullYear(), m: today.getMonth() })}
+          className="hover:text-ink dark:hover:text-[#cad3f5]"
+          title="Back to current month"
+        >
+          {monthLabel}
+        </button>
+        <button
+          onClick={() => setView((v) => (v.m === 11 ? { y: v.y + 1, m: 0 } : { ...v, m: v.m + 1 }))}
+          className="px-1 hover:text-ink dark:hover:text-[#cad3f5]"
+          title="Next month"
+        >›</button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-0.5 text-[9px]">
+        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((w, i) => (
+          <div key={i} className="text-center text-gray-400 font-bold py-0.5">{w}</div>
+        ))}
+        {cells.map((d) => {
+          const inMonth = d.getMonth() === view.m;
+          const key = ymd(d);
+          const has = dailyByDate.has(key);
+          const isToday = key === todayKey;
+          const isFocused = key === focusedDateKey;
+          return (
+            <button
+              key={key}
+              onClick={() => onOpen(key)}
+              className={`text-center py-1 rounded transition-colors text-[10px] ${
+                !inMonth ? 'text-gray-300 dark:text-gray-600' :
+                isFocused ? 'bg-accent text-white' :
+                has ? 'bg-accentSoft text-accent font-bold hover:bg-accent hover:text-white' :
+                'text-gray-500 hover:bg-gray-100 dark:hover:bg-[#363a4f]'
+              } ${isToday ? 'ring-1 ring-accent' : ''}`}
+              title={key + (has ? ' · has daily' : '')}
+            >
+              {d.getDate()}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ymd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 /** ⌘ click → 新 tab；⌘+⇧ click → split right */

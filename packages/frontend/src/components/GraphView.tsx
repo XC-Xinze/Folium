@@ -392,87 +392,53 @@ function GraphInner() {
     }
   }, [selectedId, cardsQ.data]);
 
-  // 选中卡 → 在节点位置原地展开为完整 markdown 卡片（foreignObject）
-  // d3-zoom 的 transform 会自然带着 foreignObject 一起缩放，体验跟 Obsidian
-  // hover preview 类似
+  // 选中节点的屏幕坐标（带 zoom transform）—— 给 React overlay 卡用
+  // 由 sim tick / zoom 更新；避免 d3-html foreignObject 的命名空间坑
+  const [overlayPos, setOverlayPos] = useState<{ x: number; y: number } | null>(null);
+  const overlayPosRef = useRef<typeof overlayPos>(null);
+  overlayPosRef.current = overlayPos;
   useEffect(() => {
-    if (!svgRef.current || !cardsQ.data) return;
+    if (!svgRef.current || !cardsQ.data || !selectedId) {
+      setOverlayPos(null);
+      return;
+    }
     const svg = select(svgRef.current);
-    const nodeLayer = svg.select('.nodes');
-
-    // 清掉所有现存的展开卡
-    nodeLayer.selectAll('foreignObject.expanded-card').remove();
-    nodeLayer.selectAll('g.node').selectAll('circle, text').style('display', '');
-
-    if (!selectedId) return;
-
-    let cancelled = false;
-    void qc
-      .fetchQuery({
-        queryKey: ['card', selectedId],
-        queryFn: () => api.getCard(selectedId),
-      })
-      .then((card) => {
-        if (cancelled || !svgRef.current) return;
-        const svg2 = select(svgRef.current);
-        const targetG = svg2
-          .select('.nodes')
-          .selectAll<SVGGElement, SimNode>('g.node')
-          .filter((d) => d.id === selectedId);
-        if (targetG.empty()) return;
-
-        // 隐藏选中节点的 circle 和 text，腾出位置给展开卡
-        targetG.selectAll('circle, text').style('display', 'none');
-
-        const W = 320;
-        const H = 240;
-        const fo = targetG
-          .append('foreignObject')
-          .attr('class', 'expanded-card')
-          .attr('x', -W / 2)
-          .attr('y', -H / 2)
-          .attr('width', W)
-          .attr('height', H)
-          .style('pointer-events', 'auto');
-
-        const html = renderMarkdown(card.contentMd);
-        const isIndex = card.status === 'INDEX';
-        const fg = isIndex ? '#fff' : '#0f172a';
-        const bg = isIndex ? '#7c4dff' : '#fff';
-        const accent = isIndex ? 'rgba(255,255,255,0.3)' : '#e5e7eb';
-
-        // 用 div 装 —— 边框、padding、滚动
-        const div = fo
-          .append('xhtml:div' as 'div')
-          .attr('class', 'expanded-card-inner')
-          .style('width', '100%')
-          .style('height', '100%')
-          .style('background', bg)
-          .style('color', fg)
-          .style('border', `2px solid ${accent}`)
-          .style('border-radius', '12px')
-          .style('box-shadow', '0 8px 24px rgba(0,0,0,0.18)')
-          .style('overflow', 'hidden')
-          .style('display', 'flex')
-          .style('flex-direction', 'column');
-
-        div.html(`
-          <div style="padding:8px 12px;display:flex;align-items:baseline;gap:8px;border-bottom:1px solid ${accent};flex-shrink:0">
-            <span style="font-family:ui-monospace,monospace;font-weight:700;font-size:12px;${isIndex ? 'color:rgba(255,255,255,0.85)' : 'color:#7c4dff'}">${escape(card.luhmannId)}</span>
-            <span style="font-weight:700;font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escape(card.title || card.luhmannId)}</span>
-          </div>
-          <div style="padding:10px 12px;font-size:11px;line-height:1.55;overflow-y:auto;flex:1" class="prose-card">${html}</div>
-          ${card.tags.length > 0 ? `<div style="padding:6px 12px;border-top:1px solid ${accent};display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0">${card.tags.slice(0, 6).map((t) => `<span style="font-size:9px;font-weight:700;${isIndex ? 'color:rgba(255,255,255,0.85)' : 'color:#7c4dff'}">#${escape(t)}</span>`).join('')}</div>` : ''}
-        `);
-      })
-      .catch(() => {
-        // 静默 —— 卡可能被删了
-      });
-
-    return () => {
-      cancelled = true;
+    const update = () => {
+      if (!svgRef.current) return;
+      const g = svg
+        .select('.nodes')
+        .selectAll<SVGGElement, SimNode>('g.node')
+        .filter((d) => d.id === selectedId)
+        .node();
+      if (!g) {
+        setOverlayPos(null);
+        return;
+      }
+      // getCTM —— g 在 SVG 内的最终矩阵（含 zoom transform）
+      const ctm = g.getCTM();
+      if (!ctm) return;
+      const rect = svgRef.current.getBoundingClientRect();
+      // 节点中心在 g 自己的 (0,0)
+      // 转 SVG 用户坐标 → 屏幕坐标
+      const svgPoint = svgRef.current.createSVGPoint();
+      svgPoint.x = 0;
+      svgPoint.y = 0;
+      const screen = svgPoint.matrixTransform(ctm);
+      setOverlayPos({ x: screen.x, y: screen.y });
     };
-  }, [selectedId, cardsQ.data, qc]);
+    update();
+    // sim tick 期间节点移动 → 持续更新
+    const interval = window.setInterval(update, 40);
+    return () => window.clearInterval(interval);
+  }, [selectedId, cardsQ.data]);
+
+  // 拉选中卡的完整内容（用 useQuery，缓存 + 自动 refetch）
+  const selectedCardQ = useQuery({
+    queryKey: ['card', selectedId ?? '__none__'],
+    queryFn: () => api.getCard(selectedId!),
+    enabled: !!selectedId,
+  });
+  void qc;
 
   // 缩放 → 标题文本可见性
   useEffect(() => {
@@ -506,7 +472,91 @@ function GraphInner() {
       </div>
       <div className="flex-1 relative overflow-hidden">
         <svg ref={svgRef} className="w-full h-full" />
+        {selectedId && overlayPos && selectedCardQ.data && (
+          <SelectedCardOverlay
+            card={selectedCardQ.data}
+            x={overlayPos.x}
+            y={overlayPos.y}
+            onClose={() => setSelectedId(null)}
+            onOpen={() => navigate(selectedId)}
+          />
+        )}
       </div>
+    </div>
+  );
+}
+
+/** 选中卡浮在 svg 上方，定位在节点中心。位置实时跟随 sim+zoom（每 40ms 重算）。 */
+function SelectedCardOverlay({
+  card,
+  x,
+  y,
+  onClose,
+  onOpen,
+}: {
+  card: { luhmannId: string; title: string; status: string; tags: string[]; contentMd: string };
+  x: number;
+  y: number;
+  onClose: () => void;
+  onOpen: () => void;
+}) {
+  const html = useMemo(() => renderMarkdown(card.contentMd), [card.contentMd]);
+  const isIndex = card.status === 'INDEX';
+  const W = 320;
+  const H = 240;
+  return (
+    <div
+      className={`absolute pointer-events-auto rounded-xl shadow-2xl flex flex-col overflow-hidden border-2 ${
+        isIndex ? 'bg-accent text-white border-accent' : 'bg-white border-gray-200 text-ink'
+      }`}
+      style={{
+        left: x - W / 2,
+        top: y - H / 2,
+        width: W,
+        height: H,
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <header className={`flex items-center gap-2 px-3 py-2 border-b ${isIndex ? 'border-white/25' : 'border-gray-100'} shrink-0`}>
+        <span className={`font-mono font-bold text-[12px] ${isIndex ? 'text-white/85' : 'text-accent'}`}>
+          {card.luhmannId}
+        </span>
+        <span className="font-bold text-[13px] flex-1 truncate">
+          {card.title || card.luhmannId}
+        </span>
+        <button
+          onClick={onOpen}
+          className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+            isIndex ? 'bg-white/20 hover:bg-white/30' : 'bg-accentSoft text-accent hover:bg-accent hover:text-white'
+          }`}
+          title="Open as chain view (or double-click node)"
+        >
+          Open
+        </button>
+        <button
+          onClick={onClose}
+          className={`text-[14px] leading-none px-1 rounded ${
+            isIndex ? 'hover:bg-white/20' : 'hover:bg-gray-100'
+          }`}
+          title="Close"
+        >
+          ×
+        </button>
+      </header>
+      <div
+        className="prose-card text-[11px] px-3 py-2 overflow-y-auto flex-1"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {card.tags.length > 0 && (
+        <div className={`px-3 py-1.5 border-t ${isIndex ? 'border-white/25' : 'border-gray-100'} flex flex-wrap gap-1.5 shrink-0`}>
+          {card.tags.slice(0, 8).map((t) => (
+            <span key={t} className={`text-[9px] font-bold ${isIndex ? 'text-white/85' : 'text-accent'}`}>
+              #{t}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

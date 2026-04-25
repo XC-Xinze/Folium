@@ -41,6 +41,10 @@ export interface Tab {
   /** 仅 kind='card' 用：当前 box 内累计点过几层外部 tag/cross 卡 —— 到 3 后下一次点
    *  外部卡触发切 box。回到 backbone 内的卡片或 box 切换时重置。 */
   cardFocusDepth?: number;
+  /** 浏览器风的 per-tab 历史（仅 card tab）。每次 focus / box 变化时 push */
+  cardHistory?: Array<{ box: string; focus: string }>;
+  /** 当前在 history 里的位置（0-based）。允许"回到中间再前进"截断后续 */
+  cardHistoryIndex?: number;
 }
 
 export interface LeafPane {
@@ -98,6 +102,13 @@ interface PaneActions {
   selectTabAt: (idx: number) => void;
   /** 关 active tab —— ⌘W 用 */
   closeActiveTab: () => void;
+  /** card tab 内的历史导航：跳到指定 box+focus 并 push 历史栈。
+   *  调用方在 focus/box 真正变化时调；如果跟当前 entry 一样不 push */
+  navigateInTab: (paneId: string, tabId: string, target: { box: string; focus: string }) => void;
+  /** 后退一步（history index--）；若到栈底无 op */
+  goBackInTab: (paneId: string, tabId: string) => void;
+  /** 前进一步（history index++）；若已到栈顶无 op */
+  goForwardInTab: (paneId: string, tabId: string) => void;
   /** 把 tab 从一个 pane 移到另一个 pane 的指定位置（同 pane 内 fromIdx→toIdx 也用这个） */
   moveTab: (
     fromPaneId: string,
@@ -646,6 +657,97 @@ export const usePaneStore = create<PaneStore>()(
         const leaf = findLeaf(root, activeLeafId) ?? findFirstLeaf(root);
         if (!leaf.activeTabId) return;
         get().closeTab(leaf.id, leaf.activeTabId);
+      },
+
+      navigateInTab: (paneId, tabId, target) => {
+        const { root } = get();
+        set({
+          root: mapTree(root, (n) => {
+            if (n.kind !== 'leaf' || n.id !== paneId) return n;
+            return {
+              ...n,
+              tabs: n.tabs.map((t) => {
+                if (t.id !== tabId) return t;
+                if (t.kind !== 'card') return t;
+                // 跟当前 entry 一样 → 不 push
+                if (t.cardBoxId === target.box && t.cardFocusId === target.focus) return t;
+                const hist = t.cardHistory ?? [];
+                const idx = t.cardHistoryIndex ?? -1;
+                // 截断 forward；如果当前 entry 还没入栈（idx === -1），把它入栈
+                let nextHist = hist.slice(0, idx + 1);
+                if (
+                  nextHist.length === 0 &&
+                  t.cardBoxId &&
+                  t.cardFocusId
+                ) {
+                  nextHist = [{ box: t.cardBoxId, focus: t.cardFocusId }];
+                }
+                nextHist.push({ box: target.box, focus: target.focus });
+                // 限制大小
+                if (nextHist.length > 50) nextHist = nextHist.slice(nextHist.length - 50);
+                return {
+                  ...t,
+                  cardBoxId: target.box,
+                  cardFocusId: target.focus,
+                  cardHistory: nextHist,
+                  cardHistoryIndex: nextHist.length - 1,
+                };
+              }),
+            };
+          }),
+        });
+      },
+
+      goBackInTab: (paneId, tabId) => {
+        const { root } = get();
+        set({
+          root: mapTree(root, (n) => {
+            if (n.kind !== 'leaf' || n.id !== paneId) return n;
+            return {
+              ...n,
+              tabs: n.tabs.map((t) => {
+                if (t.id !== tabId || t.kind !== 'card') return t;
+                const hist = t.cardHistory ?? [];
+                const idx = t.cardHistoryIndex ?? hist.length - 1;
+                if (idx <= 0) return t;
+                const entry = hist[idx - 1]!;
+                return {
+                  ...t,
+                  cardBoxId: entry.box,
+                  cardFocusId: entry.focus,
+                  cardHistoryIndex: idx - 1,
+                  cardFocusDepth: 0, // 回退算"跳", 重置深度链
+                };
+              }),
+            };
+          }),
+        });
+      },
+
+      goForwardInTab: (paneId, tabId) => {
+        const { root } = get();
+        set({
+          root: mapTree(root, (n) => {
+            if (n.kind !== 'leaf' || n.id !== paneId) return n;
+            return {
+              ...n,
+              tabs: n.tabs.map((t) => {
+                if (t.id !== tabId || t.kind !== 'card') return t;
+                const hist = t.cardHistory ?? [];
+                const idx = t.cardHistoryIndex ?? hist.length - 1;
+                if (idx >= hist.length - 1) return t;
+                const entry = hist[idx + 1]!;
+                return {
+                  ...t,
+                  cardBoxId: entry.box,
+                  cardFocusId: entry.focus,
+                  cardHistoryIndex: idx + 1,
+                  cardFocusDepth: 0,
+                };
+              }),
+            };
+          }),
+        });
       },
 
       reset: () => set(INITIAL),

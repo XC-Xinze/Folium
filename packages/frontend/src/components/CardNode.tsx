@@ -47,9 +47,10 @@ export function CardNode({ data, id, selected }: NodeProps) {
   // 单击 CardNode → 更新当前 active tab 的 cardFocusId
   // 深度限制：累计 3 层外部 tag/cross 卡后，下一次点外部卡切到对方的 box（重置链）
   // 内部 (tree/focus) 卡片不计深度，且重置链
+  // navigateInTab 同时维护 history 给 ⌘[ ⌘] 用
   const MAX_DEPTH = 3;
   const setFocus = (cardId: string) => {
-    const { root, activeLeafId, updateTab } = usePaneStoreImported.getState();
+    const { root, activeLeafId, updateTab, navigateInTab } = usePaneStoreImported.getState();
     const findLeaf = (n: typeof root): typeof root | null => {
       if (n.kind === 'leaf') return n.id === activeLeafId ? n : null;
       for (const c of n.children) {
@@ -61,21 +62,21 @@ export function CardNode({ data, id, selected }: NodeProps) {
     const leaf = findLeaf(root);
     if (!leaf || leaf.kind !== 'leaf' || !leaf.activeTabId) return;
     const activeTab = leaf.tabs.find((t) => t.id === leaf.activeTabId);
-    if (!activeTab || activeTab.kind !== 'card') return;
+    if (!activeTab || activeTab.kind !== 'card' || !activeTab.cardBoxId) return;
 
     const isExternal = variant === 'tag-related' || variant === 'cross-flank' || variant === 'potential';
     if (!isExternal) {
-      // 内部卡：重置深度链 + 换焦点
-      updateTab(leaf.id, leaf.activeTabId, { cardFocusId: cardId, cardFocusDepth: 0 });
+      navigateInTab(leaf.id, leaf.activeTabId, { box: activeTab.cardBoxId, focus: cardId });
+      updateTab(leaf.id, leaf.activeTabId, { cardFocusDepth: 0 });
       return;
     }
     const nextDepth = (activeTab.cardFocusDepth ?? 0) + 1;
     if (nextDepth > MAX_DEPTH) {
-      // 超过上限 → 切到这张外部卡的"自然 box"，链重置
       navigate(cardId);
       return;
     }
-    updateTab(leaf.id, leaf.activeTabId, { cardFocusId: cardId, cardFocusDepth: nextDepth });
+    navigateInTab(leaf.id, leaf.activeTabId, { box: activeTab.cardBoxId, focus: cardId });
+    updateTab(leaf.id, leaf.activeTabId, { cardFocusDepth: nextDepth });
   };
   const qc = useQueryClient();
   const starredQ = useQuery({ queryKey: ['starred'], queryFn: api.listStarred });

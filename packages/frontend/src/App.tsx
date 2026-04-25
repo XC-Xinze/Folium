@@ -201,6 +201,48 @@ export function App() {
         group: 'Tab',
         run: () => usePaneStore.getState().reopenLastClosed(),
       }),
+      registerCommand({
+        id: 'tab.back',
+        title: 'Go back in active tab history',
+        defaultShortcut: 'Mod+[',
+        group: 'Tab',
+        run: () => {
+          const { root, activeLeafId, goBackInTab } = usePaneStore.getState();
+          function find(n: typeof root): typeof root | null {
+            if (n.kind === 'leaf') return n.id === activeLeafId ? n : null;
+            for (const c of n.children) {
+              const r = find(c);
+              if (r) return r;
+            }
+            return null;
+          }
+          const leaf = find(root);
+          if (leaf?.kind === 'leaf' && leaf.activeTabId) {
+            goBackInTab(leaf.id, leaf.activeTabId);
+          }
+        },
+      }),
+      registerCommand({
+        id: 'tab.forward',
+        title: 'Go forward in active tab history',
+        defaultShortcut: 'Mod+]',
+        group: 'Tab',
+        run: () => {
+          const { root, activeLeafId, goForwardInTab } = usePaneStore.getState();
+          function find(n: typeof root): typeof root | null {
+            if (n.kind === 'leaf') return n.id === activeLeafId ? n : null;
+            for (const c of n.children) {
+              const r = find(c);
+              if (r) return r;
+            }
+            return null;
+          }
+          const leaf = find(root);
+          if (leaf?.kind === 'leaf' && leaf.activeTabId) {
+            goForwardInTab(leaf.id, leaf.activeTabId);
+          }
+        },
+      }),
       ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) =>
         registerCommand({
           id: `tab.select${n}`,

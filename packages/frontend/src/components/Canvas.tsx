@@ -15,7 +15,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Card, type PositionMap } from '../lib/api';
 import { CardNode } from './CardNode';
 import { applyAnchorPositions, buildGraph, computeBackbone, resolveCollisions } from '../lib/cardGraph';
-import { DEFAULT_CARD_FLAGS, type CardDisplayFlags } from '../store/paneStore';
+import { DEFAULT_CARD_FLAGS, usePaneStore as usePaneStoreImported, type CardDisplayFlags } from '../store/paneStore';
 
 const nodeTypes = { card: CardNode };
 
@@ -249,14 +249,15 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
         />
       </div>
 
-      {/* 探索深度指示 + 加到工作区 —— 右上角 */}
+      {/* 探索深度指示 + 加到工作区 + 前进后退 —— 右上角 */}
       <div className="absolute top-4 right-12 z-10 flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-[#363a4f] rounded-full shadow-md border border-gray-200 dark:border-[#494d64]">
+        <HistoryButtons />
+        <span className="w-px h-3 bg-gray-200 dark:bg-[#494d64]" />
         <FocusDepthBadge depth={focusDepth} max={MAX_FOCUS_DEPTH} />
         <button
           draggable
           onDragStart={(e) => {
             e.dataTransfer.effectAllowed = 'copy';
-            // 复用现有的 card drag 协议
             e.dataTransfer.setData(
               'application/x-zk-card',
               JSON.stringify({ luhmannId: focusedCardId, title: '' }),
@@ -269,6 +270,67 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
         </button>
       </div>
     </div>
+  );
+}
+
+function HistoryButtons() {
+  // 直接读 active tab 算出能否前进/后退
+  const root = usePaneStoreImported((s) => s.root);
+  const activeLeafId = usePaneStoreImported((s) => s.activeLeafId);
+  function findLeaf(node: typeof root): typeof root | null {
+    if (node.kind === 'leaf') return node.id === activeLeafId ? node : null;
+    for (const c of node.children) {
+      const r = findLeaf(c);
+      if (r) return r;
+    }
+    return null;
+  }
+  const leaf = findLeaf(root);
+  if (leaf?.kind !== 'leaf' || !leaf.activeTabId) return null;
+  const tab = leaf.tabs.find((t) => t.id === leaf.activeTabId);
+  if (!tab || tab.kind !== 'card') return null;
+  const hist = tab.cardHistory ?? [];
+  const idx = tab.cardHistoryIndex ?? -1;
+  const canBack = idx > 0;
+  const canFwd = idx >= 0 && idx < hist.length - 1;
+  const back = () =>
+    usePaneStoreImported.getState().goBackInTab(leaf.id, leaf.activeTabId!);
+  const forward = () =>
+    usePaneStoreImported.getState().goForwardInTab(leaf.id, leaf.activeTabId!);
+  return (
+    <div className="flex items-center gap-0.5">
+      <button
+        onClick={back}
+        disabled={!canBack}
+        className="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-[#494d64] disabled:opacity-25 text-gray-600 dark:text-[#cad3f5]"
+        title="Back (⌘[)"
+      >
+        <ChevronLeftHistory />
+      </button>
+      <button
+        onClick={forward}
+        disabled={!canFwd}
+        className="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-[#494d64] disabled:opacity-25 text-gray-600 dark:text-[#cad3f5]"
+        title="Forward (⌘])"
+      >
+        <ChevronRightHistory />
+      </button>
+    </div>
+  );
+}
+
+function ChevronLeftHistory() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
+  );
+}
+function ChevronRightHistory() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+      <path d="M9 18l6-6-6-6" />
+    </svg>
   );
 }
 

@@ -20,6 +20,7 @@ import { exportRoutes } from './routes/export.js';
 import { vaultRoutes } from './routes/vaults.js';
 import { hooks } from './hooks.js';
 import { initVaultRegistry } from './services/vaultRegistry.js';
+import { startBackupScheduler, stopBackupScheduler } from './services/backup.js';
 
 async function main() {
   const app = Fastify({
@@ -68,6 +69,9 @@ async function main() {
   // 监听文件变更。watcher 用 let 绑定，便于 vault switch 时 close 后重建。
   let watcher = watchVault(config.vaultPath, repo);
 
+  // 起自动备份调度（settings.backupEnabled 默认 true）
+  startBackupScheduler();
+
   await app.register(cardRoutes, { prefix: '/api' });
   await app.register(attachmentRoutes, { prefix: '/api' });
   await app.register(positionRoutes, { prefix: '/api' });
@@ -99,6 +103,7 @@ async function main() {
 
   const closeGracefully = async () => {
     app.log.info('shutting down');
+    stopBackupScheduler();
     await watcher.close();
     await app.close();
     closeDb();

@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { CardRepository } from '../vault/repository.js';
 import { getDb } from '../db/client.js';
-import { emptyTrash, listTrash, purgeTrashEntry, restoreFromTrash } from '../services/trash.js';
+import { emptyTrash, listTrash, purgeTrashEntry, restoreFromTrash, type RestoreStrategy } from '../services/trash.js';
 
 export const trashRoutes: FastifyPluginAsync = async (app) => {
   const repo = new CardRepository(getDb());
@@ -10,9 +10,17 @@ export const trashRoutes: FastifyPluginAsync = async (app) => {
     return { entries: await listTrash() };
   });
 
-  app.post<{ Params: { fileName: string } }>('/trash/:fileName/restore', async (req, reply) => {
+  app.post<{
+    Params: { fileName: string };
+    Body: { strategy?: RestoreStrategy };
+  }>('/trash/:fileName/restore', async (req, reply) => {
     try {
-      const result = await restoreFromTrash(repo, decodeURIComponent(req.params.fileName));
+      const strategy = req.body?.strategy ?? 'fail';
+      const result = await restoreFromTrash(
+        repo,
+        decodeURIComponent(req.params.fileName),
+        strategy,
+      );
       return result;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

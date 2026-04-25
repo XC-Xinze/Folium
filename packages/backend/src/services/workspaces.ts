@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import matter from 'gray-matter';
@@ -139,9 +139,18 @@ export async function updateWorkspace(
   return next;
 }
 
-/** 软删 —— 删的 workspace 完整 JSON 推到内存 trash 里给 undo 用 */
-const wsTrash: Array<{ ts: number; ws: Workspace }> = [];
-const WS_TRASH_MAX = 50;
+/* ============================================================
+ * 软删 —— 全部落盘到 .zettel/ws-trash/ 和 .zettel/temp-trash/
+ * 重启不丢；可以从 TrashPanel 还原。
+ * 文件名 timestamp + uuid，metadata 全在 JSON 里。
+ * ============================================================ */
+const WS_TRASH_DIR = () => join(config.vaultPath, ZETTEL_DIR, 'ws-trash');
+const TEMP_TRASH_DIR = () => join(config.vaultPath, ZETTEL_DIR, 'temp-trash');
+
+function trashFilename(): string {
+  const ts = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '');
+  return `${ts}-${randomUUID()}.json`;
+}
 
 export async function deleteWorkspace(id: string): Promise<void> {
   const map = await loadAll();
@@ -149,32 +158,171 @@ export async function deleteWorkspace(id: string): Promise<void> {
   delete map[id];
   await flush(map);
   if (ws) {
-    wsTrash.push({ ts: Date.now(), ws });
-    if (wsTrash.length > WS_TRASH_MAX) wsTrash.shift();
+    await mkdir(WS_TRASH_DIR(), { recursive: true });
+    const fp = join(WS_TRASH_DIR(), trashFilename());
+    await writeFile(fp, JSON.stringify(ws, null, 2), 'utf8');
   }
 }
 
-/** 恢复某个被软删的 workspace（按 id） */
-export async function restoreWorkspace(id: string): Promise<Workspace | null> {
-  const idx = wsTrash.findIndex((e) => e.ws.id === id);
-  if (idx < 0) return null;
-  const removed = wsTrash.splice(idx, 1)[0];
-  if (!removed) return null;
-  const ws = removed.ws;
+/** 恢复某个被软删的 workspace（按 trashFileName 还原 + 删 trash 文件） */
+export async function restoreWorkspaceFromTrash(trashFileName: string): Promise<Workspace | null> {
+  const fp = join(WS_TRASH_DIR(), trashFileName);
+  let raw: string;
+  try {
+    raw = await readFile(fp, 'utf8');
+  } catch {
+    return null;
+  }
+  const ws = JSON.parse(raw) as Workspace;
   const map = await loadAll();
+  // id 冲突 → 新生成 id 避免覆盖（保守做法，不动现有的）
+  if (map[ws.id]) ws.id = randomUUID();
   map[ws.id] = ws;
   await flush(map);
+  await unlink(fp).catch(() => undefined);
   return ws;
 }
 
-export function listDeletedWorkspaces(): Array<{ ts: number; ws: Workspace }> {
-  return [...wsTrash].sort((a, b) => b.ts - a.ts);
+/** 兼容旧 undo 路径（按原 ws.id 找）—— 主要给 ⌘Z 用 */
+export async function restoreWorkspace(id: string): Promise<Workspace | null> {
+  const list = await listDeletedWorkspaces();
+  const entry = list.find((e) => e.workspace.id === id);
+  if (!entry) return null;
+  return restoreWorkspaceFromTrash(entry.fileName);
+}
+
+export interface WorkspaceTrashEntry {
+  fileName: string;
+  workspace: Workspace;
+  deletedAt: string;
+}
+
+export async function listDeletedWorkspaces(): Promise<WorkspaceTrashEntry[]> {
+  const dir = WS_TRASH_DIR();
+  let files: string[];
+  try {
+    files = await readdir(dir);
+  } catch {
+    return [];
+  }
+  const out: WorkspaceTrashEntry[] = [];
+  for (const f of files) {
+    if (!f.endsWith('.json')) continue;
+    try {
+      const raw = await readFile(join(dir, f), 'utf8');
+      const ws = JSON.parse(raw) as Workspace;
+      const tsMatch = f.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/);
+      const deletedAt = tsMatch
+        ? `${tsMatch[1]}-${tsMatch[2]}-${tsMatch[3]}T${tsMatch[4]}:${tsMatch[5]}:${tsMatch[6]}Z`
+        : new Date().toISOString();
+      out.push({ fileName: f, workspace: ws, deletedAt });
+    } catch {}
+  }
+  return out.sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+}
+
+export async function purgeDeletedWorkspace(fileName: string): Promise<void> {
+  await unlink(join(WS_TRASH_DIR(), fileName)).catch(() => undefined);
+}
+
+/* ---- temp 卡 trash ---- */
+
+export interface TempTrashEntry {
+  fileName: string;
+  workspaceId: string;
+  workspaceName: string;
+  /** node 完整 JSON */
+  node: TempCardNode;
+  deletedAt: string;
+}
+
+/** 软删 temp 卡：保存到 temp-trash/，给 TrashPanel 还原 */
+export async function trashTempNode(
+  workspaceId: string,
+  workspaceName: string,
+  node: TempCardNode,
+): Promise<void> {
+  await mkdir(TEMP_TRASH_DIR(), { recursive: true });
+  const fp = join(TEMP_TRASH_DIR(), trashFilename());
+  await writeFile(
+    fp,
+    JSON.stringify({ workspaceId, workspaceName, node }, null, 2),
+    'utf8',
+  );
+}
+
+export async function listDeletedTempNodes(): Promise<TempTrashEntry[]> {
+  const dir = TEMP_TRASH_DIR();
+  let files: string[];
+  try {
+    files = await readdir(dir);
+  } catch {
+    return [];
+  }
+  const out: TempTrashEntry[] = [];
+  for (const f of files) {
+    if (!f.endsWith('.json')) continue;
+    try {
+      const raw = await readFile(join(dir, f), 'utf8');
+      const data = JSON.parse(raw) as {
+        workspaceId: string;
+        workspaceName: string;
+        node: TempCardNode;
+      };
+      const tsMatch = f.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/);
+      const deletedAt = tsMatch
+        ? `${tsMatch[1]}-${tsMatch[2]}-${tsMatch[3]}T${tsMatch[4]}:${tsMatch[5]}:${tsMatch[6]}Z`
+        : new Date().toISOString();
+      out.push({
+        fileName: f,
+        workspaceId: data.workspaceId,
+        workspaceName: data.workspaceName,
+        node: data.node,
+        deletedAt,
+      });
+    } catch {}
+  }
+  return out.sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+}
+
+/** 还原 temp 卡到原 workspace（如果原 workspace 没了就报错让用户自己恢复 ws） */
+export async function restoreTempNode(fileName: string): Promise<{
+  ok: true;
+  workspaceId: string;
+} | { error: string }> {
+  const fp = join(TEMP_TRASH_DIR(), fileName);
+  let raw: string;
+  try {
+    raw = await readFile(fp, 'utf8');
+  } catch {
+    return { error: 'trash file not found' };
+  }
+  const data = JSON.parse(raw) as {
+    workspaceId: string;
+    workspaceName: string;
+    node: TempCardNode;
+  };
+  const map = await loadAll();
+  const ws = map[data.workspaceId];
+  if (!ws) {
+    return { error: `Workspace "${data.workspaceName}" no longer exists. Restore the workspace first.` };
+  }
+  // node id 冲突 → 给新 id
+  let nodeId = data.node.id;
+  if (ws.nodes.some((n) => n.id === nodeId)) nodeId = randomUUID();
+  ws.nodes.push({ ...data.node, id: nodeId });
+  await flush(map);
+  await unlink(fp).catch(() => undefined);
+  return { ok: true, workspaceId: data.workspaceId };
+}
+
+export async function purgeDeletedTempNode(fileName: string): Promise<void> {
+  await unlink(join(TEMP_TRASH_DIR(), fileName)).catch(() => undefined);
 }
 
 /** vault 切换时调，清空 in-memory cache 让下次 loadAll 从新 vault 的 .zettel/ 读 */
 export function resetWorkspacesCache(): void {
   cache = null;
-  wsTrash.length = 0;
 }
 
 /**

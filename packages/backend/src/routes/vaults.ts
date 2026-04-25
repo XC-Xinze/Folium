@@ -21,6 +21,13 @@ import { resetWorkspacesCache } from '../services/workspaces.js';
 import { resetPositionsCache } from '../services/positions.js';
 import { resetStarredCache } from '../services/starred.js';
 import { resetVaultSettingsCache, getVaultSettings, patchVaultSettings, type VaultSettings } from '../services/vaultSettings.js';
+import {
+  createBackup,
+  listBackups,
+  purgeBackup,
+  restoreBackup,
+  startBackupScheduler,
+} from '../services/backup.js';
 import { scanVault } from '../vault/scanner.js';
 import { watchVault } from '../vault/watcher.js';
 import { config } from '../config.js';
@@ -75,6 +82,53 @@ export async function vaultRoutes(app: FastifyInstance, opts: VaultRoutesCtx) {
     }
   });
 
+  /**
+   * Index 重建：truncate SQLite + 全 vault 重扫。
+   * 用于 .md 文件被外部工具改坏 / SQLite 损坏 / 元数据漂移等场景。
+   */
+  /* ---- Backups ---- */
+  app.get('/backups', async () => ({ entries: await listBackups() }));
+
+  app.post('/backups', async () => {
+    const fileName = await createBackup();
+    return { fileName };
+  });
+
+  app.post<{ Params: { fileName: string } }>(
+    '/backups/:fileName/restore',
+    async (req, reply) => {
+      try {
+        await restoreBackup(decodeURIComponent(req.params.fileName));
+        // 还原后立即重扫
+        repo.truncateAll();
+        await scanVault(config.vaultPath, repo);
+        return { ok: true };
+      } catch (err) {
+        return reply.code(400).send({ error: (err as Error).message });
+      }
+    },
+  );
+
+  app.delete<{ Params: { fileName: string } }>(
+    '/backups/:fileName',
+    async (req) => {
+      await purgeBackup(decodeURIComponent(req.params.fileName));
+      return { ok: true };
+    },
+  );
+
+  app.post('/vault-settings/rebuild-index', async (_req, _reply) => {
+    const t0 = Date.now();
+    repo.truncateAll();
+    let count = 0;
+    try {
+      count = await scanVault(config.vaultPath, repo);
+    } catch (err) {
+      app.log.warn({ err }, 'rebuild-index scan failed');
+    }
+    return { ok: true, cards: count, durationMs: Date.now() - t0 };
+  });
+
   app.post<{ Body: { id: string } }>('/vaults/switch', async (req, reply) => {
     const { id } = req.body ?? {};
     if (!id) return reply.code(400).send({ error: 'id required' });
@@ -117,6 +171,8 @@ async function performSwitch(
   }
   // 7. 起新 watcher
   setWatcher(watchVault(config.vaultPath, repo));
+  // 8. 重启 backup scheduler（新 vault 的 settings 决定是否启用）
+  startBackupScheduler();
   return {
     active: getActiveVault(),
     cards: repo.count(),

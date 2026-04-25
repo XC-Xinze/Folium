@@ -6,12 +6,20 @@ import {
   deleteEdge,
   deleteWorkspace,
   getWorkspace,
+  listDeletedTempNodes,
+  listDeletedWorkspaces,
   listWorkspaces,
   listWorkspaceLinksFor,
+  purgeDeletedTempNode,
+  purgeDeletedWorkspace,
+  restoreTempNode,
   restoreWorkspace,
+  restoreWorkspaceFromTrash,
   tempToVault,
+  trashTempNode,
   unapplyEdge,
   updateWorkspace,
+  type TempCardNode,
   type WorkspaceEdge,
   type WorkspaceNode,
 } from '../services/workspaces.js';
@@ -113,6 +121,72 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
       const result = await tempToVault(repo, req.params.id, parsed.data.nodeId, parsed.data.luhmannId);
       if ('error' in result) return reply.code(400).send(result);
       return result;
+    },
+  );
+
+  /* ---- Workspace trash (磁盘持久) ---- */
+  app.get('/trash/workspaces', async () => {
+    return { entries: await listDeletedWorkspaces() };
+  });
+
+  app.post<{ Params: { fileName: string } }>(
+    '/trash/workspaces/:fileName/restore',
+    async (req, reply) => {
+      const ws = await restoreWorkspaceFromTrash(decodeURIComponent(req.params.fileName));
+      if (!ws) return reply.code(404).send({ error: 'not_found' });
+      return ws;
+    },
+  );
+
+  app.delete<{ Params: { fileName: string } }>(
+    '/trash/workspaces/:fileName',
+    async (req) => {
+      await purgeDeletedWorkspace(decodeURIComponent(req.params.fileName));
+      return { ok: true };
+    },
+  );
+
+  /* ---- Temp 卡 trash + 删 temp 入口 ---- */
+  app.get('/trash/temps', async () => {
+    return { entries: await listDeletedTempNodes() };
+  });
+
+  app.post<{ Params: { fileName: string } }>(
+    '/trash/temps/:fileName/restore',
+    async (req, reply) => {
+      const result = await restoreTempNode(decodeURIComponent(req.params.fileName));
+      if ('error' in result) return reply.code(400).send(result);
+      return result;
+    },
+  );
+
+  app.delete<{ Params: { fileName: string } }>(
+    '/trash/temps/:fileName',
+    async (req) => {
+      await purgeDeletedTempNode(decodeURIComponent(req.params.fileName));
+      return { ok: true };
+    },
+  );
+
+  /**
+   * 删 workspace 里某个 node。temp kind 自动入 temp-trash 可还原；
+   * card/note 直接从 nodes 里移除。同时把所有触及该 node 的 edge 一并删。
+   */
+  app.delete<{ Params: { id: string; nodeId: string } }>(
+    '/workspaces/:id/nodes/:nodeId',
+    async (req, reply) => {
+      const ws = await getWorkspace(req.params.id);
+      if (!ws) return reply.code(404).send({ error: 'workspace not found' });
+      const node = ws.nodes.find((n) => n.id === req.params.nodeId);
+      if (!node) return reply.code(404).send({ error: 'node not found' });
+      if (node.kind === 'temp') {
+        await trashTempNode(ws.id, ws.name, node as TempCardNode);
+      }
+      const next = await updateWorkspace(ws.id, {
+        nodes: ws.nodes.filter((n) => n.id !== node.id),
+        edges: ws.edges.filter((e) => e.source !== node.id && e.target !== node.id),
+      });
+      return next;
     },
   );
 

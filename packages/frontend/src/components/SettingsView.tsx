@@ -66,6 +66,10 @@ export function SettingsView() {
         <AttachmentPolicyField />
       </Section>
 
+      <Section title="Backup & Recovery">
+        <BackupAndRecoveryPanel />
+      </Section>
+
       <Section title="Hotkeys">
         <HotkeysPanel />
       </Section>
@@ -220,5 +224,165 @@ function AttachmentPolicyField() {
         ))}
       </div>
     </Field>
+  );
+}
+
+/**
+ * Backup & Recovery 面板：
+ *  - 自动备份开关 + 间隔/保留份数配置
+ *  - 立即备份按钮
+ *  - 备份列表（restore / purge）
+ *  - 重建索引按钮（修复元数据漂移）
+ */
+function BackupAndRecoveryPanel() {
+  const qc = useQueryClient();
+  const settingsQ = useQuery({ queryKey: ['vault-settings'], queryFn: api.getVaultSettings });
+  const backupsQ = useQuery({ queryKey: ['backups'], queryFn: api.listBackups });
+  const settings = settingsQ.data?.settings;
+
+  const patchMut = useMutation({
+    mutationFn: (
+      patch: Partial<{ backupEnabled: boolean; backupIntervalHours: number; backupKeep: number }>,
+    ) => api.patchVaultSettings(patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['vault-settings'] }),
+  });
+  const createMut = useMutation({
+    mutationFn: () => api.createBackupNow(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backups'] }),
+    onError: (err: Error) => alert('Backup failed: ' + err.message),
+  });
+  const restoreMut = useMutation({
+    mutationFn: (fileName: string) => api.restoreBackup(fileName),
+    onSuccess: () => {
+      // 还原后所有 cache 都不可信，全清
+      qc.clear();
+      qc.invalidateQueries();
+    },
+    onError: (err: Error) => alert('Restore failed: ' + err.message),
+  });
+  const purgeMut = useMutation({
+    mutationFn: (fileName: string) => api.purgeBackup(fileName),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backups'] }),
+  });
+  const rebuildMut = useMutation({
+    mutationFn: () => api.rebuildIndex(),
+    onSuccess: (r) => {
+      qc.invalidateQueries();
+      alert(`Index rebuilt — ${r.cards} cards in ${r.durationMs}ms`);
+    },
+    onError: (err: Error) => alert('Rebuild failed: ' + err.message),
+  });
+
+  const entries = backupsQ.data?.entries ?? [];
+
+  return (
+    <div className="space-y-4">
+      <Field
+        label="Auto-backup"
+        hint="Default ON. Snapshots vault to .zettel/backups/<timestamp>.zip on a schedule."
+      >
+        <button
+          onClick={() => settings && patchMut.mutate({ backupEnabled: !settings.backupEnabled })}
+          disabled={patchMut.isPending || !settings}
+          className={`px-3 py-1 rounded-full text-[11px] font-bold ${
+            settings?.backupEnabled
+              ? 'bg-emerald-500 text-white'
+              : 'bg-gray-200 text-gray-500'
+          }`}
+        >
+          {settings?.backupEnabled ? 'Enabled' : 'Disabled'}
+        </button>
+      </Field>
+
+      {settings?.backupEnabled && (
+        <>
+          <Field label="Interval (hours)" hint="How often to auto-snapshot. Default 24h.">
+            <input
+              type="number"
+              min={1}
+              max={168}
+              value={settings.backupIntervalHours}
+              onChange={(e) => patchMut.mutate({ backupIntervalHours: Number(e.target.value) })}
+              className="w-20 text-[12px] px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-center"
+            />
+          </Field>
+          <Field label="Keep last N backups" hint="Older snapshots are auto-pruned.">
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={settings.backupKeep}
+              onChange={(e) => patchMut.mutate({ backupKeep: Number(e.target.value) })}
+              className="w-20 text-[12px] px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-center"
+            />
+          </Field>
+        </>
+      )}
+
+      <div className="flex items-center justify-between">
+        <p className="text-[12px] text-gray-500">
+          {entries.length} backup{entries.length === 1 ? '' : 's'} in <code className="text-[11px]">.zettel/backups/</code>
+        </p>
+        <button
+          onClick={() => createMut.mutate()}
+          disabled={createMut.isPending}
+          className="text-[11px] font-bold px-3 py-1 rounded-full bg-accent text-white hover:bg-accent/90"
+        >
+          {createMut.isPending ? 'Backing up…' : 'Backup now'}
+        </button>
+      </div>
+
+      {entries.length > 0 && (
+        <div className="border border-gray-200 dark:border-[#363a4f] rounded divide-y divide-gray-100 dark:divide-[#363a4f]">
+          {entries.map((e) => (
+            <div key={e.fileName} className="flex items-center gap-3 px-3 py-2 group hover:bg-gray-50">
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] font-mono truncate">{e.fileName}</div>
+                <div className="text-[10px] text-gray-400">
+                  {(e.size / 1024).toFixed(1)} KB · {new Date(e.createdAt).toLocaleString()}
+                </div>
+              </div>
+              <button
+                onClick={async () => {
+                  if (!confirm(`Restore vault from ${e.fileName}?\n\nCurrent vault state will be auto-backed-up first as "pre-restore-".`)) return;
+                  restoreMut.mutate(e.fileName);
+                }}
+                className="opacity-0 group-hover:opacity-100 text-[11px] font-bold text-emerald-600 hover:text-emerald-700 px-2 py-1 rounded hover:bg-emerald-50"
+              >
+                Restore
+              </button>
+              <button
+                onClick={() => {
+                  if (!confirm(`Permanently delete backup ${e.fileName}?`)) return;
+                  purgeMut.mutate(e.fileName);
+                }}
+                className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500"
+                title="Permanently delete"
+              >
+                <XCircle size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="pt-3 border-t border-gray-100 dark:border-gray-700">
+        <Field
+          label="Rebuild index"
+          hint="Wipe SQLite + re-scan all .md files. Use if metadata feels stale or files were edited externally."
+        >
+          <button
+            onClick={() => {
+              if (!confirm('Truncate index and re-scan vault? This is non-destructive (only SQLite is wiped, .md files untouched).')) return;
+              rebuildMut.mutate();
+            }}
+            disabled={rebuildMut.isPending}
+            className="text-[11px] font-bold px-3 py-1 rounded-full border border-orange-300 text-orange-600 hover:bg-orange-50"
+          >
+            {rebuildMut.isPending ? 'Rebuilding…' : 'Rebuild now'}
+          </button>
+        </Field>
+      </div>
+    </div>
   );
 }

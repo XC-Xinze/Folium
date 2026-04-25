@@ -206,14 +206,17 @@ function WorkspaceInner({ workspaceId }: Props) {
   );
 
   const deleteNode = useCallback(
-    (id: string) => {
-      mutateWs((ws) => ({
-        ...ws,
-        nodes: ws.nodes.filter((n) => n.id !== id),
-        edges: ws.edges.filter((e) => e.source !== id && e.target !== id),
-      }));
+    async (id: string) => {
+      // 走后端 endpoint：temp 节点自动入 .zettel/temp-trash/，card/note 直接移除
+      try {
+        await api.deleteWorkspaceNode(workspaceId, id);
+        qc.invalidateQueries({ queryKey: ['workspace', workspaceId] });
+        qc.invalidateQueries({ queryKey: ['ws-links-batch'] });
+      } catch (err) {
+        dialog.alert((err as Error).message, { title: 'Delete failed' });
+      }
     },
-    [mutateWs],
+    [workspaceId, qc],
   );
 
   const addNote = useCallback(

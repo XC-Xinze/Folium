@@ -14,10 +14,19 @@ export interface VaultSettings {
    *  缺省 global。
    */
   attachmentPolicy: 'global' | 'per-box';
+  /** 自动备份开关。默认 true —— 主仓库不知名原因坏了还能从备份恢复。 */
+  backupEnabled: boolean;
+  /** 自动备份间隔（小时），默认 24 小时一份 */
+  backupIntervalHours: number;
+  /** 保留最近多少份备份；超出 prune 老的 */
+  backupKeep: number;
 }
 
 const DEFAULTS: VaultSettings = {
   attachmentPolicy: 'global',
+  backupEnabled: true,
+  backupIntervalHours: 24,
+  backupKeep: 7,
 };
 
 const ZETTEL_DIR = '.zettel';

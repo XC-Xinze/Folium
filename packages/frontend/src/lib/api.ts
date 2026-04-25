@@ -352,15 +352,66 @@ export const api = {
         mtime: number;
       }>;
     }>(`/trash`),
-  restoreTrash: async (fileName: string): Promise<{ luhmannId: string }> => {
+  restoreTrash: async (
+    fileName: string,
+    strategy: 'fail' | 'next-available' | 'replace' = 'fail',
+  ): Promise<{ luhmannId: string; conflict?: boolean; replacedExisting?: boolean }> => {
     const res = await fetch(`${BASE}/trash/${encodeURIComponent(fileName)}/restore`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ strategy }),
     });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
       throw new Error(j.message ?? `${res.status} ${res.statusText}`);
     }
     return res.json();
+  },
+  // Workspace + temp 的 trash
+  listWsTrash: () =>
+    get<{ entries: Array<{ fileName: string; workspace: { id: string; name: string }; deletedAt: string }> }>(
+      `/trash/workspaces`,
+    ),
+  restoreWsTrash: async (fileName: string): Promise<{ id: string; name: string }> => {
+    const res = await fetch(`${BASE}/trash/workspaces/${encodeURIComponent(fileName)}/restore`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+  purgeWsTrash: async (fileName: string): Promise<void> => {
+    await fetch(`${BASE}/trash/workspaces/${encodeURIComponent(fileName)}`, { method: 'DELETE' });
+  },
+  listTempTrash: () =>
+    get<{ entries: Array<{ fileName: string; workspaceId: string; workspaceName: string; node: { title: string; content: string }; deletedAt: string }> }>(
+      `/trash/temps`,
+    ),
+  restoreTempTrash: async (fileName: string): Promise<{ ok: true; workspaceId: string }> => {
+    const res = await fetch(`${BASE}/trash/temps/${encodeURIComponent(fileName)}/restore`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+  purgeTempTrash: async (fileName: string): Promise<void> => {
+    await fetch(`${BASE}/trash/temps/${encodeURIComponent(fileName)}`, { method: 'DELETE' });
+  },
+  /** workspace 内删一个 node（temp 自动入 trash 可还原；card/note 直接移除） */
+  deleteWorkspaceNode: async (workspaceId: string, nodeId: string): Promise<void> => {
+    const res = await fetch(
+      `${BASE}/workspaces/${encodeURIComponent(workspaceId)}/nodes/${encodeURIComponent(nodeId)}`,
+      { method: 'DELETE' },
+    );
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? `${res.status} ${res.statusText}`);
+    }
   },
   purgeTrashEntry: async (fileName: string): Promise<void> => {
     await fetch(`${BASE}/trash/${encodeURIComponent(fileName)}`, { method: 'DELETE' });
@@ -523,11 +574,49 @@ export const api = {
     }
     return res.json();
   },
+  // 备份 endpoints
+  listBackups: () =>
+    get<{ entries: Array<{ fileName: string; size: number; createdAt: string }> }>(`/backups`),
+  createBackupNow: async (): Promise<{ fileName: string }> => {
+    const res = await fetch(`${BASE}/backups`, { method: 'POST' });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.json();
+  },
+  restoreBackup: async (fileName: string): Promise<{ ok: true }> => {
+    const res = await fetch(`${BASE}/backups/${encodeURIComponent(fileName)}/restore`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+  purgeBackup: async (fileName: string): Promise<void> => {
+    await fetch(`${BASE}/backups/${encodeURIComponent(fileName)}`, { method: 'DELETE' });
+  },
+  rebuildIndex: async (): Promise<{ ok: true; cards: number; durationMs: number }> => {
+    const res = await fetch(`${BASE}/vault-settings/rebuild-index`, { method: 'POST' });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.json();
+  },
   getVaultSettings: () =>
-    get<{ settings: { attachmentPolicy: 'global' | 'per-box' } }>(`/vault-settings`),
+    get<{
+      settings: {
+        attachmentPolicy: 'global' | 'per-box';
+        backupEnabled: boolean;
+        backupIntervalHours: number;
+        backupKeep: number;
+      };
+    }>(`/vault-settings`),
   patchVaultSettings: async (
-    patch: Partial<{ attachmentPolicy: 'global' | 'per-box' }>,
-  ): Promise<{ settings: { attachmentPolicy: 'global' | 'per-box' } }> => {
+    patch: Partial<{
+      attachmentPolicy: 'global' | 'per-box';
+      backupEnabled: boolean;
+      backupIntervalHours: number;
+      backupKeep: number;
+    }>,
+  ): Promise<{ settings: { attachmentPolicy: 'global' | 'per-box'; backupEnabled: boolean; backupIntervalHours: number; backupKeep: number } }> => {
     const res = await fetch(`${BASE}/vault-settings`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

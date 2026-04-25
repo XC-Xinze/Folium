@@ -395,31 +395,6 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
       }
     }
 
-    // 加成：拉进来的"外部"卡片之间也画 mutual tag 边。
-    // 关键：只在两端都是外部（不在 backbone）时画 —— 否则 backbone 内部所有同 tag
-    // 的卡也两两连，回到一开始那个 mesh bug。
-    const visibleIds = [...rawNodes.keys()];
-    for (let i = 0; i < visibleIds.length; i++) {
-      for (let j = i + 1; j < visibleIds.length; j++) {
-        const a = visibleIds[i]!;
-        const b = visibleIds[j]!;
-        // 任一端在 backbone 就跳过 —— backbone 内部不画 mutual，焦点的放射边已经覆盖
-        if (backbone.ids.has(a) || backbone.ids.has(b)) continue;
-        const ca = cardMap.get(a);
-        const cb = cardMap.get(b);
-        if (!ca || !cb) continue;
-        const aTags = new Set(ca.tags);
-        const shared = cb.tags.filter((t) => aTags.has(t));
-        if (shared.length === 0) continue;
-        if (pairHasEdge(a, b, ['tag'])) continue;
-        rawEdges.push({
-          id: `tag:${a}--${b}`,
-          source: a,
-          target: b,
-          kind: 'tag',
-        });
-      }
-    }
   }
 
   // Potential：unlinked references。骨干外的内容卡作为 potential 节点拉进来；

@@ -1,12 +1,57 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, ChevronRight, FileQuestion, FolderTree, Star, Tag, Trash2, X } from 'lucide-react';
+import { CalendarDays, ChevronRight, Crown, FileQuestion, FolderTree, Star, Tag, Trash2, X } from 'lucide-react';
 import { api, type CardSummary, type IndexNode } from '../lib/api';
 import { dialog } from '../lib/dialog';
 import { useUIStore } from '../store/uiStore';
 import { usePaneStore } from '../store/paneStore';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
 import { setCardDragData } from '../lib/dragCard';
+
+/** Folgezettel 父：剥末尾连续同类（数字 / 字母）。daily 这种非 luhmann 返 null */
+function parentOfId(id: string): string | null {
+  if (!id || !/^[\da-z]+$/i.test(id)) return null;
+  if (/\d$/.test(id)) return id.replace(/\d+$/, '') || null;
+  if (/[a-z]$/i.test(id)) return id.replace(/[a-z]+$/i, '') || null;
+  return null;
+}
+
+/** 算 master INDEX：没被任何其他 INDEX 引用的 INDEX 卡 */
+function findMasterIndexes(cards: CardSummary[]): CardSummary[] {
+  const indexes = cards.filter((c) => c.status === 'INDEX');
+  const referenced = new Set<string>();
+  for (const c of indexes) for (const t of c.crossLinks) referenced.add(t);
+  return indexes.filter((c) => !referenced.has(c.luhmannId));
+}
+
+/**
+ * 算 Folgezettel 树：每张卡按 id 推导父子。父若不存在就追溯到最近存在的祖先；
+ * 还是没有就放在 root。结果：parentId → children id list（按 sortKey 排）
+ *
+ * 包不包含 master INDEX 由调用方决定 —— 通常 sidebar 会把 master 单独按钮化
+ */
+function buildFolgezettelTree(
+  cards: CardSummary[],
+  excludeIds: Set<string>,
+): Map<string | null, string[]> {
+  const visible = cards.filter((c) => !excludeIds.has(c.luhmannId));
+  const idSet = new Set(visible.map((c) => c.luhmannId));
+  const childrenOf = new Map<string | null, string[]>();
+  for (const c of visible) {
+    let p: string | null = parentOfId(c.luhmannId);
+    while (p && !idSet.has(p)) p = parentOfId(p);
+    if (!childrenOf.has(p)) childrenOf.set(p, []);
+    childrenOf.get(p)!.push(c.luhmannId);
+  }
+  // 排序
+  const cardById = new Map(visible.map((c) => [c.luhmannId, c]));
+  for (const ids of childrenOf.values()) {
+    ids.sort((a, b) =>
+      (cardById.get(a)?.sortKey ?? a).localeCompare(cardById.get(b)?.sortKey ?? b),
+    );
+  }
+  return childrenOf;
+}
 
 export function Sidebar() {
   const navigate = useNavigateToCard();
@@ -67,34 +112,30 @@ export function Sidebar() {
   });
 
   // 把 daily 卡和 orphan 卡（不在任何 INDEX 树里的顶层卡）从主流分离
-  const { dailies, orphans } = useMemo(() => {
+  // Master INDEX = 没被任何其他 INDEX 引用的 INDEX 卡
+  const masters = useMemo(
+    () => findMasterIndexes(cardsQ.data?.cards ?? []),
+    [cardsQ.data],
+  );
+
+  // Folgezettel 树：把 master INDEX + dailies 排除（它们单独展示）
+  const folgezettelTree = useMemo(() => {
     const allCards = cardsQ.data?.cards ?? [];
-    const tree = indexesQ.data?.tree ?? [];
-    // 收集 INDEX 树里出现过的所有 id
-    const indexed = new Set<string>();
-    const walk = (nodes: IndexNode[]) => {
-      for (const n of nodes) {
-        indexed.add(n.luhmannId);
-        walk(n.children);
-      }
-    };
-    walk(tree);
+    const dailyRe = /^daily(\d{8})/;
+    const exclude = new Set<string>();
+    for (const m of masters) exclude.add(m.luhmannId);
+    for (const c of allCards) if (dailyRe.test(c.luhmannId)) exclude.add(c.luhmannId);
+    return buildFolgezettelTree(allCards, exclude);
+  }, [cardsQ.data, masters]);
+
+  const dailies = useMemo(() => {
+    const allCards = cardsQ.data?.cards ?? [];
     const dailyRe = /^daily(\d{8})$/;
-    const dailies: CardSummary[] = [];
-    const orphans: CardSummary[] = [];
-    for (const c of allCards) {
-      if (dailyRe.test(c.luhmannId)) {
-        dailies.push(c);
-      } else if (!indexed.has(c.luhmannId) && c.depth === 1) {
-        // 顶层卡 + 不在任何 INDEX 引用链里 → 孤儿
-        orphans.push(c);
-      }
-    }
-    // dailies 按日期降序（最新在前）
-    dailies.sort((a, b) => b.luhmannId.localeCompare(a.luhmannId));
-    orphans.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-    return { dailies, orphans };
-  }, [cardsQ.data, indexesQ.data]);
+    return allCards
+      .filter((c) => dailyRe.test(c.luhmannId))
+      .sort((a, b) => b.luhmannId.localeCompare(a.luhmannId));
+  }, [cardsQ.data]);
+  void indexesQ; // 保留 query（其他地方用）但 sidebar 不再用 INDEXES 树了
 
   const formatDailyDate = (id: string) => {
     const m = id.match(/^daily(\d{4})(\d{2})(\d{2})$/);
@@ -135,23 +176,49 @@ export function Sidebar() {
         </Section>
       )}
 
-      {/* Indexes tree: 主区，可滚动 */}
-      <Section icon={<FolderTree size={12} />} title="INDEXES" scroll>
-        {indexesQ.data?.tree.length ? (
-          indexesQ.data.tree.map((node) => (
-            <IndexNodeView
-              key={node.luhmannId}
-              node={node}
+      {/* Master INDEX 按钮条：tier-0 INDEX 卡作为快捷入口，不在树里 */}
+      {masters.length > 0 && (
+        <Section icon={<Crown size={12} />} title="MASTERS">
+          <div className="flex flex-wrap gap-1.5">
+            {masters.map((m) => (
+              <button
+                key={m.luhmannId}
+                onClick={(e) => navigate(m.luhmannId, modifiersToOpts(e))}
+                className={`flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold transition-colors ${
+                  focusedBoxId === m.luhmannId
+                    ? 'bg-amber-500 text-white'
+                    : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                }`}
+                title={m.title}
+              >
+                <Crown size={10} />
+                <span className="font-mono text-[10px]">{m.luhmannId}</span>
+                <span className="truncate max-w-[120px]">{m.title}</span>
+              </button>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {/* Folgezettel 树：按 id parentOf 自动算父子，所有非 master 卡 */}
+      <Section icon={<FolderTree size={12} />} title="FOLGEZETTEL" scroll>
+        {(folgezettelTree.get(null) ?? []).length === 0 ? (
+          <div className="text-[11px] text-gray-400 px-3 py-1.5 leading-relaxed">
+            No cards yet. Create one and the tree will auto-build by Folgezettel id.
+          </div>
+        ) : (
+          (folgezettelTree.get(null) ?? []).map((id) => (
+            <FolgezettelNode
+              key={id}
+              id={id}
               level={0}
+              tree={folgezettelTree}
+              cardById={new Map((cardsQ.data?.cards ?? []).map((c) => [c.luhmannId, c]))}
               focusedId={focusedId}
               focusedBoxId={focusedBoxId}
               onSelect={navigate}
             />
           ))
-        ) : (
-          <div className="text-[11px] text-gray-400 px-3 py-1.5 leading-relaxed">
-            No index cards yet. When creating a card, set its status to Index and use [[link]] in the body to reference others.
-          </div>
         )}
       </Section>
 
@@ -268,54 +335,96 @@ export function Sidebar() {
         </Section>
       )}
 
-      {/* ORPHANS: 不在任何 INDEX 树里的顶层卡 */}
-      {orphans.length > 0 && (
-        <Section icon={<FileQuestion size={12} />} title="ORPHANS">
-          <div className="text-[10px] text-gray-400 px-1 mb-1.5 italic leading-relaxed">
-            Top-level cards not yet referenced by any INDEX
-          </div>
-          <ChunkedList
-            items={orphans}
-            initial={50}
-            step={50}
-            label="orphans"
-            render={(c) => (
-              <div
-                key={c.luhmannId}
-                className={`group flex items-center gap-2 px-2 py-1 rounded-md hover:bg-gray-50 cursor-grab active:cursor-grabbing ${
-                  focusedId === c.luhmannId ? 'bg-accentSoft' : ''
-                }`}
-                draggable
-                onDragStart={(e) => setCardDragData(e, { luhmannId: c.luhmannId, title: c.title })}
-                onClick={(e) => navigate(c.luhmannId, modifiersToOpts(e))}
-                title="Drag to workspace"
-              >
-                <span className="font-mono text-[10px] text-gray-500 w-10 shrink-0">{c.luhmannId}</span>
-                <span className="text-[12px] truncate flex-1 min-w-0">{c.title}</span>
-                {c.status === 'INDEX' && (
-                  <span className="text-[8px] font-bold text-accent shrink-0">IDX</span>
-                )}
-                <button
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    const ok = await dialog.confirm(`Delete ${c.luhmannId}?`, {
-                      title: 'Delete card',
-                      confirmLabel: 'Delete',
-                      variant: 'danger',
-                    });
-                    if (ok) deleteMut.mutate(c.luhmannId);
-                  }}
-                  className="p-0.5 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                  title="Delete"
-                >
-                  <Trash2 size={11} />
-                </button>
-              </div>
-            )}
-          />
-        </Section>
-      )}
+      {/* 旧 ORPHANS section 移除 —— Folgezettel 树自动包含所有非 master 卡，
+           没父的会作为 root 出现，不再需要单独 orphan 概念 */}
     </aside>
+  );
+}
+
+/** Folgezettel 自动树节点：递归渲染。父子关系来自 buildFolgezettelTree 算的 map */
+function FolgezettelNode({
+  id,
+  level,
+  tree,
+  cardById,
+  focusedId,
+  focusedBoxId,
+  onSelect,
+}: {
+  id: string;
+  level: number;
+  tree: Map<string | null, string[]>;
+  cardById: Map<string, CardSummary>;
+  focusedId: string | null;
+  focusedBoxId: string | null;
+  onSelect: (id: string, opts?: { newTab?: boolean; splitDirection?: 'horizontal' | 'vertical' }) => void;
+}) {
+  const card = cardById.get(id);
+  const children = tree.get(id) ?? [];
+  const [expanded, setExpanded] = useState(level < 1);
+  const hasChildren = children.length > 0;
+  const isIndex = card?.status === 'INDEX';
+  const highlighted = isIndex
+    ? focusedBoxId === id
+    : focusedId === id;
+  return (
+    <div>
+      <div
+        className={`flex items-center gap-1 rounded-md text-left hover:bg-gray-50 ${
+          highlighted ? 'bg-accentSoft' : ''
+        }`}
+        style={{ paddingLeft: 4 + level * 14 }}
+      >
+        {hasChildren ? (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="p-1 text-gray-400 hover:text-ink shrink-0"
+          >
+            <ChevronRight size={12} className={`transition-transform ${expanded ? 'rotate-90' : ''}`} />
+          </button>
+        ) : (
+          <span className="w-5" />
+        )}
+        <button
+          onClick={(e) => onSelect(id, modifiersToOpts(e))}
+          draggable={!!card}
+          onDragStart={(e) => card && setCardDragData(e, { luhmannId: id, title: card.title })}
+          className="flex-1 min-w-0 flex items-center gap-1.5 py-1.5 text-left cursor-grab active:cursor-grabbing"
+          title={card ? `${id} · ${card.title}` : `${id} (missing)`}
+        >
+          <span
+            className={`font-mono text-[9.5px] font-bold px-1 py-0.5 rounded shrink-0 ${
+              isIndex ? 'bg-accent text-white' : 'bg-gray-100 text-gray-600'
+            }`}
+          >
+            {id}
+          </span>
+          <span
+            className={`text-[12px] truncate ${
+              isIndex ? 'font-semibold text-ink' : 'text-gray-700'
+            }`}
+          >
+            {card?.title ?? <span className="italic text-gray-400">missing</span>}
+          </span>
+        </button>
+      </div>
+      {expanded && hasChildren && (
+        <div>
+          {children.map((cid) => (
+            <FolgezettelNode
+              key={cid}
+              id={cid}
+              level={level + 1}
+              tree={tree}
+              cardById={cardById}
+              focusedId={focusedId}
+              focusedBoxId={focusedBoxId}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

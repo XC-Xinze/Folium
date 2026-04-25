@@ -41,6 +41,8 @@ interface GraphNodeData {
   card: CardSummary;
   isIndex: boolean;
   isSelected: boolean;
+  /** INDEX 分级：0 = master（没被任何 INDEX 引用），1+ = sub-INDEX 的层数 */
+  indexTier: number;
   // zoom 不放进 data —— 节点自己用 useViewport 读，避免每次 zoom 重建 nodes 数组
 }
 
@@ -60,6 +62,55 @@ function parentOf(id: string): string | null {
   if (/\d$/.test(id)) return id.replace(/\d+$/, '') || null;
   if (/[a-z]$/i.test(id)) return id.replace(/[a-z]+$/i, '') || null;
   return null;
+}
+
+/**
+ * 算每张 INDEX 卡的 tier：
+ *   tier 0 = master（没有其他 INDEX 把它列在 crossLinks 里）
+ *   tier 1+ = sub-INDEX，值 = 离最近的 master 的层数
+ * 用 BFS 拓扑算法，从 tier 0 起逐层扩散。
+ */
+function computeIndexTiers(cards: CardSummary[]): Map<string, number> {
+  const indexes = cards.filter((c) => c.status === 'INDEX');
+  const idToCard = new Map(indexes.map((c) => [c.luhmannId, c]));
+  // parent map: index id → INDEX 父集合（哪些 INDEX 把它当成员）
+  const parentsOf = new Map<string, Set<string>>();
+  for (const c of indexes) parentsOf.set(c.luhmannId, new Set());
+  for (const c of indexes) {
+    for (const t of c.crossLinks) {
+      if (idToCard.has(t)) parentsOf.get(t)!.add(c.luhmannId);
+    }
+  }
+  const tier = new Map<string, number>();
+  // master = 没被任何 INDEX 引用
+  const queue: string[] = [];
+  for (const c of indexes) {
+    if (parentsOf.get(c.luhmannId)!.size === 0) {
+      tier.set(c.luhmannId, 0);
+      queue.push(c.luhmannId);
+    }
+  }
+  // BFS：子 INDEX 的 tier = 父最小 tier + 1
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    const curTier = tier.get(cur)!;
+    const card = idToCard.get(cur);
+    if (!card) continue;
+    for (const child of card.crossLinks) {
+      if (!idToCard.has(child)) continue;
+      const existing = tier.get(child);
+      const next = curTier + 1;
+      if (existing == null || next < existing) {
+        tier.set(child, next);
+        queue.push(child);
+      }
+    }
+  }
+  // 兜底：环路里的 INDEX 没被赋 tier → 给个 1
+  for (const c of indexes) {
+    if (!tier.has(c.luhmannId)) tier.set(c.luhmannId, 1);
+  }
+  return tier;
 }
 
 /** 推导每张卡所属的 box 集合（哪些 INDEX 引用了它，或它自己是 INDEX → 算自己的 box） */
@@ -230,6 +281,10 @@ function GraphInner() {
     () => (cardsQ.data ? computeBoxMembership(cardsQ.data.cards) : new Map<string, Set<string>>()),
     [cardsQ.data],
   );
+  const indexTiers = useMemo(
+    () => (cardsQ.data ? computeIndexTiers(cardsQ.data.cards) : new Map<string, number>()),
+    [cardsQ.data],
+  );
 
   // 卡片列表变 → 重建 sim
   useEffect(() => {
@@ -281,12 +336,13 @@ function GraphInner() {
           card: c,
           isIndex: c.status === 'INDEX',
           isSelected: selectedId === c.luhmannId,
+          indexTier: indexTiers.get(c.luhmannId) ?? -1,
         } satisfies GraphNodeData,
         width: NODE_W,
         height: NODE_H,
       };
     });
-  }, [cardsQ.data, positions, selectedId]);
+  }, [cardsQ.data, positions, selectedId, indexTiers]);
 
   const edges: Edge[] = useMemo(() => {
     const colorByKind: Record<LinkKind, string> = {
@@ -458,7 +514,19 @@ function Anchors() {
 
 /** 单节点：根据 zoom + selected 切渲染密度 */
 function GraphNode({ data }: { data: GraphNodeData }) {
-  const { card, isIndex, isSelected } = data;
+  const { card, isIndex, isSelected, indexTier } = data;
+  // INDEX tier → 视觉等级
+  // tier 0 = master：最大、金色 ring
+  // tier 1 = domain：标准 accent
+  // tier 2+ = sub：较小、半透明 accent
+  // 非 INDEX：indexTier = -1
+  const tierTone = isIndex
+    ? indexTier === 0
+      ? { dotMul: 1.6, badgeMul: 1.2, ring: 'ring-amber-500', fill: 'bg-amber-500', text: 'text-white', border: 'border-amber-500' }
+      : indexTier === 1
+        ? { dotMul: 1.2, badgeMul: 1.0, ring: 'ring-accent', fill: 'bg-accent', text: 'text-white', border: 'border-accent' }
+        : { dotMul: 1.0, badgeMul: 0.85, ring: 'ring-accent/60', fill: 'bg-accent/70', text: 'text-white', border: 'border-accent/60' }
+    : { dotMul: 1.0, badgeMul: 1.0, ring: 'ring-accent', fill: '', text: '', border: '' };
   // 在节点内部读 zoom：每张卡只在自己 level 跨阈值时 re-render，
   // 不会因为 zoom 微变就整个数组重建
   const { zoom } = useViewport();
@@ -476,15 +544,15 @@ function GraphNode({ data }: { data: GraphNodeData }) {
           : 'normal';
 
   if (level === 'dot') {
-    // 大圆点 —— 远看清楚的色块
-    const size = isIndex ? 28 : 16;
+    const baseSize = isIndex ? 28 : 16;
+    const size = baseSize * tierTone.dotMul;
     return (
       <>
         <Anchors />
         <div
-          className={`rounded-full transition-colors shadow-md ${
-            isIndex ? 'bg-accent' : 'bg-gray-500 dark:bg-[#a5adcb]'
-          } ${isSelected ? 'ring-4 ring-accent ring-offset-2 dark:ring-offset-[#1e2030]' : ''}`}
+          className={`rounded-full shadow-md transition-colors ${
+            isIndex ? tierTone.fill : 'bg-gray-500 dark:bg-[#a5adcb]'
+          } ${isSelected ? `ring-4 ${tierTone.ring} ring-offset-2 dark:ring-offset-[#1e2030]` : ''}`}
           style={{
             width: size,
             height: size,
@@ -498,19 +566,17 @@ function GraphNode({ data }: { data: GraphNodeData }) {
   }
 
   if (level === 'mini') {
-    // 圆形 id 徽章 —— 直径 64
-    const D = isIndex ? 80 : 64;
+    const baseD = isIndex ? 80 : 64;
+    const D = baseD * tierTone.badgeMul;
     return (
       <>
         <Anchors />
         <div
           className={`rounded-full flex items-center justify-center font-mono font-bold shadow-md ${
-            isSelected
-              ? 'ring-4 ring-accent ring-offset-2 dark:ring-offset-[#1e2030]'
-              : ''
+            isSelected ? `ring-4 ${tierTone.ring} ring-offset-2 dark:ring-offset-[#1e2030]` : ''
           } ${
             isIndex
-              ? 'bg-accent text-white text-[14px]'
+              ? `${tierTone.fill} ${tierTone.text} text-[14px]`
               : 'bg-white dark:bg-[#363a4f] text-gray-700 dark:text-[#cad3f5] border-2 border-gray-300 dark:border-[#494d64] text-[12px]'
           }`}
           style={{
@@ -519,7 +585,7 @@ function GraphNode({ data }: { data: GraphNodeData }) {
             marginLeft: NODE_W / 2 - D / 2,
             marginTop: NODE_H / 2 - D / 2,
           }}
-          title={`${card.luhmannId} · ${card.title}`}
+          title={`${card.luhmannId} · ${card.title}${isIndex ? ` · tier ${indexTier}` : ''}`}
         >
           {card.luhmannId}
         </div>
@@ -528,20 +594,18 @@ function GraphNode({ data }: { data: GraphNodeData }) {
   }
 
   if (level === 'normal') {
-    // 方形圆角卡（不再宽长方形）—— 居中 id + 标题 + tag
-    const W = 140;
-    const H = 110;
+    // master 大方块，sub 小方块
+    const W = isIndex && indexTier === 0 ? 170 : isIndex && indexTier >= 2 ? 120 : 140;
+    const H = isIndex && indexTier === 0 ? 130 : isIndex && indexTier >= 2 ? 95 : 110;
     return (
       <>
         <Anchors />
         <div
           className={`rounded-2xl shadow-md flex flex-col items-center justify-center text-center px-2 py-2 ${
-            isSelected
-              ? 'ring-4 ring-accent ring-offset-2 dark:ring-offset-[#1e2030]'
-              : ''
+            isSelected ? `ring-4 ${tierTone.ring} ring-offset-2 dark:ring-offset-[#1e2030]` : ''
           } ${
             isIndex
-              ? 'bg-accent text-white border-2 border-accent'
+              ? `${tierTone.fill} ${tierTone.text} border-2 ${tierTone.border}`
               : 'bg-white dark:bg-[#363a4f] border-2 border-gray-200 dark:border-[#494d64]'
           }`}
           style={{
@@ -551,16 +615,21 @@ function GraphNode({ data }: { data: GraphNodeData }) {
             marginTop: NODE_H / 2 - H / 2,
           }}
         >
+          {isIndex && (
+            <span className={`text-[8px] font-black uppercase tracking-widest mb-0.5 ${tierTone.text === 'text-white' ? 'text-white/80' : ''}`}>
+              {indexTier === 0 ? 'MASTER' : indexTier === 1 ? 'INDEX' : `SUB·${indexTier}`}
+            </span>
+          )}
           <span
-            className={`font-mono font-bold text-[13px] ${
-              isIndex ? 'text-white' : 'text-accent'
+            className={`font-mono font-bold ${isIndex && indexTier === 0 ? 'text-[15px]' : 'text-[13px]'} ${
+              isIndex ? tierTone.text : 'text-accent'
             }`}
           >
             {card.luhmannId}
           </span>
           <span
             className={`text-[11px] mt-1 line-clamp-2 ${
-              isIndex ? 'text-white/90' : 'text-ink dark:text-[#cad3f5]'
+              isIndex ? `${tierTone.text === 'text-white' ? 'text-white/90' : ''}` : 'text-ink dark:text-[#cad3f5]'
             }`}
           >
             {card.title || card.luhmannId}
@@ -570,9 +639,7 @@ function GraphNode({ data }: { data: GraphNodeData }) {
               {card.tags.slice(0, 2).map((t) => (
                 <span
                   key={t}
-                  className={`text-[8px] font-bold ${
-                    isIndex ? 'text-white/80' : 'text-accent'
-                  }`}
+                  className={`text-[8px] font-bold ${isIndex ? (tierTone.text === 'text-white' ? 'text-white/80' : '') : 'text-accent'}`}
                 >
                   #{t}
                 </span>

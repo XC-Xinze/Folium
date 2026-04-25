@@ -3,12 +3,13 @@ luhmannId: i3
 title: 索引：标注与学习范式
 status: INDEX
 tags:
-  - 放寒假
   - paradigm
+  - 放寒假
 crossLinks:
   - 5
   - 6
   - 7
+updated: '2026-04-25'
 ---
 
 # 索引：标注与学习范式

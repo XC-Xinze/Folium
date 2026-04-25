@@ -228,9 +228,16 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
   for (const id of backbone.ids) {
     addNode(id, id === focusedCardId ? 'focus' : 'tree');
   }
-  // 焦点卡可能不在 backbone（用户在 i0 box 里点选了外部 tag-related 拉进来的卡）—— 也要补一个节点。
-  // 否则后面 cross / tag / potential 边以它为 source/target 的全部找不到端点，被 React Flow 丢掉。
-  if (!backbone.ids.has(focusedCardId) && cardMap.has(focusedCardId)) {
+  // 焦点卡可能不在 backbone（用户在某个 box 里点了外部 tag-related/cross/potential 卡）。
+  // 仅当用户至少开着一类外部边（tag/cross/potential）时才补 focus 节点 —— 否则用户已经
+  // 明确"我不想看外部"，把外部 focus 也藏掉，跟 toggle 语义一致。
+  // 后续的 cross / tag / potential 边以此 focus 为端点也都被对应 toggle 控住。
+  const anyExternalToggle = showTagRelated || showCrossLinks || showPotential;
+  if (
+    !backbone.ids.has(focusedCardId) &&
+    cardMap.has(focusedCardId) &&
+    anyExternalToggle
+  ) {
     addNode(focusedCardId, 'focus');
   }
   // 骨干 tree 边

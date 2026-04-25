@@ -66,6 +66,7 @@ function WorkspaceInner({ workspaceId }: Props) {
         updateNode: (id: string, patch: Partial<WorkspaceNode>) => void;
         deleteNode: (id: string) => void;
         promoteTempToVault: (id: string) => void;
+        addEdgeBetween: (sourceWsNodeId: string, targetWsNodeId: string) => void;
       },
     ): { nodes: Node[]; edges: Edge[] } => {
       const wsNodes: Node[] = ws.nodes.map((n) => {
@@ -79,6 +80,16 @@ function WorkspaceInner({ workspaceId }: Props) {
               variant: 'tree',
               isInWorkspace: true,
               onDeleteOverride: () => handlers.deleteNode(n.id),
+              // 拖卡到本卡 → 创建 workspace edge（不写 vault）
+              // dragged 是 luhmann id，需要查找 ws 里对应的 node id
+              onCardLinkDrop: (sourceLuhmannId: string) => {
+                const sourceNode = ws.nodes.find(
+                  (m) => m.kind === 'card' && (m as { cardId?: string }).cardId === sourceLuhmannId,
+                );
+                if (!sourceNode) return; // source 不在本 workspace
+                if (sourceNode.id === n.id) return;
+                handlers.addEdgeBetween(sourceNode.id, n.id);
+              },
             } as unknown as Record<string, unknown>,
           };
         }
@@ -242,25 +253,84 @@ function WorkspaceInner({ workspaceId }: Props) {
 
   const [addCardInput, setAddCardInput] = useState('');
 
+  /**
+   * 智能提权 temp 卡：
+   *   - 1 个 workspace edge → 自动用对端卡作为 parent，next-available 子 id
+   *   - 0 / 多个 → prompt 让用户敲父级 id（空 = 顶层）
+   * 始终算出 next id 后再调 tempToVault。
+   */
   const promoteTempToVault = useCallback(
     async (nodeId: string) => {
-      const luhmannId = await dialog.prompt('Enter the vault luhmannId (e.g. 5b1):', {
-        title: 'Promote temp card to vault',
-        placeholder: 'luhmannId',
-        confirmLabel: 'Promote',
-      });
-      if (!luhmannId?.trim()) return;
+      const ws = wsQ.data;
+      if (!ws) return;
+
+      // 收集所有跟此 temp 相连的实体卡 id（去重）
+      const linkedCardIds = new Set<string>();
+      for (const e of ws.edges) {
+        const otherNodeId =
+          e.source === nodeId ? e.target : e.target === nodeId ? e.source : null;
+        if (!otherNodeId) continue;
+        const other = ws.nodes.find((n) => n.id === otherNodeId);
+        if (other && other.kind === 'card') {
+          linkedCardIds.add((other as { cardId: string }).cardId);
+        }
+      }
+      const candidates = [...linkedCardIds];
+
+      let parentId: string | null;
+      if (candidates.length === 1) {
+        parentId = candidates[0]!;
+      } else if (candidates.length > 1) {
+        // 多个候选 → 让用户挑一个
+        const picked = await dialog.prompt(
+          `This temp links to ${candidates.length} cards: ${candidates.join(', ')}\n\nType which one to use as parent (or empty for top-level):`,
+          {
+            title: 'Promote — pick parent',
+            defaultValue: candidates[0]!,
+            confirmLabel: 'Promote',
+          },
+        );
+        if (picked === null) return;
+        parentId = picked.trim() || null;
+        if (parentId && !candidates.includes(parentId)) {
+          // 用户敲的不在候选里 → 仍允许，但要求是合法卡
+          // 后端会校验 parent 存在
+        }
+      } else {
+        // 没有 edge → 让用户手动选父级
+        const picked = await dialog.prompt(
+          'Type parent id (empty for top-level):',
+          {
+            title: 'Promote — pick parent',
+            defaultValue: '',
+            confirmLabel: 'Promote',
+          },
+        );
+        if (picked === null) return;
+        parentId = picked.trim() || null;
+      }
+
       try {
-        await api.tempToVault(workspaceId, nodeId, luhmannId.trim());
+        const { luhmannId } = await api.nextChildId(parentId);
+        const ok = await dialog.confirm(
+          `Promote as ${luhmannId}? (under ${parentId ?? 'top-level'})`,
+          {
+            title: 'Confirm promote',
+            confirmLabel: 'Promote',
+          },
+        );
+        if (!ok) return;
+        await api.tempToVault(workspaceId, nodeId, luhmannId);
         qc.invalidateQueries({ queryKey: ['workspace', workspaceId] });
         qc.invalidateQueries({ queryKey: ['cards'] });
         qc.invalidateQueries({ queryKey: ['card'] });
         qc.invalidateQueries({ queryKey: ['linked'] });
+        qc.invalidateQueries({ queryKey: ['ws-links-batch'] });
       } catch (err) {
         dialog.alert((err as Error).message, { title: 'Promote failed' });
       }
     },
-    [workspaceId, qc],
+    [workspaceId, qc, wsQ.data],
   );
 
   const onConnect: OnConnect = useCallback(
@@ -283,10 +353,35 @@ function WorkspaceInner({ workspaceId }: Props) {
     [mutateWs],
   );
 
+  // CardNode 拖卡 → drop on 另一卡 触发的回调（替代用户找 Handle 拖小圆点）
+  const addEdgeBetween = useCallback(
+    (sourceWsNodeId: string, targetWsNodeId: string) => {
+      mutateWs((ws) => {
+        // 已有同向同对的 edge → 静默
+        const dup = ws.edges.find(
+          (e) => e.source === sourceWsNodeId && e.target === targetWsNodeId,
+        );
+        if (dup) return ws;
+        return {
+          ...ws,
+          edges: [
+            ...ws.edges,
+            {
+              id: randomUUID(),
+              source: sourceWsNodeId,
+              target: targetWsNodeId,
+            } as WorkspaceEdge,
+          ],
+        };
+      });
+    },
+    [mutateWs],
+  );
+
   // ws 数据更新时，同步到 ReactFlow state（合并位置）
   useEffect(() => {
     if (!wsQ.data) return;
-    const built = buildNodes(wsQ.data, { updateNode, deleteNode, promoteTempToVault });
+    const built = buildNodes(wsQ.data, { updateNode, deleteNode, promoteTempToVault, addEdgeBetween });
     setNodes((prev) => {
       const prevPos = new Map(prev.map((n) => [n.id, n.position]));
       return built.nodes.map((n) => ({
@@ -295,7 +390,7 @@ function WorkspaceInner({ workspaceId }: Props) {
       }));
     });
     setEdges(built.edges);
-  }, [wsQ.data, buildNodes, updateNode, deleteNode, promoteTempToVault, setNodes, setEdges]);
+  }, [wsQ.data, buildNodes, updateNode, deleteNode, promoteTempToVault, addEdgeBetween, setNodes, setEdges]);
 
   // 拖动结束 → 同步位置到 workspace data
   const onNodeDragStop = useCallback(
@@ -488,6 +583,9 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
     qc.invalidateQueries({ queryKey: ['linked'] });
     qc.invalidateQueries({ queryKey: ['related-batch'] });
     qc.invalidateQueries({ queryKey: ['referenced-from'] });
+    // 关键：vault 主画布上的 temp ghost / workspace edge 是从 ws-links-batch 拉的，
+    // 不刷新这条 → 删完 workspace edge 后主画布还显示 stale ghost 卡和虚线
+    qc.invalidateQueries({ queryKey: ['ws-links-batch'] });
   };
   const applyMut = useMutation({
     mutationFn: () => api.applyEdge(d!.workspaceId, d!.edgeId),

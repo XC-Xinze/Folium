@@ -240,6 +240,47 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
+   * 算给定 parent 下下一个可用的 Folgezettel 子 id（next-available 字母/数字）。
+   * Body: { parentId: string|null }；parentId=null → 下一个可用顶级 id。
+   */
+  app.post<{ Body: { parentId: string | null } }>('/cards/next-child-id', async (req, reply) => {
+    const { parentId } = req.body ?? { parentId: null };
+    const allIds = new Set(repo.list().map((c) => c.luhmannId));
+    if (parentId !== null && parentId !== '' && !allIds.has(parentId)) {
+      return reply.code(404).send({ error: 'parent not found' });
+    }
+    if (!parentId) {
+      // 顶级：默认数字
+      for (let n = 1; n < 100000; n++) {
+        const c = String(n);
+        if (!allIds.has(c)) return { luhmannId: c };
+      }
+      return reply.code(500).send({ error: 'out of top-level ids' });
+    }
+    const lastChar = parentId.at(-1)!;
+    const nextIsDigit = !/\d/.test(lastChar);
+    if (nextIsDigit) {
+      for (let i = 1; i < 100000; i++) {
+        const c = parentId + i;
+        if (!allIds.has(c)) return { luhmannId: c };
+      }
+    } else {
+      for (let i = 0; i < 26; i++) {
+        const c = parentId + String.fromCharCode(97 + i);
+        if (!allIds.has(c)) return { luhmannId: c };
+      }
+      // aa, ab, … 兜底
+      for (let i = 0; i < 26 * 26; i++) {
+        const a = String.fromCharCode(97 + Math.floor(i / 26));
+        const b = String.fromCharCode(97 + (i % 26));
+        const c = parentId + a + b;
+        if (!allIds.has(c)) return { luhmannId: c };
+      }
+    }
+    return reply.code(500).send({ error: 'out of suffixes' });
+  });
+
+  /**
    * Reparent: 把一张卡（连同子树）挪到另一个父级下，按 Folgezettel 自动重编号。
    * Body: { sourceId, newParentId: string|null, dryRun?: boolean }
    *   dryRun=true → 只算 rename map 不动文件，给前端预览/确认

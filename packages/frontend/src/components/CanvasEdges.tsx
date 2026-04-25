@@ -21,11 +21,14 @@ function invalidateCrossLinkQueries(qc: ReturnType<typeof useQueryClient>) {
 }
 
 export function PotentialEdge(props: EdgeProps) {
-  const { id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style } = props;
+  const { id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, data } = props;
   const qc = useQueryClient();
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition,
   });
+  // workspace-derived edges 端点可能是 ghost id（__ws-temp::xxx）—— 不允许 promote
+  // 否则后端 appendCrossLink 找不到那张卡 → 404 popup
+  const isWsLink = (data as { isWsLink?: boolean } | undefined)?.isWsLink === true;
   const promoteMut = useMutation({
     mutationFn: () => api.appendCrossLink(source, target),
     onSuccess: () => invalidateCrossLinkQueries(qc),
@@ -34,26 +37,28 @@ export function PotentialEdge(props: EdgeProps) {
   return (
     <>
       <BaseEdge id={id} path={edgePath} style={style} />
-      <EdgeLabelRenderer>
-        <div
-          className="absolute pointer-events-auto"
-          style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
-        >
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (promoteMut.isPending) return;
-              promoteMut.mutate();
-            }}
-            disabled={promoteMut.isPending}
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white border border-purple-300 text-purple-600 text-[9px] font-bold shadow-sm hover:bg-purple-500 hover:text-white hover:border-purple-500 transition-colors opacity-60 hover:opacity-100"
-            title={`Promote potential to real [[link]]: write [[${target}]] into ${source}`}
+      {!isWsLink && (
+        <EdgeLabelRenderer>
+          <div
+            className="absolute pointer-events-auto"
+            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
           >
-            <Link2 size={9} />
-            <span>{promoteMut.isPending ? '…' : 'Link'}</span>
-          </button>
-        </div>
-      </EdgeLabelRenderer>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (promoteMut.isPending) return;
+                promoteMut.mutate();
+              }}
+              disabled={promoteMut.isPending}
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white border border-purple-300 text-purple-600 text-[9px] font-bold shadow-sm hover:bg-purple-500 hover:text-white hover:border-purple-500 transition-colors opacity-60 hover:opacity-100"
+              title={`Promote potential to real [[link]]: write [[${target}]] into ${source}`}
+            >
+              <Link2 size={9} />
+              <span>{promoteMut.isPending ? '…' : 'Link'}</span>
+            </button>
+          </div>
+        </EdgeLabelRenderer>
+      )}
     </>
   );
 }

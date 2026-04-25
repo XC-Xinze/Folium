@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Background,
   Controls,
@@ -13,6 +14,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Card, type PositionMap } from '../lib/api';
+import { dialog } from '../lib/dialog';
 import { CardNode } from './CardNode';
 import { CrossEdge, PotentialEdge } from './CanvasEdges';
 import { applyAnchorPositions, buildGraph, computeBackbone, MASTER_BOX_ID, resolveCollisions } from '../lib/cardGraph';
@@ -271,20 +273,7 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
         <span className="w-px h-4 bg-gray-200 dark:bg-[#494d64]" />
         <FocusDepthBadge depth={focusDepth} max={MAX_FOCUS_DEPTH} />
         <div className="flex-1" />
-        <button
-          draggable
-          onDragStart={(e) => {
-            e.dataTransfer.effectAllowed = 'copy';
-            e.dataTransfer.setData(
-              'application/x-zk-card',
-              JSON.stringify({ luhmannId: focusedCardId, title: '' }),
-            );
-          }}
-          className="shrink-0 text-[10px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full bg-accentSoft text-accent hover:bg-accent hover:text-white transition-colors cursor-grab active:cursor-grabbing"
-          title="Drag onto a workspace tab to add this card"
-        >
-          + Workspace
-        </button>
+        <AddFocusedToWorkspace focusedCardId={focusedCardId} />
       </div>
 
       <div className="flex-1 relative min-h-0">
@@ -354,6 +343,147 @@ function HistoryButtons() {
         <ChevronRightHistory />
       </button>
     </div>
+  );
+}
+
+/**
+ * "+ Workspace" 按钮：
+ *   - 点击 → 弹出工作区选择器 → 把当前焦点卡加进选中的工作区（或新建）
+ *   - 拖拽 → 同样把焦点卡作为 drag payload，可以拖到任意工作区入口
+ *   去重：选中的 ws 已经包含这张卡就跳过。
+ */
+function AddFocusedToWorkspace({ focusedCardId }: { focusedCardId: string }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [popPos, setPopPos] = useState<{ top: number; right: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const wsQ = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces });
+  const list = wsQ.data?.workspaces ?? [];
+
+  // 算 dropdown 屏幕坐标 —— 用 portal 渲染到 body 避免被父级 overflow 裁掉
+  useEffect(() => {
+    if (!open || !btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    setPopPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onMouseDown = (e: MouseEvent) => {
+      const t = e.target as globalThis.Node;
+      if (popRef.current?.contains(t) || btnRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    window.addEventListener('mousedown', onMouseDown);
+    return () => window.removeEventListener('mousedown', onMouseDown);
+  }, [open]);
+
+  const addToWorkspace = async (workspaceId: string) => {
+    try {
+      const ws = await api.getWorkspace(workspaceId);
+      if (!ws) return;
+      if (ws.nodes.some((n) => n.kind === 'card' && n.cardId === focusedCardId)) {
+        // 已经在 workspace 里 → 直接打开 tab
+        usePaneStoreImported.getState().openTab({
+          kind: 'workspace',
+          title: ws.name,
+          workspaceId: ws.id,
+        });
+        setOpen(false);
+        return;
+      }
+      const newNode = {
+        kind: 'card' as const,
+        id: crypto.randomUUID(),
+        cardId: focusedCardId,
+        x: 200 + Math.random() * 300,
+        y: 200 + Math.random() * 200,
+      };
+      await api.updateWorkspace(workspaceId, { nodes: [...ws.nodes, newNode] });
+      qc.invalidateQueries({ queryKey: ['workspace', workspaceId] });
+      qc.invalidateQueries({ queryKey: ['workspaces'] });
+      usePaneStoreImported.getState().openTab({
+        kind: 'workspace',
+        title: ws.name,
+        workspaceId: ws.id,
+      });
+    } catch (err) {
+      dialog.alert((err as Error).message, { title: 'Add to workspace failed' });
+    } finally {
+      setOpen(false);
+    }
+  };
+
+  const createAndAdd = async () => {
+    const name = await dialog.prompt('New workspace name', {
+      title: 'Create workspace',
+      defaultValue: 'Workspace',
+      confirmLabel: 'Create',
+    });
+    if (!name?.trim()) return;
+    try {
+      const ws = await api.createWorkspace(name.trim());
+      qc.invalidateQueries({ queryKey: ['workspaces'] });
+      await addToWorkspace(ws.id);
+    } catch (err) {
+      dialog.alert((err as Error).message, { title: 'Create workspace failed' });
+    }
+  };
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = 'copy';
+          e.dataTransfer.setData(
+            'application/x-zettel-card',
+            JSON.stringify({ luhmannId: focusedCardId, title: '' }),
+          );
+        }}
+        onClick={() => setOpen((v) => !v)}
+        className="shrink-0 text-[10px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full bg-accentSoft text-accent hover:bg-accent hover:text-white transition-colors cursor-pointer active:cursor-grabbing"
+        title="Click to pick a workspace · Drag onto a workspace tab to add"
+      >
+        + Workspace
+      </button>
+      {open && popPos && createPortal(
+        <div
+          ref={popRef}
+          style={{ position: 'fixed', top: popPos.top, right: popPos.right, zIndex: 1000 }}
+          className="min-w-[220px] bg-white dark:bg-[#1e2030] border border-gray-200 dark:border-[#363a4f] rounded-md shadow-lg overflow-hidden"
+        >
+          <div className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-100 dark:border-[#363a4f]">
+            Add {focusedCardId} to…
+          </div>
+          <div className="max-h-60 overflow-y-auto">
+            {list.length === 0 ? (
+              <div className="text-[11px] text-gray-400 px-3 py-2">No workspaces yet</div>
+            ) : (
+              list.map((ws) => (
+                <button
+                  key={ws.id}
+                  onClick={() => addToWorkspace(ws.id)}
+                  className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-accentSoft hover:text-accent"
+                >
+                  {ws.name}
+                </button>
+              ))
+            )}
+          </div>
+          <button
+            onClick={createAndAdd}
+            className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold border-t border-gray-100 dark:border-[#363a4f] text-accent hover:bg-accentSoft"
+          >
+            <span>+</span>
+            <span>New workspace…</span>
+          </button>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 

@@ -32,6 +32,8 @@ export type CardNodeData = {
   onDeleteOverride?: () => void;
   /** 在 workspace 里时隐藏 WS 拖拽手柄（卡片已经在工作区里了） */
   isInWorkspace?: boolean;
+  /** Workspace 上下文专用：拖一张卡 drop 到本卡 → 创建 workspace edge（不动 vault） */
+  onCardLinkDrop?: (sourceLuhmannId: string) => void;
   /** 来自工作区的"幽灵 temp 节点"——只读、不发请求、只显示标题/正文 */
   ghostFromWorkspace?: { workspaceId: string; workspaceName: string };
   /** 位置存储 scope（box:xxx 或 tag:xxx）—— 由父视图（Canvas/TagView/WorkspaceView）注入，
@@ -191,6 +193,8 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     source: string;
     target: string;
     kind: RawEdgeKind;
+    /** workspace-derived edge：渲染上跟 potential 一样灰虚线，但不允许 promote/unlink（端点可能是 ghost id） */
+    isWsLink?: boolean;
   }
   const sharedBoxes = computeSharedBoxes(allCards);
   // 索引卡 ID → title 映射，用于"来自"标签
@@ -246,13 +250,13 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
   //   入边（inbound / backlinks）：哪些卡的 crossLinks 指向骨干 —— 用 summary 反向扫描
   if (showCrossLinks) {
     // 出边
+    // 用 summary.crossLinks（cardsQ 全量）而不是 fullCards.get(id).crossLinks
+    // —— fullCards 只含 focused box/focus/linked，非焦点的 backbone 卡 full 没拉，
+    // 用 full 会漏掉它们的 [[link]]。summary 已含 crossLinks，全 backbone 都能用。
     for (const id of radialIds) {
-      const full = fullCards.get(id);
-      if (!full) continue;
-      // 注意：旧版本会因为 full.status === 'INDEX' 就 continue（旧 INDEX 卡 [[link]] = 成员关系）。
-      // 现在 box 是纯结构性 Folgezettel，INDEX 的 crossLinks 就是普通引用，应该正常渲染 cross 边。
-      // 否则用户给 INDEX 卡（如 2a）添加 [[link]] 时画布上看不到结果。
-      for (const target of full.crossLinks) {
+      const summary = cardMap.get(id);
+      if (!summary) continue;
+      for (const target of summary.crossLinks) {
         if (target === id) continue;
         const existsTree = backbone.treeEdges.some(
           (e) => (e.source === id && e.target === target) || (e.source === target && e.target === id),
@@ -483,12 +487,14 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
       }
       if (!bothInGraph) continue;
 
-      // 跨 ws 边：用同 'potential' 边样式（虚线浅色）
+      // 跨 ws 边：用同 'potential' 边样式（虚线浅色），但加 isWsLink 标记
+      // 让 PotentialEdge 跳过 Link/Unlink 按钮（避免对 ghost id appendCrossLink 时 404）
       rawEdges.push({
         id: `ws:${link.workspaceId}:${link.edgeId}`,
         source: sourceNodeId,
         target: targetNodeId,
         kind: 'potential',
+        isWsLink: true,
       });
     }
   }
@@ -734,7 +740,7 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
       type,
       animated: false,
       style,
-      data: { kind: e.kind, touchesFocus },
+      data: { kind: e.kind, touchesFocus, isWsLink: e.isWsLink ?? false },
     };
   });
 

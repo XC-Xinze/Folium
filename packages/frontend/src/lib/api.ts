@@ -459,6 +459,18 @@ export const api = {
     }
     return res.json();
   },
+  nextChildId: async (parentId: string | null): Promise<{ luhmannId: string }> => {
+    const res = await fetch(`${BASE}/cards/next-child-id`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parentId }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
   reparentCard: async (
     sourceId: string,
     newParentId: string | null,

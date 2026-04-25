@@ -488,15 +488,18 @@ export function CardNode({ data, id, selected }: NodeProps) {
         if (isTopLevel && draggedTop) return;
         e.preventDefault();
         e.stopPropagation();
+        // Workspace 上下文：通过 onCardLinkDrop 回调创建 workspace edge（不动 vault）
+        if (nodeData.isInWorkspace && nodeData.onCardLinkDrop) {
+          nodeData.onCardLinkDrop(dragged.luhmannId);
+          return;
+        }
+        // Vault 上下文：写 [[link]] 到本卡 body
         try {
-          const { alreadyLinked } = await api.appendCrossLink(cardLuhmannId, dragged.luhmannId);
+          await api.appendCrossLink(cardLuhmannId, dragged.luhmannId);
           qc.invalidateQueries({ queryKey: ['card', cardLuhmannId] });
           qc.invalidateQueries({ queryKey: ['cards'] });
           qc.invalidateQueries({ queryKey: ['linked'] });
           qc.invalidateQueries({ queryKey: ['related-batch'] });
-          if (alreadyLinked) {
-            // 静默 —— 已有链接没必要打扰
-          }
         } catch (err) {
           dialog.alert((err as Error).message, { title: 'Link failed' });
         }

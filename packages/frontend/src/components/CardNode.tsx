@@ -816,8 +816,11 @@ export function CardNode({ data, id, selected }: NodeProps) {
 
           <div
             ref={contentRef}
-            className={`prose-card text-[12px] text-ink px-5 pb-4 ${
-              h ? 'flex-1 overflow-y-auto' : 'max-h-72 overflow-hidden'
+            // 用户没拖大卡时也允许内容滚（之前是 overflow-hidden 直接裁掉，看不到下半截）
+            // nodrag nopan + stopPropagation 让 scroll wheel 在卡内滚而不触发 React Flow pan
+            onWheel={(e) => e.stopPropagation()}
+            className={`nodrag nopan prose-card text-[12px] text-ink px-5 pb-4 overflow-y-auto ${
+              h ? 'flex-1' : 'max-h-72'
             }`}
             dangerouslySetInnerHTML={{ __html: html }}
           />

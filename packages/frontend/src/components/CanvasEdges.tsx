@@ -28,7 +28,9 @@ export function PotentialEdge(props: EdgeProps) {
   });
   // workspace-derived edges 端点可能是 ghost id（__ws-temp::xxx）—— 不允许 promote
   // 否则后端 appendCrossLink 找不到那张卡 → 404 popup
-  const isWsLink = (data as { isWsLink?: boolean } | undefined)?.isWsLink === true;
+  const edgeData = data as { isWsLink?: boolean; touchesFocus?: boolean } | undefined;
+  const isWsLink = edgeData?.isWsLink === true;
+  const touchesFocus = edgeData?.touchesFocus === true;
   const promoteMut = useMutation({
     mutationFn: () => api.appendCrossLink(source, target),
     onSuccess: () => invalidateCrossLinkQueries(qc),
@@ -37,7 +39,7 @@ export function PotentialEdge(props: EdgeProps) {
   return (
     <>
       <BaseEdge id={id} path={edgePath} style={style} />
-      {!isWsLink && (
+      {!isWsLink && touchesFocus && (
         <EdgeLabelRenderer>
           <div
             className="absolute pointer-events-auto"

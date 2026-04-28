@@ -41,6 +41,32 @@ Prefer `ctx.sdk`. Direct `ctx.api`, `ctx.registry`, and `ctx.commands` still exi
 - `get(id)`
 - `create(name)`
 - `update(id, patch)`
+- `addCards(workspaceId, cardIds)` adds real vault-card references, skipping duplicates.
+- `addEdge(workspaceId, sourceCardId, targetCardId, { label, note, color })` creates a workspace draft edge between real cards, adding missing card nodes first.
+- `updateEdgeMeta(workspaceId, edgeId, { label, note, color })`
+
+Workspace edge state follows [Workspace Link Model](./workspace-link-model.md). Plugins should treat `vaultLink` and `vaultStructure` edges as read-only mirrors of vault state.
+
+Example:
+
+```js
+export default function activate(ctx) {
+  return ctx.sdk.commands.register({
+    id: 'example.workspace-link',
+    title: 'Example: add workspace relation',
+    group: 'Plugins',
+    run: async () => {
+      const [ws] = await ctx.sdk.workspaces.list();
+      if (!ws) return ctx.sdk.ui.alert('No workspace exists');
+      await ctx.sdk.workspaces.addEdge(ws.id, '1', '2', {
+        label: 'related',
+        note: 'Created by a plugin',
+        color: '#10b981',
+      });
+    },
+  });
+}
+```
 
 ### `ctx.sdk.ui`
 

@@ -14,7 +14,7 @@ import { EmptyVault } from './components/EmptyVault';
 import { PaneRoot } from './components/PaneRoot';
 import { useIsMobile } from './lib/useIsMobile';
 import { useUIStore } from './store/uiStore';
-import { usePaneStore } from './store/paneStore';
+import { usePaneStore, type Pane, type Tab } from './store/paneStore';
 import { api } from './lib/api';
 import { dialog } from './lib/dialog';
 import { registerCommand, useGlobalCommands } from './lib/commands';
@@ -328,6 +328,15 @@ function TopBar() {
   }, [expanded]);
 
   const setNewCardOpen = useUIStore((s) => s.setNewCardOpen);
+  const root = usePaneStore((s) => s.root);
+  const activeLeafId = usePaneStore((s) => s.activeLeafId);
+  const activeTab = getActiveTab(root, activeLeafId);
+  const workspaceQ = useQuery({
+    queryKey: ['workspace', activeTab?.workspaceId],
+    queryFn: () => api.getWorkspace(activeTab!.workspaceId!),
+    enabled: activeTab?.kind === 'workspace' && !!activeTab.workspaceId,
+  });
+  const activeVaultQ = useQuery({ queryKey: ['vaults', 'active'], queryFn: api.getActiveVault });
 
   return (
     <div className="shrink-0 border-b border-gray-100/60 dark:border-[#363a4f]/60 bg-[#fafafa] dark:bg-[#24273a]">
@@ -348,9 +357,84 @@ function TopBar() {
           <Maximize2 size={11} />
           <span>{expanded ? 'Hide inline' : 'Inline'}</span>
         </button>
+        <TopBarContext tab={activeTab} workspace={workspaceQ.data} />
         <div className="flex-1" />
+        <div className="hidden md:flex items-center gap-2 text-[11px] text-gray-400 dark:text-[#a5adcb] min-w-0">
+          <span className="font-bold uppercase tracking-widest">Vault</span>
+          <span className="truncate max-w-[220px]">
+            {activeVaultQ.data?.active?.name ?? 'default'}
+          </span>
+        </div>
       </div>
       {expanded && <NewCardBar />}
+    </div>
+  );
+}
+
+function getActiveTab(root: Pane, activeLeafId: string): Tab | null {
+  function findLeaf(node: Pane): Extract<Pane, { kind: 'leaf' }> | null {
+    if (node.kind === 'leaf') return node.id === activeLeafId ? node : null;
+    for (const child of node.children) {
+      const found = findLeaf(child);
+      if (found) return found;
+    }
+    return null;
+  }
+  const leaf = findLeaf(root);
+  if (!leaf?.activeTabId) return null;
+  return leaf.tabs.find((tab) => tab.id === leaf.activeTabId) ?? null;
+}
+
+function TopBarContext({
+  tab,
+  workspace,
+}: {
+  tab: Tab | null;
+  workspace?: Awaited<ReturnType<typeof api.getWorkspace>>;
+}) {
+  if (!tab) {
+    return (
+      <div className="hidden sm:flex min-w-0 items-center gap-2 text-[12px] text-gray-400">
+        <span>No active tab</span>
+      </div>
+    );
+  }
+
+  const kindLabel =
+    tab.kind === 'card'
+      ? 'Card'
+      : tab.kind === 'workspace'
+        ? 'Workspace'
+        : tab.kind === 'tag'
+          ? 'Tag'
+          : tab.kind === 'graph'
+            ? 'Graph'
+            : 'Settings';
+  const title =
+    tab.kind === 'card'
+      ? `${tab.cardFocusId ?? tab.cardBoxId ?? ''}${tab.title ? ` · ${tab.title}` : ''}`
+      : tab.kind === 'tag'
+        ? `#${tab.tagName ?? tab.title}`
+        : tab.title;
+
+  return (
+    <div className="hidden sm:flex min-w-0 items-center gap-2 text-[12px] text-gray-500 dark:text-[#a5adcb]">
+      <span className="shrink-0 text-[10px] font-black uppercase tracking-widest text-gray-400">
+        {kindLabel}
+      </span>
+      <span className="truncate font-semibold text-ink dark:text-[#cad3f5] max-w-[38vw]">
+        {title}
+      </span>
+      {tab.kind === 'workspace' && workspace && (
+        <span className="shrink-0 text-[10px] font-bold text-gray-400">
+          {workspace.nodes.length} nodes · {workspace.edges.length} edges
+        </span>
+      )}
+      {tab.kind === 'card' && tab.cardFocusDepth != null && tab.cardFocusDepth > 0 && (
+        <span className="shrink-0 text-[10px] font-bold text-amber-500">
+          Depth {tab.cardFocusDepth}/3
+        </span>
+      )}
     </div>
   );
 }

@@ -84,11 +84,31 @@ const filePath = () => join(dirPath(), FILE);
 
 let cache: Record<string, Workspace> | null = null;
 
+function normalizeEdge(edge: WorkspaceEdge): WorkspaceEdge {
+  return {
+    ...edge,
+    applied: !!edge.applied,
+    vaultLink: !!edge.vaultLink,
+    vaultStructure: !!edge.vaultStructure || edge.label === 'tree',
+  };
+}
+
+function normalizeWorkspace(ws: Workspace): Workspace {
+  return {
+    ...ws,
+    nodes: Array.isArray(ws.nodes) ? ws.nodes : [],
+    edges: Array.isArray(ws.edges) ? ws.edges.map(normalizeEdge) : [],
+  };
+}
+
 export async function loadAll(): Promise<Record<string, Workspace>> {
   if (cache) return cache;
   try {
     const raw = await readFile(filePath(), 'utf8');
-    cache = JSON.parse(raw) as Record<string, Workspace>;
+    const parsed = JSON.parse(raw) as Record<string, Workspace>;
+    cache = Object.fromEntries(
+      Object.entries(parsed).map(([id, ws]) => [id, normalizeWorkspace(ws)]),
+    );
     return cache;
   } catch {
     cache = {};
@@ -139,7 +159,7 @@ export async function updateWorkspace(
   const next: Workspace = { ...cur, updatedAt: new Date().toISOString() };
   if (patch.name !== undefined) next.name = patch.name;
   if (patch.nodes !== undefined) next.nodes = patch.nodes;
-  if (patch.edges !== undefined) next.edges = patch.edges;
+  if (patch.edges !== undefined) next.edges = patch.edges.map(normalizeEdge);
   map[id] = next;
   await flush(map);
   return next;

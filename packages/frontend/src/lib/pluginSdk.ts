@@ -1,4 +1,4 @@
-import { api, type Card, type CardSummary, type Workspace } from './api';
+import { api, type Card, type CardSummary, type Workspace, type WorkspaceEdge, type WorkspaceNode } from './api';
 import { registerCommand, type Command } from './commands';
 import { dialog } from './dialog';
 import { PluginRegistry } from './pluginRegistry';
@@ -31,6 +31,18 @@ export interface PluginSdk {
     get(id: string): Promise<Workspace>;
     create(name: string): Promise<Workspace>;
     update(id: string, patch: Partial<Pick<Workspace, 'name' | 'nodes' | 'edges'>>): Promise<Workspace>;
+    addCards(workspaceId: string, cardIds: string[]): Promise<Workspace>;
+    addEdge(
+      workspaceId: string,
+      sourceCardId: string,
+      targetCardId: string,
+      meta?: Pick<WorkspaceEdge, 'label' | 'note' | 'color'>,
+    ): Promise<Workspace>;
+    updateEdgeMeta(
+      workspaceId: string,
+      edgeId: string,
+      meta: Pick<WorkspaceEdge, 'label' | 'note' | 'color'>,
+    ): Promise<Workspace>;
   };
   ui: {
     openCard(id: string, opts?: { newTab?: boolean }): void;
@@ -67,6 +79,11 @@ function createStorage(pluginName: string): PluginStorage {
   };
 }
 
+function uuid(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function createPluginSdk(pluginName: string): PluginSdk {
   return {
     cards: {
@@ -83,6 +100,85 @@ export function createPluginSdk(pluginName: string): PluginSdk {
       get: api.getWorkspace,
       create: api.createWorkspace,
       update: api.updateWorkspace,
+      async addCards(workspaceId, cardIds) {
+        const ws = await api.getWorkspace(workspaceId);
+        const existing = new Set(
+          ws.nodes
+            .filter((node): node is Extract<WorkspaceNode, { kind: 'card' }> => node.kind === 'card')
+            .map((node) => node.cardId),
+        );
+        const nextNodes = [...ws.nodes];
+        for (const cardId of cardIds) {
+          const trimmed = cardId.trim();
+          if (!trimmed || existing.has(trimmed)) continue;
+          existing.add(trimmed);
+          nextNodes.push({
+            kind: 'card',
+            id: uuid(),
+            cardId: trimmed,
+            x: 200 + nextNodes.length * 32,
+            y: 200 + nextNodes.length * 24,
+          });
+        }
+        return api.updateWorkspace(workspaceId, { nodes: nextNodes });
+      },
+      async addEdge(workspaceId, sourceCardId, targetCardId, meta = {}) {
+        let next = await api.getWorkspace(workspaceId);
+        const findNode = (cardId: string, ws: Workspace = next) =>
+          ws.nodes.find(
+            (node): node is Extract<WorkspaceNode, { kind: 'card' }> =>
+              node.kind === 'card' && node.cardId === cardId,
+          );
+        if (!findNode(sourceCardId) || !findNode(targetCardId)) {
+          const existing = new Set(
+            next.nodes
+              .filter((node): node is Extract<WorkspaceNode, { kind: 'card' }> => node.kind === 'card')
+              .map((node) => node.cardId),
+          );
+          const nodes = [...next.nodes];
+          for (const cardId of [sourceCardId, targetCardId]) {
+            if (existing.has(cardId)) continue;
+            existing.add(cardId);
+            nodes.push({
+              kind: 'card',
+              id: uuid(),
+              cardId,
+              x: 200 + nodes.length * 32,
+              y: 200 + nodes.length * 24,
+            });
+          }
+          next = await api.updateWorkspace(workspaceId, { nodes });
+        }
+        const source = findNode(sourceCardId);
+        const target = findNode(targetCardId);
+        if (!source || !target) throw new Error('Unable to resolve workspace card nodes');
+        const duplicate = next.edges.some((edge) => edge.source === source.id && edge.target === target.id);
+        if (duplicate) return next;
+        return api.updateWorkspace(workspaceId, {
+          edges: [
+            ...next.edges,
+            {
+              id: uuid(),
+              source: source.id,
+              target: target.id,
+              label: meta.label,
+              note: meta.note,
+              color: meta.color,
+              applied: false,
+            },
+          ],
+        });
+      },
+      async updateEdgeMeta(workspaceId, edgeId, meta) {
+        const ws = await api.getWorkspace(workspaceId);
+        return api.updateWorkspace(workspaceId, {
+          edges: ws.edges.map((edge) =>
+            edge.id === edgeId
+              ? { ...edge, label: meta.label, note: meta.note, color: meta.color }
+              : edge,
+          ),
+        });
+      },
     },
     ui: {
       openCard(id, opts) {

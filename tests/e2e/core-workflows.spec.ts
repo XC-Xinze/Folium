@@ -73,22 +73,30 @@ test('can send the visible graph into a superlink workspace', async ({ page, req
   const beforeRes = await request.get('/api/workspaces');
   expect(beforeRes.ok()).toBe(true);
   const beforeIds = new Set(((await beforeRes.json()).workspaces as Array<{ id: string }>).map((ws) => ws.id));
+  let createdId: string | null = null;
 
-  await page.getByTitle('Pick cards on the canvas and copy them into a new workspace').click();
-  await expect(page.getByText(/1 cards ·/)).toBeVisible();
-  await page.getByRole('button', { name: 'Create Workspace' }).click();
-  await expect(page.getByText('Create picked chain')).toBeVisible();
-  await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(page.getByText(/^Superlink ·/).first()).toBeVisible();
+  try {
+    await page.getByTitle('Pick cards on the canvas and copy them into a new workspace').click();
+    await expect(page.getByText(/1 cards ·/)).toBeVisible();
+    await page.getByRole('button', { name: 'Create Workspace' }).click();
+    await expect(page.getByText('Create picked chain')).toBeVisible();
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await expect(page.getByText(/^Superlink ·/).first()).toBeVisible();
 
-  await expect
-    .poll(async () => {
-      const res = await request.get('/api/workspaces');
-      const body = await res.json();
-      const created = (body.workspaces as Array<{ id: string; name: string; nodes: unknown[] }>).find(
-        (ws) => !beforeIds.has(ws.id) && ws.name.startsWith('Superlink ·'),
-      );
-      return created?.nodes.length ?? 0;
-    })
-    .toBeGreaterThan(0);
+    await expect
+      .poll(async () => {
+        const res = await request.get('/api/workspaces');
+        const body = await res.json();
+        const created = (body.workspaces as Array<{ id: string; name: string; nodes: unknown[] }>).find(
+          (ws) => !beforeIds.has(ws.id) && ws.name.startsWith('Superlink ·'),
+        );
+        createdId = created?.id ?? createdId;
+        return created?.nodes.length ?? 0;
+      })
+      .toBeGreaterThan(0);
+  } finally {
+    if (createdId) {
+      await request.delete(`/api/workspaces/${createdId}`);
+    }
+  }
 });

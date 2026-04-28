@@ -293,38 +293,38 @@ export function CardNode({ data, id, selected }: NodeProps) {
   const stylesByVariant = {
     focus: {
       border: 'border-2 border-ink dark:border-[#a7c7a1]',
-      bg: 'bg-white dark:bg-[#363a4f]',
+      bg: 'bg-paper dark:bg-[#363a4f]',
       opacity: 'opacity-100',
-      shadow: 'shadow-xl',
+      shadow: 'shadow-[0_2px_3px_rgba(45,45,45,0.05),0_18px_44px_rgba(45,45,45,0.14)]',
       badge: 'bg-ink text-white dark:bg-[#a7c7a1] dark:text-[#24273a]',
     },
     tree: {
-      border: 'border border-gray-200 dark:border-[#494d64]',
-      bg: 'bg-white dark:bg-[#363a4f]',
+      border: 'border border-paperEdge dark:border-[#494d64]',
+      bg: 'bg-paper dark:bg-[#363a4f]',
       opacity: 'opacity-100',
-      shadow: 'shadow-md',
+      shadow: 'shadow-paper',
       badge: 'bg-gray-100 dark:bg-[#494d64] text-gray-700 dark:text-[#cad3f5]',
     },
     'cross-flank': {
       border: 'border border-link dark:border-[#9bc2cf]',
-      bg: 'bg-white dark:bg-[#363a4f]',
+      bg: 'bg-paper dark:bg-[#363a4f]',
       opacity: 'opacity-100',
-      shadow: 'shadow-md',
+      shadow: 'shadow-paper',
       badge: 'bg-[#d2e5f3] text-link dark:bg-[#9bc2cf]/20 dark:text-[#9bc2cf]',
     },
     'tag-related': {
       border: 'border border-emerald-400 dark:border-[#a6da95]',
-      bg: 'bg-white dark:bg-[#363a4f]',
+      bg: 'bg-paper dark:bg-[#363a4f]',
       opacity: 'opacity-100',
-      shadow: 'shadow-md',
+      shadow: 'shadow-paper',
       badge: 'bg-emerald-50 text-emerald-700 dark:bg-[#a6da95]/15 dark:text-[#a6da95]',
     },
     potential: {
       // 用虚线边框 + 较小阴影区分"弱关系"，不再用透明度
-      border: 'border border-dashed border-gray-400 dark:border-[#6e738d]',
-      bg: 'bg-white dark:bg-[#363a4f]',
+      border: 'border border-dashed border-paperEdge dark:border-[#6e738d]',
+      bg: 'bg-[#f7f6ef] dark:bg-[#363a4f]',
       opacity: 'opacity-100',
-      shadow: 'shadow-sm',
+      shadow: 'shadow-[0_1px_2px_rgba(45,45,45,0.04),0_8px_20px_rgba(45,45,45,0.06)]',
       badge: 'bg-gray-100 dark:bg-[#494d64] text-gray-500 dark:text-[#a5adcb]',
     },
   } as const;
@@ -501,7 +501,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
           dialog.alert((err as Error).message, { title: 'Link failed' });
         }
       }}
-      className={`nowheel group relative rounded-xl ${styles.border} ${styles.bg} ${styles.shadow} ${styles.opacity} cursor-default flex flex-col ${
+      className={`nowheel group relative rounded-lg overflow-hidden ${styles.border} ${styles.bg} ${styles.shadow} ${styles.opacity} cursor-default flex flex-col transition-shadow duration-150 hover:shadow-[0_2px_4px_rgba(45,45,45,0.06),0_18px_46px_rgba(45,45,45,0.13)] ${
         linkDropOver ? 'ring-2 ring-accent ring-offset-2' : ''
       } ${
         superlinkSelection?.active
@@ -814,7 +814,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
       ) : (
         <>
           <header
-            className="px-5 pt-4 pb-3 flex items-start justify-between gap-3 cursor-grab active:cursor-grabbing"
+            className="px-5 pt-4 pb-3 flex items-start justify-between gap-3 cursor-grab active:cursor-grabbing border-b border-paperEdge/70 bg-gradient-to-b from-white/60 to-transparent dark:border-[#494d64] dark:from-white/5"
             title="Drag this header to move the card"
           >
             <div className="flex items-baseline gap-2 min-w-0">
@@ -878,7 +878,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
             // nodrag nopan nowheel + capture 阶段拦截，避免 React Flow 把卡内滚轮当成画布缩放
             onWheelCapture={(e) => e.stopPropagation()}
             onWheel={(e) => e.stopPropagation()}
-            className={`nodrag nopan nowheel prose-card text-[12px] text-ink px-5 pb-4 overflow-y-auto ${
+            className={`nodrag nopan nowheel prose-card text-[12px] text-ink px-5 py-3 overflow-y-auto ${
               h ? 'flex-1' : 'max-h-72'
             }`}
             dangerouslySetInnerHTML={{ __html: html }}
@@ -886,7 +886,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
 
           {variant === 'focus' && !isGhost && backlinks.length > 0 && (
             <div
-              className="nodrag nopan nowheel px-5 pb-2 pt-2 border-t border-gray-100 dark:border-[#494d64]"
+              className="nodrag nopan nowheel px-5 pb-2 pt-2 border-t border-paperEdge/70 dark:border-[#494d64]"
               onMouseDown={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
               onWheelCapture={(e) => e.stopPropagation()}
@@ -938,7 +938,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
           )}
 
           {(tags.length > 0 || full) && !isGhost && (
-            <footer className="px-5 pb-3 pt-2 border-t border-gray-100 dark:border-[#494d64] space-y-1">
+            <footer className="px-5 pb-3 pt-2 border-t border-paperEdge/70 bg-white/30 dark:bg-white/5 dark:border-[#494d64] space-y-1">
               {tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {tags.slice(0, 6).map((t) => (

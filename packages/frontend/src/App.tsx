@@ -67,6 +67,17 @@ export function App() {
   }, [theme]);
 
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
+  const vaultSettingsQ = useQuery({ queryKey: ['vault-settings'], queryFn: api.getVaultSettings });
+
+  useEffect(() => {
+    const fonts = vaultSettingsQ.data?.settings.fonts;
+    if (!fonts) return;
+    const root = document.documentElement;
+    root.style.setProperty('--font-ui', quoteFont(fonts.ui));
+    root.style.setProperty('--font-body', quoteFont(fonts.body));
+    root.style.setProperty('--font-display', quoteFont(fonts.display));
+    root.style.setProperty('--font-mono', quoteFont(fonts.mono));
+  }, [vaultSettingsQ.data?.settings.fonts]);
 
   // 全局命令系统
   const qc = useQueryClient();
@@ -314,6 +325,19 @@ export function App() {
       <CommandPalette />
     </div>
   );
+}
+
+function quoteFont(font: string): string {
+  return font
+    .split(',')
+    .map((part) => {
+      const name = part.trim();
+      if (!name) return '';
+      if (/^['"]/.test(name) || /^(serif|sans-serif|monospace|system-ui|ui-monospace)$/i.test(name)) return name;
+      return `'${name.replace(/'/g, "\\'")}'`;
+    })
+    .filter(Boolean)
+    .join(', ');
 }
 
 /** 主区顶部 bar：只保留新建卡片和 inline 新建面板 */

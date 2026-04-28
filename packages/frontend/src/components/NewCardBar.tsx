@@ -360,7 +360,7 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
             placeholder="What's on your mind?"
             rows={3}
             className="w-full bg-transparent border-0 outline-none resize-none text-[14px] text-ink placeholder:text-gray-300 leading-[1.8]"
-            style={{ fontFamily: '"Inter", "Source Han Serif SC", "Songti SC", "Noto Serif SC", serif' }}
+            style={{ fontFamily: 'var(--font-body), Inter, system-ui, sans-serif' }}
           />
 
           {/* Tag autocomplete popover */}

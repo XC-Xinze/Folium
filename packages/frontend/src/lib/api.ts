@@ -121,6 +121,21 @@ export interface Workspace {
   edges: WorkspaceEdge[];
 }
 
+export interface FontSettings {
+  ui: string;
+  body: string;
+  display: string;
+  mono: string;
+}
+
+export interface VaultSettings {
+  attachmentPolicy: 'global' | 'per-box';
+  backupEnabled: boolean;
+  backupIntervalHours: number;
+  backupKeep: number;
+  fonts: FontSettings;
+}
+
 export interface ReferencedFromHit {
   sourceId: string;
   sourceTitle: string;
@@ -622,21 +637,11 @@ export const api = {
   },
   getVaultSettings: () =>
     get<{
-      settings: {
-        attachmentPolicy: 'global' | 'per-box';
-        backupEnabled: boolean;
-        backupIntervalHours: number;
-        backupKeep: number;
-      };
+      settings: VaultSettings;
     }>(`/vault-settings`),
   patchVaultSettings: async (
-    patch: Partial<{
-      attachmentPolicy: 'global' | 'per-box';
-      backupEnabled: boolean;
-      backupIntervalHours: number;
-      backupKeep: number;
-    }>,
-  ): Promise<{ settings: { attachmentPolicy: 'global' | 'per-box'; backupEnabled: boolean; backupIntervalHours: number; backupKeep: number } }> => {
+    patch: Partial<VaultSettings>,
+  ): Promise<{ settings: VaultSettings }> => {
     const res = await fetch(`${BASE}/vault-settings`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

@@ -20,6 +20,13 @@ export interface VaultSettings {
   backupIntervalHours: number;
   /** 保留最近多少份备份；超出 prune 老的 */
   backupKeep: number;
+  /** UI / card typography preferences. Values are CSS font-family stacks. */
+  fonts: {
+    ui: string;
+    body: string;
+    display: string;
+    mono: string;
+  };
 }
 
 const DEFAULTS: VaultSettings = {
@@ -27,6 +34,12 @@ const DEFAULTS: VaultSettings = {
   backupEnabled: true,
   backupIntervalHours: 24,
   backupKeep: 7,
+  fonts: {
+    ui: 'Inter',
+    body: 'Inter',
+    display: 'Newsreader',
+    mono: 'JetBrains Mono',
+  },
 };
 
 const ZETTEL_DIR = '.zettel';
@@ -44,7 +57,7 @@ async function load(): Promise<VaultSettings> {
   try {
     const raw = await readFile(filePath(), 'utf8');
     const parsed = JSON.parse(raw) as Partial<VaultSettings>;
-    cache = { ...DEFAULTS, ...parsed };
+    cache = { ...DEFAULTS, ...parsed, fonts: { ...DEFAULTS.fonts, ...parsed.fonts } };
   } catch {
     cache = { ...DEFAULTS };
   }

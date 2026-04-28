@@ -22,9 +22,10 @@ export default {
         paper: '0 1px 2px rgba(45,45,45,0.04), 0 10px 28px rgba(45,45,45,0.07)',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        display: ['Newsreader', 'Georgia', 'serif'],
-        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+        sans: ['var(--font-ui)', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        body: ['var(--font-body)', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ['var(--font-display)', 'Newsreader', 'Georgia', 'serif'],
+        mono: ['var(--font-mono)', 'JetBrains Mono', 'ui-monospace', 'monospace'],
       },
     },
   },

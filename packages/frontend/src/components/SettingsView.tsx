@@ -17,6 +17,7 @@ import { TrashPanel } from './TrashPanel';
 import { SearchReplacePanel } from './SearchReplacePanel';
 import { ExportPanel } from './ExportPanel';
 import { DiscoveriesPanel } from './DiscoveriesPanel';
+import type { FontSettings } from '../lib/api';
 
 export function SettingsView() {
   // 在 modal 模式下，"返回"只需要关弹窗；其他场景由模态外层处理
@@ -61,6 +62,7 @@ export function SettingsView() {
             ))}
           </div>
         </Field>
+        <FontSettingsPanel />
       </Section>
 
       <Section title="General">
@@ -114,6 +116,97 @@ export function SettingsView() {
         </Section>
       ))}
     </div>
+  );
+}
+
+const FONT_PRESETS = [
+  { label: 'Inter', value: 'Inter' },
+  { label: 'Newsreader', value: 'Newsreader' },
+  { label: 'System UI', value: 'system-ui' },
+  { label: 'Georgia', value: 'Georgia' },
+  { label: 'Serif', value: 'serif' },
+  { label: 'Sans Serif', value: 'sans-serif' },
+  { label: 'JetBrains Mono', value: 'JetBrains Mono' },
+  { label: 'Menlo', value: 'Menlo' },
+  { label: 'Monospace', value: 'monospace' },
+] as const;
+
+const DEFAULT_FONTS: FontSettings = {
+  ui: 'Inter',
+  body: 'Inter',
+  display: 'Newsreader',
+  mono: 'JetBrains Mono',
+};
+
+function FontSettingsPanel() {
+  const qc = useQueryClient();
+  const settingsQ = useQuery({ queryKey: ['vault-settings'], queryFn: api.getVaultSettings });
+  const fonts = settingsQ.data?.settings.fonts ?? DEFAULT_FONTS;
+  const mut = useMutation({
+    mutationFn: (next: FontSettings) => api.patchVaultSettings({ fonts: next }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['vault-settings'] }),
+  });
+  const patchFont = (key: keyof FontSettings, value: string) => {
+    mut.mutate({ ...fonts, [key]: value });
+  };
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+      <FontSelect
+        label="UI"
+        value={fonts.ui}
+        disabled={mut.isPending}
+        onChange={(value) => patchFont('ui', value)}
+      />
+      <FontSelect
+        label="Card body"
+        value={fonts.body}
+        disabled={mut.isPending}
+        onChange={(value) => patchFont('body', value)}
+      />
+      <FontSelect
+        label="Headings"
+        value={fonts.display}
+        disabled={mut.isPending}
+        onChange={(value) => patchFont('display', value)}
+      />
+      <FontSelect
+        label="Code / IDs"
+        value={fonts.mono}
+        disabled={mut.isPending}
+        onChange={(value) => patchFont('mono', value)}
+      />
+    </div>
+  );
+}
+
+function FontSelect({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-3 rounded border border-gray-200 dark:border-[#363a4f] px-3 py-2">
+      <span className="text-[12px] font-semibold text-gray-600 dark:text-gray-300">{label}</span>
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-40 rounded border border-gray-200 dark:border-[#494d64] bg-white dark:bg-[#24273a] px-2 py-1 text-[12px] outline-none focus:border-accent"
+      >
+        {FONT_PRESETS.map((font) => (
+          <option key={font.value} value={font.value}>
+            {font.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

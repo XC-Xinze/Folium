@@ -3,8 +3,14 @@
 @tailwind utilities;
 
 html, body, #root { height: 100%; }
+:root {
+  --font-ui: 'Inter';
+  --font-body: 'Inter';
+  --font-display: 'Newsreader';
+  --font-mono: 'JetBrains Mono';
+}
 body {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--font-ui), 'Inter', system-ui, sans-serif;
   background:
     radial-gradient(circle at 20% 0%, rgba(211, 228, 209, 0.28), transparent 30%),
     linear-gradient(135deg, #fffdf8 0%, #f8f6f1 58%, #efebe4 100%);
@@ -60,11 +66,13 @@ html.dark .placeholder\:text-gray-300::placeholder { color: #6e738d !important; 
 .prose-card h1 { font-size: 1.25rem; font-weight: 800; margin-bottom: 0.75rem; }
 .prose-card h2 { font-size: 1.1rem;  font-weight: 700; margin: 1rem 0 0.5rem; }
 .prose-card h3 { font-size: 1rem;    font-weight: 700; margin: 0.75rem 0 0.5rem; }
+.prose-card { font-family: var(--font-body), 'Inter', system-ui, sans-serif; }
+.prose-card h1, .prose-card h2, .prose-card h3 { font-family: var(--font-display), 'Newsreader', Georgia, serif; }
 .prose-card p  { line-height: 1.75; margin: 0.5rem 0; text-align: justify; }
 .prose-card ul, .prose-card ol { margin: 0.5rem 0 0.5rem 1.5rem; line-height: 1.7; }
 .prose-card ul { list-style: disc; }
 .prose-card ol { list-style: decimal; }
-.prose-card code { background: #f1f5f9; padding: 0 4px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; font-size: 0.875em; }
+.prose-card code { background: #f1f5f9; padding: 0 4px; border-radius: 3px; font-family: var(--font-mono), 'JetBrains Mono', monospace; font-size: 0.875em; }
 html.dark .prose-card code { background: #494d64; color: #cad3f5; }
 .prose-card strong { font-weight: 700; color: #1f2933; }
 html.dark .prose-card strong { color: #f4dbd6; } /* rosewater */
@@ -108,7 +116,7 @@ html.dark .transclude-card {
   margin-bottom: 0.25rem;
 }
 html.dark .transclude-header { color: #a7c7a1; }
-.transclude-id { font-family: 'JetBrains Mono', monospace; font-weight: 700; cursor: pointer; }
+.transclude-id { font-family: var(--font-mono), 'JetBrains Mono', monospace; font-weight: 700; cursor: pointer; }
 .transclude-id:hover { text-decoration: underline; }
 .transclude-title { color: #4b5563; font-weight: 600; }
 html.dark .transclude-title { color: #b8c0e0; }

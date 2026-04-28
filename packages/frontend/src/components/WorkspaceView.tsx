@@ -328,6 +328,7 @@ function WorkspaceInner({ workspaceId }: Props) {
   const onConnect: OnConnect = useCallback(
     (conn: Connection) => {
       if (!conn.source || !conn.target) return;
+      if (conn.source === conn.target) return;
       mutateWs((ws) => ({
         ...ws,
         edges: [

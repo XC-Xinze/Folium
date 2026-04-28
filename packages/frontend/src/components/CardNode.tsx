@@ -1,7 +1,7 @@
 import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDownToLine, ArrowUpToLine, Check, ChevronDown, ChevronRight, GripVertical, Image, Layers, Pencil, Star, Trash2, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, GripVertical, Image, Layers, Pencil, Star, Trash2, X } from 'lucide-react';
 import { isCardDrag, readCardDragData, setCardDragData } from '../lib/dragCard';
 import { dialog } from '../lib/dialog';
 import { api, type Card } from '../lib/api';
@@ -120,29 +120,6 @@ export function CardNode({ data, id, selected }: NodeProps) {
     }
   };
 
-  const onPromote = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const ok = await dialog.confirm(`Promote ${cardLuhmannId}?`, {
-      title: 'Promote card',
-      description: `The .md file will be renamed and every [[${cardLuhmannId}]] reference updated to the new id.`,
-      confirmLabel: 'Promote',
-    });
-    if (!ok) return;
-    setPromoting(true);
-    try {
-      const result = await api.promoteCard(cardLuhmannId);
-      qc.invalidateQueries({ queryKey: ['cards'] });
-      qc.invalidateQueries({ queryKey: ['indexes'] });
-      qc.invalidateQueries({ queryKey: ['positions'] });
-      qc.invalidateQueries({ queryKey: ['tags'] });
-      navigate(result.newId);
-    } catch (err) {
-      dialog.alert((err as Error).message, { title: 'Promote failed' });
-    } finally {
-      setPromoting(false);
-    }
-  };
-
   const startEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!full) return;
@@ -227,30 +204,6 @@ export function CardNode({ data, id, selected }: NodeProps) {
       });
     } catch (err) {
       dialog.alert((err as Error).message, { title: 'Delete failed' });
-    } finally {
-      setPromoting(false);
-    }
-  };
-
-  const onDemote = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const ok = await dialog.confirm(`Demote ${cardLuhmannId}?`, {
-      title: 'Demote card',
-      description:
-        'The card becomes a child of its next sibling. Its subtree moves with it.',
-      confirmLabel: 'Demote',
-    });
-    if (!ok) return;
-    setPromoting(true);
-    try {
-      const result = await api.demoteCard(cardLuhmannId);
-      qc.invalidateQueries({ queryKey: ['cards'] });
-      qc.invalidateQueries({ queryKey: ['indexes'] });
-      qc.invalidateQueries({ queryKey: ['positions'] });
-      qc.invalidateQueries({ queryKey: ['tags'] });
-      navigate(result.newId);
-    } catch (err) {
-      dialog.alert((err as Error).message, { title: 'Demote failed' });
     } finally {
       setPromoting(false);
     }
@@ -501,7 +454,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
           dialog.alert((err as Error).message, { title: 'Link failed' });
         }
       }}
-      className={`nowheel group relative rounded-lg overflow-hidden ${styles.border} ${styles.bg} ${styles.shadow} ${styles.opacity} cursor-default flex flex-col transition-shadow duration-150 hover:shadow-[0_2px_4px_rgba(45,45,45,0.06),0_18px_46px_rgba(45,45,45,0.13)] ${
+      className={`nowheel group relative rounded-lg ${styles.border} ${styles.bg} ${styles.shadow} ${styles.opacity} cursor-default flex flex-col transition-shadow duration-150 hover:shadow-[0_2px_4px_rgba(45,45,45,0.06),0_18px_46px_rgba(45,45,45,0.13)] ${
         linkDropOver ? 'ring-2 ring-accent ring-offset-2' : ''
       } ${
         superlinkSelection?.active
@@ -594,27 +547,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
         </>
       )}
 
-      {/* Promote / Demote / Delete / Edit buttons — visible on hover (ghost 不显示) */}
-      {!isIndex && !isGhost && (
-        <>
-          <button
-            onClick={onPromote}
-            disabled={promoting}
-            className="absolute -top-2 -left-2 z-10 w-6 h-6 rounded-full bg-amber-500 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-amber-600 transition-all disabled:opacity-30"
-            title={`Promote ${cardLuhmannId} to parent's sibling (e.g. 1a2 → 1aa)`}
-          >
-            <ArrowUpToLine size={12} />
-          </button>
-          <button
-            onClick={onDemote}
-            disabled={promoting}
-            className="absolute -top-2 left-6 z-10 w-6 h-6 rounded-full bg-sky-500 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-sky-600 transition-all disabled:opacity-30"
-            title={`Demote ${cardLuhmannId} to child of next sibling`}
-          >
-            <ArrowDownToLine size={12} />
-          </button>
-        </>
-      )}
+      {/* Floating card actions. Structure changes now go through drag/reparent handles. */}
       {!isGhost && (
         <button
           onClick={onDelete}

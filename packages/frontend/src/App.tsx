@@ -303,7 +303,7 @@ export function App() {
         </>
       )}
 
-      <main className="flex-1 flex flex-col bg-[#fafafa] dark:bg-[#24273a] min-w-0">
+      <main className="flex-1 flex flex-col bg-surface dark:bg-[#24273a] min-w-0">
         <TopBar />
         {isVaultEmpty ? <EmptyVault /> : <PaneRoot />}
       </main>
@@ -339,7 +339,7 @@ function TopBar() {
   const activeVaultQ = useQuery({ queryKey: ['vaults', 'active'], queryFn: api.getActiveVault });
 
   return (
-    <div className="shrink-0 border-b border-gray-100/60 dark:border-[#363a4f]/60 bg-[#fafafa] dark:bg-[#24273a]">
+    <div className="shrink-0 border-b border-paperEdge/70 dark:border-[#363a4f]/60 bg-surface dark:bg-[#24273a]">
       <div className="flex items-center gap-1.5 px-4 py-1.5">
         <button
           onClick={() => setNewCardOpen(true)}

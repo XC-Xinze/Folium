@@ -162,7 +162,7 @@ export function TrashPanel() {
             <TrashRow
               key={e.fileName}
               badge="WS"
-              badgeColor="bg-purple-100 text-purple-700"
+              badgeColor="bg-accentSoft text-accent"
               title={e.workspace.name}
               deletedAt={e.deletedAt}
               onRestore={() => restoreWsMut.mutate(e.fileName)}

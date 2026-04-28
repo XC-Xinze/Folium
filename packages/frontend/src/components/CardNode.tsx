@@ -289,14 +289,14 @@ export function CardNode({ data, id, selected }: NodeProps) {
   }, [full?.luhmannId, full?.contentMd]);
 
   // Dark 用 Catppuccin Macchiato：surface0=#363a4f (卡 bg), surface1=#494d64 (border),
-  // text=#cad3f5, mauve=#c6a0f6 (focus), green=#a6da95 (tag)
+  // text=#cad3f5, sage=#a7c7a1 (focus), green=#a6da95 (tag)
   const stylesByVariant = {
     focus: {
-      border: 'border-2 border-ink dark:border-[#c6a0f6]',
+      border: 'border-2 border-ink dark:border-[#a7c7a1]',
       bg: 'bg-white dark:bg-[#363a4f]',
       opacity: 'opacity-100',
       shadow: 'shadow-xl',
-      badge: 'bg-ink text-white dark:bg-[#c6a0f6] dark:text-[#24273a]',
+      badge: 'bg-ink text-white dark:bg-[#a7c7a1] dark:text-[#24273a]',
     },
     tree: {
       border: 'border border-gray-200 dark:border-[#494d64]',
@@ -306,11 +306,11 @@ export function CardNode({ data, id, selected }: NodeProps) {
       badge: 'bg-gray-100 dark:bg-[#494d64] text-gray-700 dark:text-[#cad3f5]',
     },
     'cross-flank': {
-      border: 'border border-accent dark:border-[#c6a0f6]',
+      border: 'border border-link dark:border-[#9bc2cf]',
       bg: 'bg-white dark:bg-[#363a4f]',
       opacity: 'opacity-100',
       shadow: 'shadow-md',
-      badge: 'bg-accentSoft text-accent dark:bg-[#c6a0f6]/20 dark:text-[#c6a0f6]',
+      badge: 'bg-[#d2e5f3] text-link dark:bg-[#9bc2cf]/20 dark:text-[#9bc2cf]',
     },
     'tag-related': {
       border: 'border border-emerald-400 dark:border-[#a6da95]',
@@ -502,7 +502,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
         }
       }}
       className={`nowheel group relative rounded-xl ${styles.border} ${styles.bg} ${styles.shadow} ${styles.opacity} cursor-default flex flex-col ${
-        linkDropOver ? 'ring-2 ring-purple-400 ring-offset-2' : ''
+        linkDropOver ? 'ring-2 ring-accent ring-offset-2' : ''
       } ${
         superlinkSelection?.active
           ? superlinkSelection.selected
@@ -561,7 +561,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
           }}
           onMouseDown={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          className="nodrag nopan absolute bottom-2 right-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white dark:bg-[#363a4f] hover:bg-purple-500 hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 dark:border-[#494d64] hover:border-purple-500 shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
+          className="nodrag nopan absolute bottom-2 right-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white dark:bg-[#363a4f] hover:bg-accent hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 dark:border-[#494d64] hover:border-accent shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
           title="Link/reparent handle: drop on another card to link, on sidebar tree to reparent, on workspace to add"
         >
           <GripVertical size={10} />
@@ -578,7 +578,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
             }}
             onMouseDown={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
-            className="nodrag nopan absolute bottom-2 left-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white dark:bg-[#363a4f] hover:bg-purple-500 hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 dark:border-[#494d64] hover:border-purple-500 shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
+            className="nodrag nopan absolute bottom-2 left-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white dark:bg-[#363a4f] hover:bg-accent hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 dark:border-[#494d64] hover:border-accent shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
             title="Drag onto another workspace card to create a workspace-only link"
           >
             <GripVertical size={10} />
@@ -819,7 +819,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
           >
             <div className="flex items-baseline gap-2 min-w-0">
               {isGhost ? (
-                <span className="font-mono text-[10px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-purple-100 text-purple-600">
+                <span className="font-mono text-[10px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-surfaceAlt text-accent">
                   Temp
                 </span>
               ) : (
@@ -834,7 +834,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
                   }}
                   onMouseDown={(e) => e.stopPropagation()}
                   onPointerDown={(e) => e.stopPropagation()}
-                  className={`nodrag nopan font-mono text-[11px] font-bold px-1.5 py-0.5 rounded cursor-grab active:cursor-grabbing hover:ring-2 hover:ring-purple-400 ${styles.badge}`}
+                  className={`nodrag nopan font-mono text-[11px] font-bold px-1.5 py-0.5 rounded cursor-grab active:cursor-grabbing hover:ring-2 hover:ring-accent ${styles.badge}`}
                   title={
                     nodeData.isInWorkspace
                       ? `Drag ${display.luhmannId} to another workspace card to create a workspace-only link`
@@ -844,7 +844,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
                   {display.luhmannId}
                 </span>
               )}
-              <h3 className="text-[13px] font-bold tracking-tight truncate">
+              <h3 className="font-display text-[15px] font-semibold tracking-tight truncate">
                 {display.title || (isGhost ? '(untitled temp)' : cardLuhmannId)}
               </h3>
             </div>
@@ -855,7 +855,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
             )}
             {isIndex && full && full.autoMembers && full.autoMembers.length > 0 && (
               <span
-                className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 border border-purple-200"
+                className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-accentSoft text-accent border border-accent/20"
                 title={`${full.autoMembers.length} cards auto-included via @members directive`}
               >
                 +{full.autoMembers.length} auto
@@ -978,10 +978,10 @@ export function CardNode({ data, id, selected }: NodeProps) {
 
       {/* Ghost-from-workspace label */}
       {isGhost && nodeData.ghostFromWorkspace && (
-        <div className="absolute -bottom-2.5 left-3 px-1.5 py-0.5 rounded text-[9px] font-bold bg-white border border-purple-300 text-purple-600 shadow-sm flex items-center gap-1">
+        <div className="absolute -bottom-2.5 left-3 px-1.5 py-0.5 rounded text-[9px] font-bold bg-white border border-accent/30 text-accent shadow-sm flex items-center gap-1">
           <span className="text-[8px]">⌘</span>
           <span>from workspace</span>
-          <span className="text-purple-700">{nodeData.ghostFromWorkspace.workspaceName}</span>
+          <span className="text-accent">{nodeData.ghostFromWorkspace.workspaceName}</span>
         </div>
       )}
 

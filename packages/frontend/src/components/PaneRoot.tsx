@@ -95,13 +95,13 @@ export function PaneRoot() {
   if (isMobile) {
     const activeLeaf = findActiveLeaf(root, activeLeafId) ?? firstLeaf(root);
     return (
-      <div className="flex-1 flex min-h-0 min-w-0 bg-[#fafafa] dark:bg-[#24273a]">
+      <div className="flex-1 flex min-h-0 min-w-0 bg-surface dark:bg-[#24273a]">
         <PaneNode pane={activeLeaf} />
       </div>
     );
   }
   return (
-    <div className="flex-1 flex min-h-0 min-w-0 bg-[#fafafa] dark:bg-[#24273a]">
+    <div className="flex-1 flex min-h-0 min-w-0 bg-surface dark:bg-[#24273a]">
       <PaneNode pane={root} />
     </div>
   );

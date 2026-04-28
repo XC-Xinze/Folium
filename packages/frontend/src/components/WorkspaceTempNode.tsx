@@ -53,18 +53,18 @@ export function WorkspaceTempNode({ data }: NodeProps) {
         e.stopPropagation();
         d.onCardLinkDrop?.(dragged.luhmannId);
       }}
-      className={`group relative bg-white border-2 border-dashed border-purple-300 rounded-lg shadow-md w-[300px] min-h-[140px] ${
-        linkDropOver ? 'ring-2 ring-purple-400 ring-offset-2' : ''
+      className={`group relative bg-[#fffdf8] border-2 border-dashed border-accent/40 rounded-lg shadow-md w-[300px] min-h-[140px] ${
+        linkDropOver ? 'ring-2 ring-accent ring-offset-2' : ''
       }`}
     >
-      <Handle id="top" type="target" position={Position.Top} className="!bg-purple-400 !w-2 !h-2 !border-0" />
-      <Handle id="bottom" type="source" position={Position.Bottom} className="!bg-purple-400 !w-2 !h-2 !border-0" />
+      <Handle id="top" type="target" position={Position.Top} className="!bg-accent !w-2 !h-2 !border-0" />
+      <Handle id="bottom" type="source" position={Position.Bottom} className="!bg-accent !w-2 !h-2 !border-0" />
       <Handle id="left-in" type="target" position={Position.Left} className="!bg-transparent !w-2 !h-2 !border-0" />
       <Handle id="left-out" type="source" position={Position.Left} className="!bg-transparent !w-2 !h-2 !border-0" />
       <Handle id="right-in" type="target" position={Position.Right} className="!bg-transparent !w-2 !h-2 !border-0" />
       <Handle id="right-out" type="source" position={Position.Right} className="!bg-transparent !w-2 !h-2 !border-0" />
 
-      <span className="absolute top-2 right-3 text-[8px] font-bold uppercase tracking-widest text-purple-500">
+      <span className="absolute top-2 right-3 text-[8px] font-bold uppercase tracking-widest text-accent">
         Temp
       </span>
 

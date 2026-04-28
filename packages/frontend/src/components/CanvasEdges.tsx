@@ -1,7 +1,7 @@
 /**
  * Canvas 自定义 edge 类型：
  *   - PotentialEdge：灰虚线 + 中点 "Link" 按钮 (promote 成 [[link]])
- *   - CrossEdge：紫实线 + 中点 "X" 按钮 (unlink，移除 [[link]])
+ *   - CrossEdge：蓝灰实线 + 中点 "X" 按钮 (unlink，移除 [[link]])
  *
  * 中点按钮用 EdgeLabelRenderer 绝对定位到 bezier midpoint，跟卡片角按钮不重叠。
  * 默认 opacity 低，hover 在 edge 区附近时高亮。
@@ -50,7 +50,7 @@ export function PotentialEdge(props: EdgeProps) {
                 promoteMut.mutate();
               }}
               disabled={promoteMut.isPending}
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white border border-purple-300 text-purple-600 text-[9px] font-bold shadow-sm hover:bg-purple-500 hover:text-white hover:border-purple-500 transition-colors opacity-60 hover:opacity-100"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white border border-accent/30 text-accent text-[9px] font-bold shadow-sm hover:bg-accent hover:text-white hover:border-accent transition-colors opacity-60 hover:opacity-100"
               title={`Promote potential to real [[link]]: write [[${target}]] into ${source}`}
             >
               <Link2 size={9} />
@@ -100,7 +100,7 @@ export function CrossEdge(props: EdgeProps) {
           <button
             onClick={onUnlink}
             disabled={removeMut.isPending}
-            className="w-4 h-4 rounded-full bg-white border border-purple-300 text-purple-500 hover:bg-red-500 hover:text-white hover:border-red-500 shadow-sm flex items-center justify-center transition-colors opacity-50 hover:opacity-100"
+            className="w-4 h-4 rounded-full bg-white border border-link/30 text-link hover:bg-red-500 hover:text-white hover:border-red-500 shadow-sm flex items-center justify-center transition-colors opacity-50 hover:opacity-100"
             title={`Unlink: remove [[${target}]] from ${source}`}
           >
             <X size={9} />

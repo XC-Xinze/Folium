@@ -496,10 +496,10 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
         <HistoryButtons />
         <span className="w-px h-4 bg-gray-200 dark:bg-[#494d64]" />
         <div className="flex items-center gap-1.5">
-          <EdgeToggle color="#7c4dff" label="Link" active={showCrossLinks} onClick={() => setShowCrossLinks(!showCrossLinks)} title="Manual [[link]] edges (purple)" />
+          <EdgeToggle color="#385f73" label="Link" active={showCrossLinks} onClick={() => setShowCrossLinks(!showCrossLinks)} title="Manual [[link]] edges" />
           <EdgeToggle color="#10b981" label="Tag" active={showTagRelated} onClick={() => setShowTagRelated(!showTagRelated)} title="Tag co-occurrence edges (green)" />
           <EdgeToggle color="#cbd5e1" label="Potential" active={showPotential} onClick={() => setShowPotential(!showPotential)} title="Text-similarity potential edges (gray dashed)" />
-          <EdgeToggle color="#a78bfa" label="Temp" active={showWorkspaceLinks} onClick={() => setShowWorkspaceLinks(!showWorkspaceLinks)} title="Workspace temp ghost cards & their links" />
+          <EdgeToggle color="#536253" label="Temp" active={showWorkspaceLinks} onClick={() => setShowWorkspaceLinks(!showWorkspaceLinks)} title="Workspace temp ghost cards & their links" />
         </div>
         <span className="w-px h-4 bg-gray-200 dark:bg-[#494d64]" />
         <FocusDepthBadge depth={focusDepth} max={MAX_FOCUS_DEPTH} />

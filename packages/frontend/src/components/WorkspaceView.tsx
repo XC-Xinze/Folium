@@ -136,13 +136,13 @@ function WorkspaceInner({ workspaceId }: Props) {
         const readonlyVaultEdge = !!e.vaultLink || !!e.vaultStructure || e.label === 'tree';
         // Edges with a temp endpoint: dotted, no Apply button — they auto-materialize
         // when the temp is promoted to a vault card.
-        // Card↔card: dashed when not applied, solid purple when applied.
-        const stroke = e.color ?? '#7c4dff';
+        // Card↔card: dashed when not applied, solid blue-gray when applied.
+        const stroke = e.color ?? '#385f73';
         const styleBase = bothCards
           ? e.applied || readonlyVaultEdge
             ? { stroke, strokeWidth: 2 }
             : { stroke: e.color ?? '#9ca3af', strokeWidth: 1.5, strokeDasharray: '6 4' }
-          : { stroke: e.color ?? '#a78bfa', strokeWidth: 1.5, strokeDasharray: '2 4' };
+          : { stroke: e.color ?? '#536253', strokeWidth: 1.5, strokeDasharray: '2 4' };
         return {
           id: e.id,
           source: e.source,
@@ -448,13 +448,13 @@ function WorkspaceInner({ workspaceId }: Props) {
   return (
     <div
       ref={containerRef}
-      className={`w-full h-full relative bg-[#fafaf6] transition-colors ${dragHover ? 'bg-accentSoft/40' : ''}`}
+      className={`w-full h-full relative bg-surface transition-colors ${dragHover ? 'bg-accentSoft/40' : ''}`}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
       {/* Toolbar —— 之前的 dock/fullscreen/close 按钮在 pane 系统下都被 tab 系统替代了 */}
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-1 bg-white px-2 py-1.5 rounded-lg shadow-md border border-gray-200">
+      <div className="absolute top-4 left-4 z-10 flex items-center gap-1 bg-paper/90 px-2 py-1.5 rounded-lg shadow-md border border-paperEdge backdrop-blur">
         <RenamableName
           value={wsQ.data.name}
           onSave={(name) => {
@@ -479,7 +479,7 @@ function WorkspaceInner({ workspaceId }: Props) {
         </button>
         <button
           onClick={() => addTempCard(400, 200)}
-          className="flex items-center gap-1 text-[11px] font-bold text-purple-700 hover:text-purple-800 px-2 py-1 rounded hover:bg-purple-50"
+          className="flex items-center gap-1 text-[11px] font-bold text-accent hover:text-ink px-2 py-1 rounded hover:bg-accentSoft"
           title="Add temporary card"
         >
           <FilePlus size={12} /> Temp card
@@ -620,7 +620,7 @@ function ParentCardPicker({
                 <span className="font-mono text-[11px] font-bold text-accent shrink-0">{card.luhmannId}</span>
                 <span className="text-sm font-semibold truncate">{card.title || card.luhmannId}</span>
                 {candidateSet.has(card.luhmannId) && (
-                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-accentSoft text-accent">
                     linked
                   </span>
                 )}
@@ -668,7 +668,7 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
   const [metaOpen, setMetaOpen] = useState(false);
   const [draftLabel, setDraftLabel] = useState(d?.label ?? '');
   const [draftNote, setDraftNote] = useState(d?.note ?? '');
-  const [draftColor, setDraftColor] = useState(d?.color ?? '#7c4dff');
+  const [draftColor, setDraftColor] = useState(d?.color ?? '#385f73');
   const relationKind = d?.vaultLink
     ? 'vault'
     : d?.vaultStructure
@@ -687,7 +687,7 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
     },
     temp: {
       label: 'temp',
-      cls: 'border-purple-300 bg-purple-50 text-purple-700 hover:border-purple-400',
+      cls: 'border-accent/30 bg-accentSoft text-accent hover:border-accent/50',
     },
     vault: {
       label: 'vault',
@@ -793,7 +793,7 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
             onClick={() => {
               setDraftLabel(d?.label ?? '');
               setDraftNote(d?.note ?? '');
-              setDraftColor(d?.color ?? '#7c4dff');
+              setDraftColor(d?.color ?? '#385f73');
               setMetaOpen((open) => !open);
             }}
             className={`max-w-36 truncate text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-sm transition-colors ${relationBadge.cls}`}
@@ -841,7 +841,7 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
                   placeholder="Why are these cards connected?"
                 />
                 <div className="flex items-center gap-2">
-                  {['#7c4dff', '#10b981', '#f59e0b', '#ef4444', '#0ea5e9'].map((color) => (
+                  {['#385f73', '#536253', '#ba635c', '#f59e0b', '#ef4444'].map((color) => (
                     <button
                       key={color}
                       onClick={() => setDraftColor(color)}

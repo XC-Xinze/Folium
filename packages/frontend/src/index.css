@@ -5,8 +5,10 @@
 html, body, #root { height: 100%; }
 body {
   font-family: 'Inter', system-ui, sans-serif;
-  background: #fafafa;
-  color: #1f2933;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(211, 228, 209, 0.28), transparent 30%),
+    linear-gradient(135deg, #fffdf8 0%, #f8f6f1 58%, #efebe4 100%);
+  color: #1c1b1b;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -36,18 +38,21 @@ html.dark .text-gray-700 { color: #b8c0e0 !important; }   /* subtext1 */
 html.dark .text-ink { color: #cad3f5 !important; }         /* text */
 
 html.dark .hover\:text-ink:hover { color: #f4dbd6 !important; }    /* rosewater on hover */
-html.dark .hover\:text-accent:hover { color: #c6a0f6 !important; } /* mauve on hover */
+html.dark .hover\:text-accent:hover { color: #a7c7a1 !important; }
 
 html.dark .border-gray-100 { border-color: #363a4f !important; }
 html.dark .border-gray-200 { border-color: #494d64 !important; }
 html.dark .border-gray-300 { border-color: #5b6078 !important; }
 
-html.dark .bg-accentSoft { background-color: rgba(198,160,246,0.18) !important; }
-html.dark .text-accent { color: #c6a0f6 !important; }     /* mauve */
-html.dark .border-accent\/40 { border-color: rgba(198,160,246,0.4) !important; }
+html.dark .bg-accentSoft { background-color: rgba(167,199,161,0.18) !important; }
+html.dark .text-accent { color: #a7c7a1 !important; }
+html.dark .text-link { color: #9bc2cf !important; }
+html.dark .border-accent\/40 { border-color: rgba(167,199,161,0.4) !important; }
 
 /* paper（NewCardBar 写作区） */
 html.dark .bg-paper { background-color: #1e2030 !important; } /* mantle */
+html.dark .bg-surface { background-color: #24273a !important; }
+html.dark .bg-surfaceAlt { background-color: #363a4f !important; }
 html.dark .border-paperEdge { border-color: #363a4f !important; }
 html.dark .placeholder\:text-gray-300::placeholder { color: #6e738d !important; }
 
@@ -64,13 +69,13 @@ html.dark .prose-card code { background: #494d64; color: #cad3f5; }
 .prose-card strong { font-weight: 700; color: #1f2933; }
 html.dark .prose-card strong { color: #f4dbd6; } /* rosewater */
 .prose-card .wikilink {
-  color: #7c4dff;
+  color: #385f73;
   text-decoration: none;
-  border-bottom: 1px dotted #7c4dff;
+  border-bottom: 1px dotted #385f73;
   cursor: pointer;
 }
-html.dark .prose-card .wikilink { color: #c6a0f6; border-bottom-color: #c6a0f6; } /* mauve */
-.prose-card .wikilink:hover { background: #ede9fe; }
+html.dark .prose-card .wikilink { color: #9bc2cf; border-bottom-color: #9bc2cf; }
+.prose-card .wikilink:hover { background: #d3e4d1; }
 html.dark .prose-card .wikilink:hover { background: #494d64; }
 .prose-card img {
   max-width: 100%;
@@ -80,29 +85,29 @@ html.dark .prose-card .wikilink:hover { background: #494d64; }
   display: block;
 }
 .prose-card a {
-  color: #7c4dff;
+  color: #385f73;
   text-decoration: underline;
 }
-html.dark .prose-card a { color: #c6a0f6; }
+html.dark .prose-card a { color: #9bc2cf; }
 
 /* Transclusion ![[id]]：嵌入卡片的视觉容器 */
 .transclude { margin: 0.5rem 0; }
 .transclude-card {
-  border-left: 3px solid #c4b5fd;
-  background: #faf9ff;
+  border-left: 3px solid #bacbb8;
+  background: #f7f6ef;
   padding: 0.5rem 0.75rem;
   border-radius: 4px;
 }
 html.dark .transclude-card {
-  border-left-color: #c6a0f6;
-  background: rgba(198,160,246,0.08);
+  border-left-color: #a7c7a1;
+  background: rgba(167,199,161,0.08);
 }
 .transclude-header {
   display: flex; align-items: baseline; gap: 0.5rem;
-  font-size: 0.7rem; color: #7c4dff;
+  font-size: 0.7rem; color: #536253;
   margin-bottom: 0.25rem;
 }
-html.dark .transclude-header { color: #c6a0f6; }
+html.dark .transclude-header { color: #a7c7a1; }
 .transclude-id { font-family: 'JetBrains Mono', monospace; font-weight: 700; cursor: pointer; }
 .transclude-id:hover { text-decoration: underline; }
 .transclude-title { color: #4b5563; font-weight: 600; }

@@ -178,11 +178,19 @@ const DEFAULT_TOGGLES: EdgeToggles = {
 };
 
 const EDGE_COLOR: Record<LinkKind, string> = {
-  hierarchy: '#475569',
-  link: '#7c4dff',
-  tag: '#10b981',
-  box: '#f59e0b',
+  hierarchy: '#9a958b',
+  link: '#385f73',
+  tag: '#536253',
+  box: '#b06a54',
 };
+
+const GRAPH_SURFACE = '#fffdf8';
+const GRAPH_PAPER_EDGE = '#d8d3ca';
+const GRAPH_INK = '#1c1b1b';
+const GRAPH_MUTED = '#747878';
+const GRAPH_MOSS = '#536253';
+const GRAPH_BLUE = '#385f73';
+const GRAPH_RUST = '#ba635c';
 
 function GraphInner() {
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
@@ -220,7 +228,7 @@ function GraphInner() {
       .append('line')
       .attr('stroke', (d) => EDGE_COLOR[d.kind])
       .attr('stroke-width', (d) => (d.kind === 'hierarchy' ? 1.4 : 1))
-      .attr('stroke-opacity', (d) => (d.kind === 'hierarchy' ? 0.7 : 0.45))
+      .attr('stroke-opacity', (d) => (d.kind === 'hierarchy' ? 0.48 : 0.36))
       .attr('stroke-dasharray', (d) => (d.kind === 'box' ? '4 3' : null));
 
     // 绘节点 group：含 circle + text
@@ -236,8 +244,13 @@ function GraphInner() {
       .append('circle')
       .attr('r', (d) => d.radius)
       .attr('fill', (d) => fillFor(d, false))
-      .attr('stroke', '#fff')
-      .attr('stroke-width', 1.5);
+      .attr('stroke', (d) => strokeFor(d, false))
+      .attr('stroke-width', (d) => (d.isIndex ? 1.6 : 1.2))
+      .style('filter', (d) =>
+        d.isIndex
+          ? 'drop-shadow(0 8px 18px rgba(83,98,83,0.18))'
+          : 'drop-shadow(0 4px 12px rgba(45,45,45,0.08))',
+      );
 
     nodeG
       .append('text')
@@ -247,7 +260,7 @@ function GraphInner() {
       .attr('font-family', 'ui-monospace, monospace')
       .attr('font-weight', 700)
       .attr('font-size', 9)
-      .attr('fill', '#fff')
+      .attr('fill', (d) => (d.isIndex ? '#fffdf8' : GRAPH_MUTED))
       .attr('pointer-events', 'none')
       .text((d) => d.card.luhmannId);
 
@@ -256,9 +269,10 @@ function GraphInner() {
       .attr('class', 'title-label')
       .attr('text-anchor', 'middle')
       .attr('dy', (d) => d.radius + 12)
-      .attr('font-family', 'system-ui, sans-serif')
-      .attr('font-size', 10)
-      .attr('fill', '#475569')
+      .attr('font-family', 'Newsreader, Georgia, serif')
+      .attr('font-size', (d) => (d.isIndex ? 12 : 11))
+      .attr('font-weight', (d) => (d.isIndex ? 600 : 500))
+      .attr('fill', GRAPH_INK)
       .attr('pointer-events', 'none')
       .text((d) => truncate(d.card.title || d.card.luhmannId, 18));
 
@@ -367,8 +381,15 @@ function GraphInner() {
     nodeG.select('circle').attr('fill', (d) => fillFor(d, d.id === selectedId));
     nodeG
       .select('circle')
-      .attr('stroke', (d) => (d.id === selectedId ? '#f59e0b' : '#fff'))
-      .attr('stroke-width', (d) => (d.id === selectedId ? 3 : 1.5));
+      .attr('stroke', (d) => strokeFor(d, d.id === selectedId))
+      .attr('stroke-width', (d) => (d.id === selectedId ? 3 : d.isIndex ? 1.6 : 1.2))
+      .style('filter', (d) =>
+        d.id === selectedId
+          ? 'drop-shadow(0 10px 26px rgba(83,98,83,0.26))'
+          : d.isIndex
+            ? 'drop-shadow(0 8px 18px rgba(83,98,83,0.18))'
+            : 'drop-shadow(0 4px 12px rgba(45,45,45,0.08))',
+      );
 
     if (selectedId) {
       // 找跟 selected 相连的 ids
@@ -387,7 +408,7 @@ function GraphInner() {
       });
       nodeG.style('opacity', (d) => (neighborIds.has(d.id) ? 1 : 0.25));
     } else {
-      linkSel.attr('stroke-opacity', (d) => (d.kind === 'hierarchy' ? 0.7 : 0.45));
+      linkSel.attr('stroke-opacity', (d) => (d.kind === 'hierarchy' ? 0.48 : 0.36));
       nodeG.style('opacity', 1);
     }
   }, [selectedId, cardsQ.data]);
@@ -459,18 +480,18 @@ function GraphInner() {
   const flip = (k: keyof EdgeToggles) => setToggles((s) => ({ ...s, [k]: !s[k] }));
 
   return (
-    <div className="w-full h-full flex flex-col bg-gray-100 dark:bg-[#181926]">
-      <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-[#1e2030] border-b border-gray-200 dark:border-[#363a4f] overflow-x-auto">
+    <div className="w-full h-full flex flex-col bg-surface dark:bg-[#181926]">
+      <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-paper/85 dark:bg-[#1e2030] border-b border-paperEdge dark:border-[#363a4f] overflow-x-auto backdrop-blur">
         <EdgeToggle color="#475569" label="Hierarchy" active={toggles.hierarchy} onClick={() => flip('hierarchy')} />
-        <EdgeToggle color="#7c4dff" label="Link" active={toggles.link} onClick={() => flip('link')} />
-        <EdgeToggle color="#10b981" label="Tag" active={toggles.tag} onClick={() => flip('tag')} />
-        <EdgeToggle color="#f59e0b" label="Box" active={toggles.box} onClick={() => flip('box')} />
+        <EdgeToggle color={GRAPH_BLUE} label="Link" active={toggles.link} onClick={() => flip('link')} />
+        <EdgeToggle color={GRAPH_MOSS} label="Tag" active={toggles.tag} onClick={() => flip('tag')} />
+        <EdgeToggle color={GRAPH_RUST} label="Box" active={toggles.box} onClick={() => flip('box')} />
         <div className="flex-1" />
         <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
           {cardsQ.data.cards.length} cards · zoom {zoom.toFixed(2)}x · click select · dbl open · drag move
         </span>
       </div>
-      <div className="flex-1 relative overflow-hidden">
+      <div className="flex-1 relative overflow-hidden bg-[radial-gradient(circle_at_20%_0%,rgba(211,228,209,0.28),transparent_32%),linear-gradient(135deg,#fffdf8_0%,#f8f6f1_58%,#efebe4_100%)] dark:bg-none">
         <svg ref={svgRef} className="w-full h-full" />
         {selectedId && overlayPos && selectedCardQ.data && (
           <SelectedCardOverlay
@@ -506,8 +527,10 @@ function SelectedCardOverlay({
   const H = 240;
   return (
     <div
-      className={`absolute pointer-events-auto rounded-xl shadow-2xl flex flex-col overflow-hidden border-2 ${
-        isIndex ? 'bg-accent text-white border-accent' : 'bg-white border-gray-200 text-ink'
+      className={`absolute pointer-events-auto rounded-xl flex flex-col overflow-hidden border backdrop-blur ${
+        isIndex
+          ? 'bg-[#fffdf8]/95 text-ink border-accent shadow-[0_14px_42px_rgba(83,98,83,0.18)]'
+          : 'bg-[#fffdf8]/95 border-paperEdge text-ink shadow-[0_14px_42px_rgba(45,45,45,0.10)]'
       }`}
       style={{
         left: x - W / 2,
@@ -518,40 +541,36 @@ function SelectedCardOverlay({
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <header className={`flex items-center gap-2 px-3 py-2 border-b ${isIndex ? 'border-white/25' : 'border-gray-100'} shrink-0`}>
-        <span className={`font-mono font-bold text-[12px] ${isIndex ? 'text-white/85' : 'text-accent'}`}>
+      <header className="flex items-center gap-2 px-4 py-3 border-b border-paperEdge/70 shrink-0">
+        <span className={`font-mono font-bold text-[11px] ${isIndex ? 'text-accent' : 'text-link'}`}>
           {card.luhmannId}
         </span>
-        <span className="font-bold text-[13px] flex-1 truncate">
+        <span className="font-display text-[18px] font-semibold leading-tight flex-1 truncate">
           {card.title || card.luhmannId}
         </span>
         <button
           onClick={onOpen}
-          className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-            isIndex ? 'bg-white/20 hover:bg-white/30' : 'bg-accentSoft text-accent hover:bg-accent hover:text-white'
-          }`}
+          className="text-[10px] font-bold px-2 py-0.5 rounded border border-accent/30 bg-accentSoft/70 text-accent hover:bg-accent hover:text-white"
           title="Open as chain view (or double-click node)"
         >
           Open
         </button>
         <button
           onClick={onClose}
-          className={`text-[14px] leading-none px-1 rounded ${
-            isIndex ? 'hover:bg-white/20' : 'hover:bg-gray-100'
-          }`}
+          className="text-[14px] leading-none px-1 rounded text-gray-400 hover:bg-surfaceAlt hover:text-ink"
           title="Close"
         >
           ×
         </button>
       </header>
       <div
-        className="prose-card text-[11px] px-3 py-2 overflow-y-auto flex-1"
+        className="prose-card text-[12px] px-4 py-3 overflow-y-auto flex-1"
         dangerouslySetInnerHTML={{ __html: html }}
       />
       {card.tags.length > 0 && (
-        <div className={`px-3 py-1.5 border-t ${isIndex ? 'border-white/25' : 'border-gray-100'} flex flex-wrap gap-1.5 shrink-0`}>
+        <div className="px-4 py-2 border-t border-paperEdge/70 flex flex-wrap gap-1.5 shrink-0">
           {card.tags.slice(0, 8).map((t) => (
-            <span key={t} className={`text-[9px] font-bold ${isIndex ? 'text-white/85' : 'text-accent'}`}>
+            <span key={t} className="text-[9px] font-bold text-accent">
               #{t}
             </span>
           ))}
@@ -562,13 +581,19 @@ function SelectedCardOverlay({
 }
 
 function fillFor(d: SimNode, selected: boolean): string {
-  if (selected) return '#f59e0b';
+  if (selected) return GRAPH_MOSS;
   if (d.isIndex) {
-    if (d.tier === 0) return '#f59e0b'; // master 金色
-    if (d.tier === 1) return '#7c4dff'; // accent 紫
-    return 'rgba(124, 77, 255, 0.65)'; // sub 半透明紫
+    if (d.tier === 0) return GRAPH_RUST;
+    if (d.tier === 1) return GRAPH_MOSS;
+    return '#7f927d';
   }
-  return '#94a3b8'; // atomic 灰
+  return GRAPH_SURFACE;
+}
+
+function strokeFor(d: SimNode, selected: boolean): string {
+  if (selected) return GRAPH_MOSS;
+  if (d.isIndex) return d.tier === 0 ? GRAPH_RUST : GRAPH_MOSS;
+  return GRAPH_PAPER_EDGE;
 }
 
 function truncate(s: string, n: number): string {

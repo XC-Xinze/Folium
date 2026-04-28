@@ -7,19 +7,23 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: '#1f2933',
-        accent: '#7c4dff',
-        accentSoft: '#ede9fe',
+        ink: '#1c1b1b',
+        accent: '#536253',
+        accentSoft: '#d3e4d1',
+        link: '#385f73',
+        surface: '#f8f6f1',
+        surfaceAlt: '#efebe4',
         // 输入区专用的纸面色（仅 NewCardBar 使用）
-        paper: '#fdfcf9',
-        paperEdge: '#e8e4dc',
-        leaf: '#5b8c5a',
+        paper: '#fffdf8',
+        paperEdge: '#d8d3ca',
+        leaf: '#6b8e23',
       },
       boxShadow: {
-        paper: '0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06)',
+        paper: '0 1px 2px rgba(45,45,45,0.04), 0 10px 28px rgba(45,45,45,0.07)',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ['Newsreader', 'Georgia', 'serif'],
         mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
       },
     },

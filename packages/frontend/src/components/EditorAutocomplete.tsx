@@ -92,11 +92,11 @@ export function EditorAutocomplete({
             onMouseEnter={() => setActiveIdx(i)}
             className={`w-full text-left px-3 py-1.5 flex items-baseline gap-2 transition-colors ${
               i === activeIdx
-                ? 'bg-accentSoft dark:bg-[#c6a0f6]/15'
+                ? 'bg-accentSoft dark:bg-[#a7c7a1]/15'
                 : 'hover:bg-gray-50 dark:hover:bg-[#494d64]/40'
             }`}
           >
-            <span className="font-mono text-[10px] font-bold text-accent dark:text-[#c6a0f6] shrink-0 truncate max-w-[80px]">
+            <span className="font-mono text-[10px] font-bold text-accent dark:text-[#a7c7a1] shrink-0 truncate max-w-[80px]">
               {it.value}
             </span>
             <span className="text-[12px] truncate flex-1 text-gray-700 dark:text-[#cad3f5]">

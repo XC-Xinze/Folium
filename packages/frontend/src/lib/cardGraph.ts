@@ -667,7 +667,7 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
   /* ----- 4. 边：智能 handle 选择 ----- */
   const edgeStyles: Record<RawEdgeKind, { stroke: string; strokeWidth: number; strokeDasharray?: string }> = {
     tree: { stroke: '#9ca3af', strokeWidth: 1.5 },
-    cross: { stroke: '#7c4dff', strokeWidth: 1.3 },
+    cross: { stroke: '#385f73', strokeWidth: 1.3 },
     tag: { stroke: '#10b981', strokeWidth: 1.4 }, // 绿色实线，first-class
     potential: { stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '6 4' },
   };
@@ -1043,7 +1043,7 @@ export function buildTagGraph(tag: string, cards: Card[]): { nodes: Node[]; edge
       sourceHandle,
       targetHandle,
       type: 'default',
-      style: { stroke: '#7c4dff', strokeWidth: 1.3 },
+      style: { stroke: '#385f73', strokeWidth: 1.3 },
       data: { kind: 'cross' },
     };
   });

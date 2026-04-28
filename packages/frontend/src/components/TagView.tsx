@@ -85,7 +85,7 @@ function TagViewInner({ tag }: Props) {
   );
 
   return (
-    <div className="w-full h-full relative bg-[#fafafa]">
+    <div className="w-full h-full relative bg-surface">
       {/* Top chip — 关闭走 tab 的 X */}
       <div className="absolute top-4 left-4 z-10 flex items-center gap-3 bg-white px-3 py-1.5 rounded-lg shadow-md border border-gray-200">
         <div className="flex items-center gap-1.5 px-2 py-0.5 bg-accentSoft rounded-full">

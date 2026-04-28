@@ -23,7 +23,7 @@ export const DEFAULT_CARD_FLAGS: CardDisplayFlags = {
   potential: true,
   tag: true,
   cross: true,
-  box: false,
+  box: true,
   workspaceLinks: true,
 };
 

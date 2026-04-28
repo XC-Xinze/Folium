@@ -88,8 +88,8 @@ export interface BuildGraphInput {
   showTagRelated?: boolean;
   /** 默认 true：显示紫色手动 [[link]] cross-flank 边/节点 */
   showCrossLinks?: boolean;
-  /** 默认 false：显示同 INDEX box 成员之间的关系边。不额外拉新节点，只连当前可见节点。 */
-  showBoxLinks?: boolean;
+  /** 默认 true：显示当前 INDEX / box 内的卡片集合。关闭后只保留当前焦点卡和外部关系层。 */
+  showBoxCards?: boolean;
   /** 工作区边（任何 vault 卡参与的）—— 当作 potential 显示在画布上 */
   workspaceLinks?: WorkspaceLink[];
 }
@@ -187,7 +187,7 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     showPotential,
     showTagRelated = true,
     showCrossLinks = true,
-    showBoxLinks = false,
+    showBoxCards = true,
     workspaceLinks,
   } = input;
   const cardMap = new Map(allCards.map((c) => [c.luhmannId, c]));
@@ -196,7 +196,7 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
   const backbone = computeBackbone(focusedBoxId, allCards, fullCards);
 
   /* ----- 收集 raw 节点和边 ----- */
-  type RawEdgeKind = 'tree' | 'cross' | 'tag' | 'box' | 'potential';
+  type RawEdgeKind = 'tree' | 'cross' | 'tag' | 'potential';
   interface RawEdge {
     id: string;
     source: string;
@@ -233,8 +233,15 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     });
   };
 
-  // 骨干节点：只有 focusedCardId 这一张是 'focus'，其他都是 'tree'
-  for (const id of backbone.ids) {
+  const visibleBoxIds = new Set<string>();
+  if (showBoxCards) {
+    for (const id of backbone.ids) visibleBoxIds.add(id);
+  } else if (backbone.ids.has(focusedCardId)) {
+    visibleBoxIds.add(focusedCardId);
+  }
+
+  // 当前 box 节点：只有 focusedCardId 这一张是 'focus'，其他都是 'tree'
+  for (const id of visibleBoxIds) {
     addNode(id, id === focusedCardId ? 'focus' : 'tree');
   }
   // 焦点卡可能不在 backbone（用户在某个 box 里点了外部 tag-related/cross/potential 卡）。
@@ -249,40 +256,15 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
   ) {
     addNode(focusedCardId, 'focus');
   }
-  // 骨干 tree 边
+  // 当前 box 内部 tree 边
   for (const e of backbone.treeEdges) {
+    if (!visibleBoxIds.has(e.source) || !visibleBoxIds.has(e.target)) continue;
     rawEdges.push({ id: `tree:${e.source}->${e.target}`, source: e.source, target: e.target, kind: 'tree' });
-  }
-
-  // Same-box 边：同一个 INDEX box 的可见成员之间的弱关系。
-  // 只连当前已在图上的节点，不借此把整库成员拉进来。
-  if (showBoxLinks) {
-    const seenBoxPairs = new Set<string>();
-    for (const index of allCards) {
-      if (index.status !== 'INDEX') continue;
-      const visibleMembers = index.crossLinks.filter((id) => rawNodes.has(id));
-      for (let i = 0; i < visibleMembers.length; i++) {
-        for (let j = i + 1; j < visibleMembers.length; j++) {
-          const source = visibleMembers[i]!;
-          const target = visibleMembers[j]!;
-          if (source === target) continue;
-          const key = [source, target].sort().join('|');
-          if (seenBoxPairs.has(key)) continue;
-          seenBoxPairs.add(key);
-          rawEdges.push({
-            id: `box:${index.luhmannId}:${source}->${target}`,
-            source,
-            target,
-            kind: 'box',
-          });
-        }
-      }
-    }
   }
 
   // 焦点卡若在 backbone 外（被 tag-related/cross-flank 拉进来后用户点选了它）→
   // 把它也纳入 cross/potential 的迭代集合，让"以焦点为中心的所有边"都画出来
-  const radialIds = new Set<string>(backbone.ids);
+  const radialIds = new Set<string>(visibleBoxIds);
   if (!radialIds.has(focusedCardId) && cardMap.has(focusedCardId)) {
     radialIds.add(focusedCardId);
   }
@@ -370,7 +352,7 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     // Canvas 维护 trail；这里只用 batch 里有数据的那些（缺数据时跳过该锚）。
     // trail 为空时 fallback backbone。
     const anchors = tagAnchorIds.filter((id) => relatedBatch[id]);
-    const effectiveAnchors = anchors.length > 0 ? anchors : [...backbone.ids];
+    const effectiveAnchors = anchors.length > 0 ? anchors : [...visibleBoxIds];
     for (const id of effectiveAnchors) {
       const rel = relatedBatch[id];
       if (!rel) continue;
@@ -456,9 +438,9 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     for (const link of workspaceLinks) {
       if (seenWsEdges.has(link.edgeId)) continue;
 
-      // backbone 或外部焦点都算"视野内"
+      // 可见 box 卡或外部焦点都算"视野内"
       const inView = (cardId: string) =>
-        backbone.ids.has(cardId) || cardId === focusedCardId;
+        visibleBoxIds.has(cardId) || cardId === focusedCardId;
       const sourceInView = link.source.kind === 'card' && inView(link.source.id);
       const targetInView = link.target.kind === 'card' && inView(link.target.id);
       if (!sourceInView && !targetInView) continue;
@@ -698,7 +680,6 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     tree: { stroke: '#9ca3af', strokeWidth: 1.5 },
     cross: { stroke: '#385f73', strokeWidth: 1.3 },
     tag: { stroke: '#10b981', strokeWidth: 1.4 }, // 绿色实线，first-class
-    box: { stroke: '#ba635c', strokeWidth: 1, strokeDasharray: '3 4' },
     potential: { stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '6 4' },
   };
 

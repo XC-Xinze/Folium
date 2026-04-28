@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Command as CmdIcon, Search } from 'lucide-react';
-import { listCommands, formatShortcut } from '../lib/commands';
+import { listCommands, formatShortcut, type Command } from '../lib/commands';
 import { fuzzyScore } from '../lib/fuzzy';
 import { useUIStore } from '../store/uiStore';
+import { usePaneStore } from '../store/paneStore';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../lib/api';
 
 /**
  * Obsidian 风命令面板：⌘P 弹，跑任意已注册命令。
@@ -16,6 +19,8 @@ export function CommandPalette() {
   const [activeIdx, setActiveIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards, enabled: open });
+  const workspacesQ = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces, enabled: open });
 
   // 每次打开重置
   useEffect(() => {
@@ -28,7 +33,32 @@ export function CommandPalette() {
   }, [open]);
 
   const items = useMemo(() => {
-    const all = listCommands();
+    const dynamic: Command[] = [
+      ...(cardsQ.data?.cards ?? []).map((card) => ({
+        id: `open-card:${card.luhmannId}`,
+        title: `Open card ${card.luhmannId} · ${card.title || card.luhmannId}`,
+        group: 'Cards',
+        run: () =>
+          usePaneStore.getState().openTab({
+            kind: 'card',
+            title: card.title || card.luhmannId,
+            cardBoxId: card.luhmannId,
+            cardFocusId: card.luhmannId,
+          }),
+      })),
+      ...(workspacesQ.data?.workspaces ?? []).map((ws) => ({
+        id: `open-workspace:${ws.id}`,
+        title: `Open workspace ${ws.name}`,
+        group: 'Workspaces',
+        run: () =>
+          usePaneStore.getState().openTab({
+            kind: 'workspace',
+            title: ws.name,
+            workspaceId: ws.id,
+          }),
+      })),
+    ];
+    const all = [...listCommands(), ...dynamic];
     if (!query.trim()) {
       return all
         .slice()
@@ -44,7 +74,7 @@ export function CommandPalette() {
       .sort((a, b) => b.score - a.score)
       .slice(0, 30)
       .map((x) => x.cmd);
-  }, [query]);
+  }, [cardsQ.data?.cards, query, workspacesQ.data?.workspaces]);
 
   useEffect(() => {
     setActiveIdx(0);

@@ -3,6 +3,7 @@ import type { Node } from '@xyflow/react';
 import type { CardSummary } from './api';
 import {
   NODE_WIDTH,
+  applyAnchorPositions,
   computeBackbone,
   resolveCollisions,
 } from './cardGraph';
@@ -85,10 +86,48 @@ describe('resolveCollisions', () => {
     expect(moved).toBe(true);
   });
 
+  it('does not move two user-saved nodes even if they are intentionally close', () => {
+    const nodes = [node('a', 0, 0), node('b', 120, 0)];
+    const out = resolveCollisions(nodes, {
+      a: { x: 0, y: 0 },
+      b: { x: 120, y: 0 },
+    });
+
+    expect(out.find((n) => n.id === 'a')?.position).toEqual({ x: 0, y: 0 });
+    expect(out.find((n) => n.id === 'b')?.position).toEqual({ x: 120, y: 0 });
+  });
+
   it('does nothing for non-overlapping nodes', () => {
     const nodes = [node('a', 0, 0), node('b', 1000, 1000)];
     const out = resolveCollisions(nodes, {});
     expect(out[0]!.position).toEqual({ x: 0, y: 0 });
     expect(out[1]!.position).toEqual({ x: 1000, y: 1000 });
+  });
+});
+
+describe('applyAnchorPositions', () => {
+  function graphNode(id: string, variant: string, x: number, y: number): Node {
+    return {
+      id,
+      type: 'card',
+      position: { x, y },
+      data: { variant } as Record<string, unknown>,
+      width: NODE_WIDTH,
+    };
+  }
+
+  it('respects saved positions for external potential nodes and workspace temp ghosts', () => {
+    const nodes = [
+      graphNode('1', 'tree', 0, 0),
+      graphNode('2', 'potential', 500, 0),
+      graphNode('__ws-temp::w1::n1', 'potential', 900, 0),
+    ];
+    const out = applyAnchorPositions(nodes, [], {
+      '2': { x: 100, y: 80 },
+      '__ws-temp::w1::n1': { x: -120, y: 240 },
+    });
+
+    expect(out.find((n) => n.id === '2')?.position).toEqual({ x: 100, y: 80 });
+    expect(out.find((n) => n.id === '__ws-temp::w1::n1')?.position).toEqual({ x: -120, y: 240 });
   });
 });

@@ -278,7 +278,6 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
   // 拖拽结束 → 乐观更新 + 异步写磁盘（scope 限定）
   const onNodeDragStop = useCallback(
     (_e: unknown, node: Node) => {
-      if (node.id.startsWith('__')) return;
       // sticky 也更新 —— 下次 buildGraph 重排不会再挪动这个节点
       stickyPosRef.current.set(node.id, { x: node.position.x, y: node.position.y });
       qc.setQueryData<PositionMap>(['positions', scope], (old = {}) => ({

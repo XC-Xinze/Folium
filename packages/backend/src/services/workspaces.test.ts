@@ -12,6 +12,7 @@ import {
   applyEdge,
   createWorkspace,
   getWorkspace,
+  listWorkspaceLinksFor,
   repairWorkspaces,
   resetWorkspacesCache,
   unapplyEdge,
@@ -165,5 +166,29 @@ describe('workspace edge state guards', () => {
     expect(ws?.nodes.filter((node) => node.kind === 'card' && node.cardId === '1')).toHaveLength(1);
     expect(ws?.edges).toHaveLength(1);
     expect(ws?.edges[0]).toMatchObject({ source: 'n1', target: 'n2', label: 'rel' });
+  });
+
+  it('keeps workspace overlay links stable after duplicate card refs are repaired', async () => {
+    const { workspaceId } = await setupWorkspace({});
+    await updateWorkspace(workspaceId, {
+      nodes: [
+        { kind: 'card', id: 'n1', cardId: '1', x: 0, y: 0 },
+        { kind: 'card', id: 'n1-dupe', cardId: '1', x: 40, y: 40 },
+        { kind: 'card', id: 'n2', cardId: '2', x: 300, y: 0 },
+      ],
+      edges: [
+        { id: 'e1', source: 'n1-dupe', target: 'n2', label: 'draft' },
+        { id: 'e2', source: 'n1', target: 'n2', label: 'draft' },
+      ],
+    });
+
+    await repairWorkspaces();
+    const links = await listWorkspaceLinksFor(['1']);
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({
+      workspaceId,
+      source: { kind: 'card', id: '1' },
+      target: { kind: 'card', id: '2' },
+    });
   });
 });

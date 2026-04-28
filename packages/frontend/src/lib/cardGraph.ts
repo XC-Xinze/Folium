@@ -770,8 +770,8 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
 /**
  * 用用户保存的"锚点"位置覆盖计算位置。
  *   规则：
- *     1. variant 是 'potential' → **永远用计算位置**（potential 卡作为"客串"出现，不应继承别处的锚点）
- *     2. 节点本身有 saved → 用 saved
+ *     1. 节点本身有 saved → 用 saved（包括外部卡、potential、workspace temp ghost）
+ *     2. variant 是 'potential' 且无 saved → 用计算位置，不继承 tree 锚点
  *     3. 节点无 saved，但 tree 父链上有 saved 锚点 → 沿父的锚点位置 + 计算时的偏移
  *     4. 都无 → 用计算位置
  *   这样新加的卡如果父被手动移过，它会跟随父的位置生长。
@@ -799,15 +799,14 @@ export function applyAnchorPositions(
     if (cached) return cached;
     const own = computedPos.get(id) ?? { x: 0, y: 0 };
 
-    // potential 永远用计算位置，不读取也不继承锚点
-    if (variantById.get(id) === 'potential') {
-      final.set(id, own);
-      return own;
-    }
-
     if (saved[id]) {
       final.set(id, saved[id]);
       return saved[id];
+    }
+    // potential 如果用户没摆过，保持客串式计算位置，不继承 tree 锚点。
+    if (variantById.get(id) === 'potential') {
+      final.set(id, own);
+      return own;
     }
     const parent = treeParent.get(id);
     if (!parent) {
@@ -862,7 +861,7 @@ export function applyAnchorPositions(
 export function resolveCollisions(
   nodes: Node[],
   saved: PositionMap,
-  padding = 24,
+  padding = 8,
   maxIterations = 60,
 ): Node[] {
   if (nodes.length < 2) return nodes;

@@ -41,6 +41,7 @@ export interface LoadedPlugin {
   name: string;
   ok: boolean;
   error?: string;
+  disabled?: boolean;
   manifest?: PluginManifest;
   /** activate 函数返回的 cleanup（如果有） */
   deactivate?: () => void;
@@ -48,12 +49,39 @@ export interface LoadedPlugin {
 
 const loaded = new Map<string, LoadedPlugin>();
 const blobUrls = new Map<string, string>();
+const DISABLED_KEY = 'zk-disabled-plugins';
+
+function readDisabledPlugins(): Set<string> {
+  try {
+    return new Set(JSON.parse(window.localStorage.getItem(DISABLED_KEY) ?? '[]') as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeDisabledPlugins(disabled: Set<string>): void {
+  window.localStorage.setItem(DISABLED_KEY, JSON.stringify([...disabled].sort()));
+}
 
 export function listLoadedPlugins(): LoadedPlugin[] {
   return [...loaded.values()];
 }
 
+export function isPluginEnabled(name: string): boolean {
+  return !readDisabledPlugins().has(name);
+}
+
+export function setPluginEnabled(name: string, enabled: boolean): void {
+  const disabled = readDisabledPlugins();
+  if (enabled) disabled.delete(name);
+  else disabled.add(name);
+  writeDisabledPlugins(disabled);
+}
+
 async function loadOne(name: string): Promise<LoadedPlugin> {
+  if (!isPluginEnabled(name)) {
+    return { name, ok: false, disabled: true, error: 'disabled' };
+  }
   try {
     const src = await api.getPluginSource(name);
     // 用 Blob URL 让浏览器原生 import 可以解析

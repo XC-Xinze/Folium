@@ -793,66 +793,58 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
               setDraftLabel(d?.label ?? '');
               setDraftNote(d?.note ?? '');
               setDraftColor(d?.color ?? '#7c4dff');
-              setMetaOpen(true);
+              setMetaOpen((open) => !open);
             }}
             className={`max-w-36 truncate text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-sm transition-colors ${relationBadge.cls}`}
             title={d?.note || 'Edit workspace link'}
           >
             {d?.label || relationBadge.label}
           </button>
-        </div>
-      </EdgeLabelRenderer>
-      {metaOpen && d && createPortal(
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 backdrop-blur-[2px]">
-          <div className="w-[460px] max-w-[92vw] bg-white dark:bg-[#1e2030] border border-gray-200 dark:border-[#363a4f] rounded-lg shadow-2xl">
-            <div className="px-4 py-3 border-b border-gray-100 dark:border-[#363a4f] flex items-center justify-between">
-              <div>
-                <div className="text-sm font-bold text-ink dark:text-[#cad3f5]">
-                  {d.bothCards ? '双链关系' : 'Workspace relation'}
+          {metaOpen && d && (
+            <div
+              className="absolute left-1/2 top-7 z-[1000] w-[380px] max-w-[92vw] -translate-x-1/2 rounded-lg border border-gray-200 bg-white shadow-2xl dark:border-[#363a4f] dark:bg-[#1e2030]"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 dark:border-[#363a4f]">
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-bold text-ink dark:text-[#cad3f5]">
+                    {d.bothCards ? '双链关系' : 'Workspace relation'}
+                  </div>
+                  <div className="truncate text-[10px] text-gray-400">
+                    {d.bothCards
+                      ? d.applied
+                        ? 'Already written to the vault'
+                        : d.vaultLink || d.vaultStructure
+                          ? 'Already exists in the vault'
+                          : 'Draft link between two real cards'
+                      : d.sourceKind === 'temp' || d.targetKind === 'temp'
+                        ? 'Temp edge; materializes when promoted'
+                        : 'Workspace-only relation'}
+                  </div>
                 </div>
-                <div className="text-[11px] text-gray-400 mt-0.5">
-                  {d.bothCards
-                    ? d.applied
-                      ? 'Already written to the vault'
-                      : d.vaultLink || d.vaultStructure
-                        ? 'Already exists in the vault'
-                        : 'Draft link between two real cards'
-                    : d.sourceKind === 'temp' || d.targetKind === 'temp'
-                      ? 'Temp edge; materializes when the temp card is promoted'
-                      : 'Workspace-only relation'}
-                </div>
+                <button onClick={() => setMetaOpen(false)} className="shrink-0 text-gray-400 hover:text-gray-600">
+                  <X size={13} />
+                </button>
               </div>
-              <button onClick={() => setMetaOpen(false)} className="text-gray-400 hover:text-gray-600">
-                <X size={14} />
-              </button>
-            </div>
-            <div className="p-4 space-y-3">
-              <label className="block">
-                <span className="text-[11px] font-bold text-gray-500">Label</span>
+              <div className="space-y-2 p-3">
                 <input
                   value={draftLabel}
                   onChange={(e) => setDraftLabel(e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded outline-none focus:border-accent"
-                  placeholder="supports, example, contradicts"
+                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs outline-none focus:border-accent dark:border-[#494d64] dark:bg-[#24273a]"
+                  placeholder="Label: supports, example, contradicts"
                 />
-              </label>
-              <label className="block">
-                <span className="text-[11px] font-bold text-gray-500">Note</span>
                 <textarea
                   value={draftNote}
                   onChange={(e) => setDraftNote(e.target.value)}
-                  className="mt-1 w-full min-h-24 px-2 py-1.5 text-sm border border-gray-300 rounded outline-none focus:border-accent resize-y"
+                  className="min-h-20 w-full resize-y rounded border border-gray-300 px-2 py-1.5 text-xs outline-none focus:border-accent dark:border-[#494d64] dark:bg-[#24273a]"
                   placeholder="Why are these cards connected?"
                 />
-              </label>
-              <label className="block">
-                <span className="text-[11px] font-bold text-gray-500">Color</span>
-                <div className="mt-1 flex items-center gap-2">
+                <div className="flex items-center gap-2">
                   {['#7c4dff', '#10b981', '#f59e0b', '#ef4444', '#0ea5e9'].map((color) => (
                     <button
                       key={color}
                       onClick={() => setDraftColor(color)}
-                      className={`w-6 h-6 rounded border-2 ${draftColor === color ? 'border-ink' : 'border-white shadow'}`}
+                      className={`h-5 w-5 rounded border-2 ${draftColor === color ? 'border-ink dark:border-[#cad3f5]' : 'border-white shadow'}`}
                       style={{ backgroundColor: color }}
                       title={color}
                     />
@@ -860,65 +852,64 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
                   <input
                     value={draftColor}
                     onChange={(e) => setDraftColor(e.target.value)}
-                    className="w-28 px-2 py-1.5 text-sm font-mono border border-gray-300 rounded outline-none focus:border-accent"
+                    className="ml-auto w-24 rounded border border-gray-300 px-2 py-1 text-[11px] font-mono outline-none focus:border-accent dark:border-[#494d64] dark:bg-[#24273a]"
                   />
                 </div>
-              </label>
-            </div>
-            <div className="px-4 py-3 flex items-center gap-2 border-t border-gray-100 dark:border-[#363a4f]">
-              {d.bothCards && !d.vaultLink && !d.vaultStructure && !d.applied && (
+              </div>
+              <div className="flex items-center gap-2 border-t border-gray-100 px-3 py-2 dark:border-[#363a4f]">
+                {d.bothCards && !d.vaultLink && !d.vaultStructure && !d.applied && (
+                  <button
+                    onClick={async () => {
+                      const ok = await dialog.confirm('Write this edge into the vault as a real [[link]] in the source card?', {
+                        title: 'Apply edge',
+                        confirmLabel: 'Apply',
+                      });
+                      if (ok) applyMut.mutate();
+                    }}
+                    className="rounded bg-accent px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-accent/90"
+                  >
+                    Apply
+                  </button>
+                )}
+                {d.bothCards && d.applied && !d.vaultLink && !d.vaultStructure && (
+                  <button
+                    onClick={async () => {
+                      const ok = await dialog.confirm('Remove this edge’s [[link]] from the vault?', {
+                        title: 'Unapply edge',
+                        confirmLabel: 'Unapply',
+                        variant: 'danger',
+                      });
+                      if (ok) unapplyMut.mutate();
+                    }}
+                    className="flex items-center gap-1 rounded bg-accent px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-accent/90"
+                  >
+                    <Undo2 size={11} /> Unapply
+                  </button>
+                )}
                 <button
-                  onClick={async () => {
-                    const ok = await dialog.confirm('Write this edge into the vault as a real [[link]] in the source card?', {
-                      title: 'Apply edge',
-                      confirmLabel: 'Apply',
-                    });
-                    if (ok) applyMut.mutate();
-                  }}
-                  className="text-xs font-bold px-3 py-1.5 rounded bg-accent text-white hover:bg-accent/90"
+                  onClick={onDelete}
+                  className="rounded px-2.5 py-1.5 text-[11px] font-bold text-red-600 hover:bg-red-50"
                 >
-                  Apply to vault
+                  Delete
                 </button>
-              )}
-              {d.bothCards && d.applied && !d.vaultLink && !d.vaultStructure && (
+                <div className="flex-1" />
                 <button
-                  onClick={async () => {
-                    const ok = await dialog.confirm('Remove this edge’s [[link]] from the vault?', {
-                      title: 'Unapply edge',
-                      confirmLabel: 'Unapply',
-                      variant: 'danger',
-                    });
-                    if (ok) unapplyMut.mutate();
-                  }}
-                  className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded bg-accent text-white hover:bg-accent/90"
+                  onClick={() => setMetaOpen(false)}
+                  className="rounded px-2.5 py-1.5 text-[11px] font-bold text-gray-600 hover:bg-gray-100 dark:text-[#a5adcb] dark:hover:bg-[#363a4f]"
                 >
-                  <Undo2 size={11} /> Unapply
+                  Cancel
                 </button>
-              )}
-              <button
-                onClick={onDelete}
-                className="text-xs font-bold px-3 py-1.5 rounded text-red-600 hover:bg-red-50"
-              >
-                Delete
-              </button>
-              <div className="flex-1" />
-              <button
-                onClick={() => setMetaOpen(false)}
-                className="text-xs font-bold px-3 py-1.5 rounded text-gray-600 hover:bg-gray-100"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void saveMeta()}
-                className="text-xs font-bold px-3 py-1.5 rounded bg-accent text-white hover:bg-accent/90"
-              >
-                Save
-              </button>
+                <button
+                  onClick={() => void saveMeta()}
+                  className="rounded bg-accent px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-accent/90"
+                >
+                  Save
+                </button>
+              </div>
             </div>
-          </div>
-        </div>,
-        document.body,
-      )}
+          )}
+        </div>
+      </EdgeLabelRenderer>
     </>
   );
 }

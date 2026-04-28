@@ -5,7 +5,13 @@ import { useUIStore, type Theme } from '../store/uiStore';
 import { api } from '../lib/api';
 import { dialog } from '../lib/dialog';
 import { PluginRegistry } from '../lib/pluginRegistry';
-import { listLoadedPlugins, reloadPlugins, type LoadedPlugin } from '../lib/pluginLoader';
+import {
+  isPluginEnabled,
+  listLoadedPlugins,
+  reloadPlugins,
+  setPluginEnabled,
+  type LoadedPlugin,
+} from '../lib/pluginLoader';
 import { HotkeysPanel } from './HotkeysPanel';
 import { TrashPanel } from './TrashPanel';
 import { SearchReplacePanel } from './SearchReplacePanel';
@@ -163,6 +169,15 @@ function PluginsPanel() {
       setReloading(false);
     }
   };
+  const togglePlugin = async (name: string, enabled: boolean) => {
+    setPluginEnabled(name, enabled);
+    setReloading(true);
+    try {
+      setPlugins(await reloadPlugins());
+    } finally {
+      setReloading(false);
+    }
+  };
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -188,7 +203,9 @@ function PluginsPanel() {
               key={p.name}
               className="flex items-center gap-2 text-[12px] px-2 py-1.5 rounded bg-gray-50 dark:bg-gray-800/50"
             >
-              {p.ok ? (
+              {p.disabled ? (
+                <XCircle size={12} className="text-gray-400 shrink-0" />
+              ) : p.ok ? (
                 <CheckCircle size={12} className="text-emerald-500 shrink-0" />
               ) : (
                 <XCircle size={12} className="text-red-500 shrink-0" />
@@ -198,8 +215,18 @@ function PluginsPanel() {
                 <span className="text-[10px] text-gray-400">v{p.manifest.version}</span>
               )}
               {!p.ok && p.error && (
-                <span className="text-[11px] text-red-500 truncate">{p.error}</span>
+                <span className={`text-[11px] truncate ${p.error === 'disabled' ? 'text-gray-400' : 'text-red-500'}`}>
+                  {p.error}
+                </span>
               )}
+              <div className="flex-1" />
+              <button
+                onClick={() => void togglePlugin(p.name, !isPluginEnabled(p.name))}
+                disabled={reloading}
+                className="text-[10px] font-bold px-2 py-0.5 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+              >
+                {isPluginEnabled(p.name) ? 'Disable' : 'Enable'}
+              </button>
             </li>
           ))}
         </ul>

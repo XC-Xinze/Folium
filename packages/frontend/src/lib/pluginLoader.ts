@@ -1,6 +1,7 @@
 import { api } from './api';
 import { PluginRegistry } from './pluginRegistry';
 import { registerCommand } from './commands';
+import { createPluginSdk, type PluginSdk } from './pluginSdk';
 
 /**
  * 第三方插件加载：用户把 .js 放到 ${vault}/.zettel/plugins/，启动时遍历加载。
@@ -17,8 +18,13 @@ import { registerCommand } from './commands';
  */
 
 export interface PluginContext {
+  /** Stable v0 plugin SDK. Prefer this over direct api access. */
+  sdk: PluginSdk;
+  /** @deprecated Direct API access is kept for early plugins and may be narrowed later. */
   registry: typeof PluginRegistry;
+  /** @deprecated Use sdk.cards / sdk.workspaces / sdk.ui instead. */
   api: typeof api;
+  /** @deprecated Use sdk.commands instead. */
   commands: { register: typeof registerCommand };
   log: Pick<Console, 'log' | 'warn' | 'error'>;
 }
@@ -58,6 +64,7 @@ async function loadOne(name: string): Promise<LoadedPlugin> {
       return { name, ok: false, error: 'no default export / activate function' };
     }
     const ctx: PluginContext = {
+      sdk: createPluginSdk(name),
       registry: PluginRegistry,
       api,
       commands: { register: registerCommand },

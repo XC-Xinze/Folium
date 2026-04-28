@@ -9,7 +9,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { CreateCardModal } from './components/CreateCardModal';
 import { CommandPalette } from './components/CommandPalette';
 import { NewCardBar } from './components/NewCardBar';
-import { CalendarDays, Maximize2, Network, Search } from 'lucide-react';
+import { Maximize2 } from 'lucide-react';
 import { EmptyVault } from './components/EmptyVault';
 import { PaneRoot } from './components/PaneRoot';
 import { useIsMobile } from './lib/useIsMobile';
@@ -316,7 +316,7 @@ export function App() {
   );
 }
 
-/** 主区顶部 bar：常驻 NewCardBar（折叠/展开）+ 几个常用按钮 */
+/** 主区顶部 bar：只保留新建卡片和 inline 新建面板 */
 function TopBar() {
   const [expanded, setExpanded] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
@@ -327,30 +327,7 @@ function TopBar() {
     window.localStorage.setItem('zk-newcard-expanded', expanded ? '1' : '0');
   }, [expanded]);
 
-  const setQuickSwitcherOpen = useUIStore((s) => s.setQuickSwitcherOpen);
-  const setCommandPaletteOpen = useUIStore((s) => s.setCommandPaletteOpen);
   const setNewCardOpen = useUIStore((s) => s.setNewCardOpen);
-  const openTab = usePaneStore((s) => s.openTab);
-  const qc = useQueryClient();
-
-  const openToday = async () => {
-    try {
-      const { luhmannId, created } = await api.openOrCreateDaily();
-      if (created) {
-        qc.invalidateQueries({ queryKey: ['cards'] });
-        qc.invalidateQueries({ queryKey: ['indexes'] });
-        qc.invalidateQueries({ queryKey: ['tags'] });
-      }
-      openTab({
-        kind: 'card',
-        title: `Daily ${luhmannId}`,
-        cardBoxId: luhmannId,
-        cardFocusId: luhmannId,
-      });
-    } catch (err) {
-      dialog.alert((err as Error).message, { title: 'Daily failed' });
-    }
-  };
 
   return (
     <div className="shrink-0 border-b border-gray-100/60 dark:border-[#363a4f]/60 bg-[#fafafa] dark:bg-[#24273a]">
@@ -371,60 +348,10 @@ function TopBar() {
           <Maximize2 size={11} />
           <span>{expanded ? 'Hide inline' : 'Inline'}</span>
         </button>
-        <div className="w-px h-4 bg-gray-200 dark:bg-[#363a4f] mx-1" />
-        <TopBarBtn
-          icon={<Search size={13} />}
-          label="Quick"
-          shortcut="⌘K"
-          onClick={() => setQuickSwitcherOpen(true)}
-        />
-        <TopBarBtn
-          icon={<CalendarDays size={13} />}
-          label="Today"
-          shortcut="⌘⇧D"
-          onClick={openToday}
-        />
-        <TopBarBtn
-          icon={<Network size={13} />}
-          label="Graph"
-          shortcut="⌘G"
-          onClick={() => openTab({ kind: 'graph', title: 'Graph' })}
-        />
-        <TopBarBtn
-          label="Cmds"
-          shortcut="⌘P"
-          onClick={() => setCommandPaletteOpen(true)}
-        />
         <div className="flex-1" />
       </div>
       {expanded && <NewCardBar />}
     </div>
-  );
-}
-
-function TopBarBtn({
-  icon,
-  label,
-  shortcut,
-  onClick,
-}: {
-  icon?: React.ReactNode;
-  label: string;
-  shortcut?: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-bold text-gray-500 dark:text-[#a5adcb] hover:bg-gray-100 dark:hover:bg-[#363a4f] hover:text-accent transition-colors"
-      title={shortcut ? `${label} (${shortcut})` : label}
-    >
-      {icon}
-      <span>{label}</span>
-      {shortcut && (
-        <kbd className="text-[9px] font-mono text-gray-400 ml-0.5">{shortcut}</kbd>
-      )}
-    </button>
   );
 }
 

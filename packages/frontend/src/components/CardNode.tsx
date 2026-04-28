@@ -1,7 +1,7 @@
 import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDownToLine, ArrowUpToLine, ArrowLeft, Check, GripVertical, Image, Layers, Pencil, Star, Trash2, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpToLine, Check, ChevronDown, ChevronRight, GripVertical, Image, Layers, Pencil, Star, Trash2, X } from 'lucide-react';
 import { isCardDrag, readCardDragData, setCardDragData } from '../lib/dragCard';
 import { dialog } from '../lib/dialog';
 import { api, type Card } from '../lib/api';
@@ -30,6 +30,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
   // 因为 workspace 里节点 id 是 workspace 本地 uuid，不是 luhmannId
   const cardLuhmannId = card.luhmannId;
   const isGhost = !!nodeData.ghostFromWorkspace;
+  const superlinkSelection = nodeData.superlinkSelection;
   // 用 useQuery 订阅卡片内容；这样 tag 改名 / 删除等操作 invalidate ['card', id] 时
   // 这里会自动 refetch，不会一直拿初次加载的 stale 副本
   // 注意：用 placeholderData（不是 initialData）来给"首屏"展示——initialData 会
@@ -351,7 +352,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
     enabled: variant === 'focus' && !isGhost,
   });
   const backlinks = backlinksQ.data?.hits ?? [];
-  const [backlinksOpen, setBacklinksOpen] = useState(true);
+  const [backlinksOpen, setBacklinksOpen] = useState(false);
 
   // Autocomplete 候选：编辑模式下，依据 trigger 类型从 cards / tags 里筛
   const allCardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards, enabled: editing });
@@ -463,8 +464,6 @@ export function CardNode({ data, id, selected }: NodeProps) {
     insertAtCaret(replacement, { from: baseStart, to: placeholderEnd });
   };
 
-  // 顶级卡（单字符 id）。两个顶级卡之间互拖不允许（用户：顶级 index 之间不能链）
-  const isTopLevel = cardLuhmannId.length === 1 && /^[\da-z]$/i.test(cardLuhmannId);
   return (
     <div
       onMouseEnter={() => setHovered(true)}
@@ -484,8 +483,6 @@ export function CardNode({ data, id, selected }: NodeProps) {
         const dragged = readCardDragData(e);
         setLinkDropOver(false);
         if (!dragged || dragged.luhmannId === cardLuhmannId) return;
-        const draggedTop = dragged.luhmannId.length === 1 && /^[\da-z]$/i.test(dragged.luhmannId);
-        if (isTopLevel && draggedTop) return;
         e.preventDefault();
         e.stopPropagation();
         // Workspace 上下文：通过 onCardLinkDrop 回调创建 workspace edge（不动 vault）
@@ -504,14 +501,25 @@ export function CardNode({ data, id, selected }: NodeProps) {
           dialog.alert((err as Error).message, { title: 'Link failed' });
         }
       }}
-      className={`group relative rounded-xl ${styles.border} ${styles.bg} ${styles.shadow} ${styles.opacity} cursor-default flex flex-col ${
+      className={`nowheel group relative rounded-xl ${styles.border} ${styles.bg} ${styles.shadow} ${styles.opacity} cursor-default flex flex-col ${
         linkDropOver ? 'ring-2 ring-purple-400 ring-offset-2' : ''
+      } ${
+        superlinkSelection?.active
+          ? superlinkSelection.selected
+            ? 'ring-4 ring-accent ring-offset-2'
+            : 'ring-2 ring-gray-300 ring-offset-1 hover:ring-accent/60'
+          : ''
       }`}
       style={{
         width: w ?? NODE_WIDTH,
         height: h,
       }}
-      onClick={() => {
+      onClick={(e) => {
+        if (superlinkSelection?.active) {
+          e.stopPropagation();
+          if (!isGhost) superlinkSelection.onToggle(cardLuhmannId);
+          return;
+        }
         if (isGhost) return;
         setFocus(cardLuhmannId);
       }}
@@ -521,7 +529,25 @@ export function CardNode({ data, id, selected }: NodeProps) {
         navigate(cardLuhmannId);
       }}
     >
-      {/* 拖拽手柄：右下角通用 DRAG 手柄。
+      {superlinkSelection?.active && !isGhost && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            superlinkSelection.onToggle(cardLuhmannId);
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          className={`nodrag nopan absolute -top-3 -right-3 z-30 w-7 h-7 rounded-full border-2 shadow-md flex items-center justify-center transition-colors ${
+            superlinkSelection.selected
+              ? 'bg-accent text-white border-accent'
+              : 'bg-white dark:bg-[#363a4f] text-gray-400 border-gray-300 hover:border-accent hover:text-accent'
+          }`}
+          title={superlinkSelection.selected ? 'Selected for workspace' : 'Pick this card'}
+        >
+          <Check size={14} strokeWidth={3} />
+        </button>
+      )}
+
+      {/* 链接/重编号手柄：右下角通用 LINK 手柄。
            - 拖到另一张 canvas 卡 → 写 [[link]]
            - 拖到 sidebar Folgezettel 节点 → reparent + 重编号
            - 拖到 workspace → 加进 workspace
@@ -536,11 +562,36 @@ export function CardNode({ data, id, selected }: NodeProps) {
           onMouseDown={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
           className="nodrag nopan absolute bottom-2 right-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white dark:bg-[#363a4f] hover:bg-purple-500 hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 dark:border-[#494d64] hover:border-purple-500 shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
-          title="Drag handle: drop on another card to link, on sidebar tree to reparent, on workspace to add"
+          title="Link/reparent handle: drop on another card to link, on sidebar tree to reparent, on workspace to add"
         >
           <GripVertical size={10} />
-          <span>DRAG</span>
+          <span>LINK</span>
         </div>
+      )}
+      {nodeData.isInWorkspace && !isGhost && !editing && (
+        <>
+          <div
+            draggable
+            onDragStart={(e) => {
+              e.stopPropagation();
+              setCardDragData(e, { luhmannId: cardLuhmannId, title: display.title });
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="nodrag nopan absolute bottom-2 left-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white dark:bg-[#363a4f] hover:bg-purple-500 hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 dark:border-[#494d64] hover:border-purple-500 shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
+            title="Drag onto another workspace card to create a workspace-only link"
+          >
+            <GripVertical size={10} />
+            <span>LINK</span>
+          </div>
+          <div
+            className="absolute bottom-2 right-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white dark:bg-[#363a4f] text-gray-400 border border-gray-200 dark:border-[#494d64] shadow-sm text-[9px] font-bold uppercase tracking-wider cursor-grab active:cursor-grabbing"
+            title="Drag this card to move it inside the workspace"
+          >
+            <GripVertical size={10} />
+            <span>MOVE</span>
+          </div>
+        </>
       )}
 
       {/* Promote / Demote / Delete / Edit buttons — visible on hover (ghost 不显示) */}
@@ -762,7 +813,10 @@ export function CardNode({ data, id, selected }: NodeProps) {
         </div>
       ) : (
         <>
-          <header className="px-5 pt-4 pb-3 flex items-start justify-between gap-3">
+          <header
+            className="px-5 pt-4 pb-3 flex items-start justify-between gap-3 cursor-grab active:cursor-grabbing"
+            title="Drag this header to move the card"
+          >
             <div className="flex items-baseline gap-2 min-w-0">
               {isGhost ? (
                 <span className="font-mono text-[10px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-purple-100 text-purple-600">
@@ -781,7 +835,11 @@ export function CardNode({ data, id, selected }: NodeProps) {
                   onMouseDown={(e) => e.stopPropagation()}
                   onPointerDown={(e) => e.stopPropagation()}
                   className={`nodrag nopan font-mono text-[11px] font-bold px-1.5 py-0.5 rounded cursor-grab active:cursor-grabbing hover:ring-2 hover:ring-purple-400 ${styles.badge}`}
-                  title={`Drag ${display.luhmannId} to another card to add [[${display.luhmannId}]]`}
+                  title={
+                    nodeData.isInWorkspace
+                      ? `Drag ${display.luhmannId} to another workspace card to create a workspace-only link`
+                      : `Drag ${display.luhmannId} to another card to add [[${display.luhmannId}]]`
+                  }
                 >
                   {display.luhmannId}
                 </span>
@@ -817,9 +875,10 @@ export function CardNode({ data, id, selected }: NodeProps) {
           <div
             ref={contentRef}
             // 用户没拖大卡时也允许内容滚（之前是 overflow-hidden 直接裁掉，看不到下半截）
-            // nodrag nopan + stopPropagation 让 scroll wheel 在卡内滚而不触发 React Flow pan
+            // nodrag nopan nowheel + capture 阶段拦截，避免 React Flow 把卡内滚轮当成画布缩放
+            onWheelCapture={(e) => e.stopPropagation()}
             onWheel={(e) => e.stopPropagation()}
-            className={`nodrag nopan prose-card text-[12px] text-ink px-5 pb-4 overflow-y-auto ${
+            className={`nodrag nopan nowheel prose-card text-[12px] text-ink px-5 pb-4 overflow-y-auto ${
               h ? 'flex-1' : 'max-h-72'
             }`}
             dangerouslySetInnerHTML={{ __html: html }}
@@ -827,9 +886,11 @@ export function CardNode({ data, id, selected }: NodeProps) {
 
           {variant === 'focus' && !isGhost && backlinks.length > 0 && (
             <div
-              className="nodrag nopan px-5 pb-2 pt-2 border-t border-gray-100 dark:border-[#494d64]"
+              className="nodrag nopan nowheel px-5 pb-2 pt-2 border-t border-gray-100 dark:border-[#494d64]"
               onMouseDown={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
+              onWheelCapture={(e) => e.stopPropagation()}
+              onWheel={(e) => e.stopPropagation()}
             >
               <button
                 onClick={(e) => {
@@ -837,13 +898,13 @@ export function CardNode({ data, id, selected }: NodeProps) {
                   setBacklinksOpen((v) => !v);
                 }}
                 className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-gray-600 dark:hover:text-[#cad3f5]"
+                title={backlinksOpen ? 'Collapse backlinks' : 'Expand backlinks'}
               >
-                <ArrowLeft size={10} />
+                {backlinksOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                 <span>Backlinks · {backlinks.length}</span>
-                <span className="text-gray-300">{backlinksOpen ? '▾' : '▸'}</span>
               </button>
               {backlinksOpen && (
-                <ul className="mt-1.5 space-y-1">
+                <ul className="mt-1.5 space-y-1 max-h-48 overflow-y-auto pr-1 nowheel">
                   {backlinks.slice(0, 8).map((b) => (
                     <li key={b.sourceId}>
                       <button

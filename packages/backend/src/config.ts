@@ -21,6 +21,11 @@ export function setActiveVaultPath(path: string): void {
 
 export const config = {
   port: Number(process.env.PORT ?? 8000),
+  host: process.env.HOST ?? '127.0.0.1',
+  corsOrigins: (process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
   get vaultPath(): string {
     return activeVaultPath;
   },

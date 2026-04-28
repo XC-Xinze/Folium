@@ -1,4 +1,7 @@
 import { marked } from 'marked';
+import createDOMPurify from 'dompurify';
+
+const purifier = typeof window !== 'undefined' ? createDOMPurify(window) : null;
 
 // 把附件相对路径（attachments/x.png）重写为后端服务的绝对 URL（/vault/attachments/x.png）
 function rewriteAttachmentUrl(url: string): string {
@@ -27,17 +30,17 @@ renderer.link = function (token) {
 export function renderMarkdown(md: string, onLink?: (target: string) => void): string {
   // 嵌入语法 ![[id]] 必须先于 [[link]] 处理
   let processed = md.replace(/!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target: string) => {
-    const safe = target.trim().replace(/"/g, '&quot;');
+    const safe = escapeAttr(target.trim());
     return `<div class="transclude" data-transclude="${safe}"><div class="transclude-loading">Loading [[${safe}]]…</div></div>`;
   });
   processed = processed.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target: string, alias?: string) => {
-    const display = (alias ?? target).trim();
-    const safe = target.trim().replace(/"/g, '&quot;');
+    const display = escapeHtml((alias ?? target).trim());
+    const safe = escapeAttr(target.trim());
     return `<span class="wikilink" data-link="${safe}">${display}</span>`;
   });
   const html = marked.parse(processed, { async: false, renderer }) as string;
   void onLink;
-  return html;
+  return sanitizeHtml(html);
 }
 
 export function attachWikilinkHandler(
@@ -106,13 +109,13 @@ export async function attachTransclusion(
     const id = ph.dataset.transclude;
     if (!id) continue;
     if (visited.has(id) || depth >= maxDepth) {
-      ph.innerHTML = `<div class="transclude-cycle">↻ embed too deep or cyclic: <code>${id}</code></div>`;
+      ph.innerHTML = `<div class="transclude-cycle">embed too deep or cyclic: <code>${escapeHtml(id)}</code></div>`;
       continue;
     }
     try {
       const card = await getCard(id);
       if (!card) {
-        ph.innerHTML = `<div class="transclude-missing">[[${id}]] not found</div>`;
+        ph.innerHTML = `<div class="transclude-missing">[[${escapeHtml(id)}]] not found</div>`;
         continue;
       }
       const innerVisited = new Set(visited);
@@ -121,7 +124,7 @@ export async function attachTransclusion(
       ph.innerHTML = `
         <div class="transclude-card">
           <div class="transclude-header">
-            <span class="transclude-id" data-link="${id}">[[${id}]]</span>
+            <span class="transclude-id" data-link="${escapeAttr(id)}">[[${escapeHtml(id)}]]</span>
             <span class="transclude-title">${escapeHtml(card.title)}</span>
           </div>
           <div class="transclude-body">${html}</div>
@@ -137,12 +140,27 @@ export async function attachTransclusion(
         });
       }
     } catch {
-      ph.innerHTML = `<div class="transclude-missing">[[${id}]] failed to load</div>`;
+      ph.innerHTML = `<div class="transclude-missing">[[${escapeHtml(id)}]] failed to load</div>`;
     }
   }
   return () => undefined;
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function escapeAttr(s: string): string {
+  return escapeHtml(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function sanitizeHtml(html: string): string {
+  if (!purifier) return html;
+  return purifier.sanitize(html, {
+    ADD_ATTR: ['data-link', 'data-transclude'],
+    ADD_TAGS: ['span'],
+  });
 }

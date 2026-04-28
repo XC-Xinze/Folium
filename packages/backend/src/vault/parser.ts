@@ -69,8 +69,8 @@ export async function parseCardFile(filePath: string): Promise<Card | null> {
   const allTags = [...new Set([...tagsFromFm, ...inlineTags])];
   const crossLinksFromFm = asStringArray(fm.crossLinks).map(canonicalize).filter(Boolean);
   const linksFromBody = extractWikilinks(body).links;
-  // 合并：crossLinks 字段 + 正文 [[link]]，自动转换为 canonical id 形式（待二次解析时按 title→id 兜底）
-  const allLinks = new Set<string>([...crossLinksFromFm, ...linksFromBody.map((l) => canonicalize(l) || l)]);
+  // 合并：crossLinks 字段 + 正文 [[link]]。正文链接保留原始 target，后续按 id/title 解析。
+  const allLinks = new Set<string>([...crossLinksFromFm, ...linksFromBody.map((l) => l.trim()).filter(Boolean)]);
 
   return {
     luhmannId,

@@ -10,15 +10,20 @@
     "dev": "npm run dev --workspaces --if-present",
     "dev:backend": "npm run dev --workspace=backend",
     "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:desktop": "ELECTRON_RENDERER_URL=http://127.0.0.1:5173 npm run dev --workspace=desktop",
     "build": "npm run build --workspaces --if-present",
+    "start:desktop": "npm run build --workspace=frontend && npm run start --workspace=desktop",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "test:watch": "vitest"
   },
   "engines": {
     "node": ">=20"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "vitest": "^4.1.5"
   }
 }

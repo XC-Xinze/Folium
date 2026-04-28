@@ -13,15 +13,34 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type Card, type PositionMap } from '../lib/api';
+import { Send } from 'lucide-react';
+import { api, type Card, type PositionMap, type Workspace, type WorkspaceEdge, type WorkspaceNode } from '../lib/api';
 import { dialog } from '../lib/dialog';
+import { randomUUID } from '../lib/uuid';
 import { CardNode } from './CardNode';
 import { CrossEdge, PotentialEdge } from './CanvasEdges';
-import { applyAnchorPositions, buildGraph, computeBackbone, MASTER_BOX_ID, resolveCollisions } from '../lib/cardGraph';
+import { applyAnchorPositions, buildGraph, computeBackbone, MASTER_BOX_ID, resolveCollisions, type CardNodeData } from '../lib/cardGraph';
 import { DEFAULT_CARD_FLAGS, usePaneStore as usePaneStoreImported, type CardDisplayFlags } from '../store/paneStore';
 
 const nodeTypes = { card: CardNode };
 const edgeTypes = { potential: PotentialEdge, cross: CrossEdge };
+
+interface SuperlinkEdgeOption {
+  sourceCardId: string;
+  targetCardId: string;
+  label?: string;
+  vaultLink?: boolean;
+  vaultStructure?: boolean;
+}
+
+function graphEdgeLabel(edgeId: string): string | undefined {
+  if (edgeId.startsWith('tree:')) return 'tree';
+  if (edgeId.startsWith('cross:')) return 'link';
+  if (edgeId.startsWith('tag:')) return 'tag';
+  if (edgeId.startsWith('pot:')) return 'potential';
+  if (edgeId.startsWith('ws:')) return 'workspace';
+  return undefined;
+}
 
 interface Props {
   focusedBoxId: string;
@@ -135,6 +154,18 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
     queryFn: () => api.getPositions(scope),
   });
 
+  const [superlinkMode, setSuperlinkMode] = useState(false);
+  const [superlinkSelectedIds, setSuperlinkSelectedIds] = useState<Set<string>>(() => new Set());
+  const [superlinkWorkspacePickerOpen, setSuperlinkWorkspacePickerOpen] = useState(false);
+  const toggleSuperlinkCard = useCallback((cardId: string) => {
+    setSuperlinkSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(cardId)) next.delete(cardId);
+      else next.add(cardId);
+      return next;
+    });
+  }, []);
+
   const graph = useMemo(() => {
     if (!cardsQ.data) return { nodes: [] as Node[], edges: [] as Edge[] };
     if (!isMaster && !boxQ.data) return { nodes: [] as Node[], edges: [] as Edge[] };
@@ -157,7 +188,15 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
     // 把 scope 印到每个节点 data 上，CardNode 直接读，多 pane 同屏不串
     const stamped = finalNodes.map((n) => ({
       ...n,
-      data: { ...(n.data as object), scope },
+      data: {
+        ...(n.data as object),
+        scope,
+        superlinkSelection: {
+          active: superlinkMode,
+          selected: superlinkSelectedIds.has(((n.data as CardNodeData).card?.luhmannId) ?? String(n.id)),
+          onToggle: toggleSuperlinkCard,
+        },
+      },
     }));
     return { nodes: stamped, edges: raw.edges };
   }, [
@@ -176,6 +215,9 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
     showWorkspaceLinks,
     workspaceLinksQ.data,
     positionsQ.data,
+    superlinkMode,
+    superlinkSelectedIds,
+    toggleSuperlinkCard,
   ]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -250,6 +292,196 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
     [qc, scope],
   );
 
+  const collectSelectedSuperlinkEdges = useCallback((selectedIds: Set<string>): SuperlinkEdgeOption[] => {
+    const graphIdToCardId = new Map<string, string>();
+    for (const node of nodes) {
+      if (String(node.id).startsWith('__')) continue;
+      const data = node.data as Partial<CardNodeData> | undefined;
+      const cardId = data?.card?.luhmannId ?? String(node.id);
+      if (cardId && selectedIds.has(cardId)) graphIdToCardId.set(String(node.id), cardId);
+    }
+    const seenEdges = new Set<string>();
+    const selectedEdges: SuperlinkEdgeOption[] = [];
+    for (const edge of edges) {
+      const sourceCardId = graphIdToCardId.get(String(edge.source)) ?? String(edge.source);
+      const targetCardId = graphIdToCardId.get(String(edge.target)) ?? String(edge.target);
+      if (!selectedIds.has(sourceCardId) || !selectedIds.has(targetCardId) || sourceCardId === targetCardId) continue;
+      const label = graphEdgeLabel(String(edge.id));
+      const key = `${sourceCardId}->${targetCardId}:${label ?? ''}`;
+      if (seenEdges.has(key)) continue;
+      seenEdges.add(key);
+      selectedEdges.push({
+        sourceCardId,
+        targetCardId,
+        label,
+        vaultLink: label === 'link',
+        vaultStructure: label === 'tree',
+      });
+    }
+    return selectedEdges;
+  }, [edges, nodes]);
+
+  const collectPickedSuperlinkCards = useCallback((selectedIds: Set<string>) => {
+    return nodes
+      .map((node) => {
+        if (String(node.id).startsWith('__')) return null;
+        const data = node.data as Partial<CardNodeData> | undefined;
+        const cardId = data?.card?.luhmannId ?? String(node.id);
+        if (!cardId || !selectedIds.has(cardId)) return null;
+        return {
+          cardId,
+          x: node.position.x,
+          y: node.position.y,
+        };
+      })
+      .filter((node): node is { cardId: string; x: number; y: number } => node !== null);
+  }, [nodes]);
+
+  const buildSuperlinkWorkspaceData = useCallback(
+    (picked: Array<{ cardId: string; x: number; y: number }>, base?: Workspace) => {
+      const minX = Math.min(...picked.map((card) => card.x));
+      const minY = Math.min(...picked.map((card) => card.y));
+      const selectedIds = new Set(picked.map((card) => card.cardId));
+      const workspaceIdByCardId = new Map<string, string>();
+      const existingNodes = base?.nodes ?? [];
+      const existingEdges = base?.edges ?? [];
+      const nextNodes: WorkspaceNode[] = [...existingNodes];
+
+      for (const node of existingNodes) {
+        if (node.kind === 'card') workspaceIdByCardId.set(node.cardId, node.id);
+      }
+
+      for (const card of picked) {
+        if (workspaceIdByCardId.has(card.cardId)) continue;
+        const id = randomUUID();
+        workspaceIdByCardId.set(card.cardId, id);
+        nextNodes.push({
+          kind: 'card',
+          id,
+          cardId: card.cardId,
+          x: Math.round(card.x - minX + 160),
+          y: Math.round(card.y - minY + 140),
+        });
+      }
+
+      const nextEdges: WorkspaceEdge[] = existingEdges.map((edge) =>
+        edge.label === 'tree' ? { ...edge, vaultStructure: true } : edge,
+      );
+      const hasEdge = (source: string, target: string, label?: string) =>
+        nextEdges.some((edge) => edge.source === source && edge.target === target && (edge.label ?? '') === (label ?? ''));
+
+      for (const edge of collectSelectedSuperlinkEdges(selectedIds)) {
+        const source = workspaceIdByCardId.get(edge.sourceCardId);
+        const target = workspaceIdByCardId.get(edge.targetCardId);
+        if (!source || !target || hasEdge(source, target, edge.label)) continue;
+        nextEdges.push({
+          id: randomUUID(),
+          source,
+          target,
+          label: edge.label,
+          applied: false,
+          vaultLink: edge.vaultLink,
+          vaultStructure: edge.vaultStructure,
+        });
+      }
+
+      return { nodes: nextNodes, edges: nextEdges };
+    },
+    [collectSelectedSuperlinkEdges],
+  );
+
+  const startSuperlinkMode = useCallback(async () => {
+    const hasSelectableCards = nodes.some((node) => {
+      if (String(node.id).startsWith('__')) return false;
+      const data = node.data as Partial<CardNodeData> | undefined;
+      const cardId = data?.card?.luhmannId ?? String(node.id);
+      return !!cardId && !String(cardId).startsWith('__');
+    });
+    if (!hasSelectableCards) {
+      await dialog.alert('No visible cards can be picked.', { title: 'Superlink' });
+      return;
+    }
+    setSuperlinkSelectedIds(new Set([focusedCardId]));
+    setSuperlinkMode(true);
+  }, [focusedCardId, nodes]);
+
+  const cancelSuperlinkMode = useCallback(() => {
+    setSuperlinkMode(false);
+    setSuperlinkSelectedIds(new Set());
+  }, []);
+
+  const createSuperlinkWorkspace = useCallback(async () => {
+    const selectedIds = superlinkSelectedIds;
+    const picked = collectPickedSuperlinkCards(selectedIds);
+
+    if (picked.length === 0) {
+      await dialog.alert('Pick at least one card on the canvas.', { title: 'Superlink' });
+      return;
+    }
+
+    const name = await dialog.prompt(
+      `Create a workspace from ${picked.length} picked card${picked.length === 1 ? '' : 's'}?`,
+      {
+        title: 'Create picked chain',
+        description: 'Only selected cards are copied. Cards are not moved and vault files are not changed.',
+        defaultValue: `Superlink · ${focusedCardId}`,
+        confirmLabel: 'Create',
+      },
+    );
+    if (!name?.trim()) return;
+
+    const { nodes: workspaceNodes, edges: workspaceEdges } = buildSuperlinkWorkspaceData(picked);
+
+    try {
+      const created = await api.createWorkspace(name.trim());
+      const workspace = await api.updateWorkspace(created.id, {
+        nodes: workspaceNodes,
+        edges: workspaceEdges,
+      });
+      qc.setQueryData(['workspace', workspace.id], workspace);
+      qc.invalidateQueries({ queryKey: ['workspaces'] });
+      usePaneStoreImported.getState().openTab({
+        kind: 'workspace',
+        title: workspace.name,
+        workspaceId: workspace.id,
+      });
+      cancelSuperlinkMode();
+    } catch (err) {
+      await dialog.alert((err as Error).message, { title: 'Create superlink workspace failed' });
+    }
+  }, [buildSuperlinkWorkspaceData, cancelSuperlinkMode, collectPickedSuperlinkCards, focusedCardId, qc, superlinkSelectedIds]);
+
+  const addSuperlinkToWorkspace = useCallback(async (workspaceIdToUpdate: string) => {
+    const selectedIds = superlinkSelectedIds;
+    const picked = collectPickedSuperlinkCards(selectedIds);
+    if (picked.length === 0) {
+      await dialog.alert('Pick at least one card on the canvas.', { title: 'Superlink' });
+      return;
+    }
+    try {
+      const existing = await api.getWorkspace(workspaceIdToUpdate);
+      const patch = buildSuperlinkWorkspaceData(picked, existing);
+      const workspace = await api.updateWorkspace(workspaceIdToUpdate, patch);
+      qc.setQueryData(['workspace', workspace.id], workspace);
+      qc.invalidateQueries({ queryKey: ['workspaces'] });
+      qc.invalidateQueries({ queryKey: ['ws-links-batch'] });
+      usePaneStoreImported.getState().openTab({
+        kind: 'workspace',
+        title: workspace.name,
+        workspaceId: workspace.id,
+      });
+      setSuperlinkWorkspacePickerOpen(false);
+      cancelSuperlinkMode();
+    } catch (err) {
+      await dialog.alert((err as Error).message, { title: 'Add to workspace failed' });
+    }
+  }, [buildSuperlinkWorkspaceData, cancelSuperlinkMode, collectPickedSuperlinkCards, qc, superlinkSelectedIds]);
+
+  const selectedSuperlinkEdgeCount = useMemo(
+    () => collectSelectedSuperlinkEdges(superlinkSelectedIds).length,
+    [collectSelectedSuperlinkEdges, superlinkSelectedIds],
+  );
+
   if (cardsQ.isLoading) return <FullCenter>Loading cards…</FullCenter>;
   if (cardsQ.error) return <FullCenter error>{String(cardsQ.error)}</FullCenter>;
   if (!cardsQ.data?.cards.length)
@@ -273,6 +505,44 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
         <span className="w-px h-4 bg-gray-200 dark:bg-[#494d64]" />
         <FocusDepthBadge depth={focusDepth} max={MAX_FOCUS_DEPTH} />
         <div className="flex-1" />
+        {superlinkMode ? (
+          <div className="shrink-0 flex items-center gap-1.5">
+            <span className="text-[10px] font-bold text-accent">
+              {superlinkSelectedIds.size} cards · {selectedSuperlinkEdgeCount} links
+            </span>
+            <button
+              onClick={createSuperlinkWorkspace}
+              className="text-[10px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full bg-accent text-white hover:bg-accent/90 transition-colors"
+              title="Create a workspace from picked cards"
+            >
+              <Send size={12} strokeWidth={2.4} />
+              <span>Create Workspace</span>
+            </button>
+            <button
+              onClick={() => setSuperlinkWorkspacePickerOpen(true)}
+              className="text-[10px] font-bold px-2.5 py-1 rounded-full border border-accent/40 text-accent hover:bg-accentSoft transition-colors"
+              title="Add picked cards to an existing workspace"
+            >
+              Add to Workspace
+            </button>
+            <button
+              onClick={cancelSuperlinkMode}
+              className="text-[10px] font-bold px-2.5 py-1 rounded-full border border-gray-200 dark:border-[#494d64] text-gray-500 hover:bg-gray-100 dark:hover:bg-[#363a4f] transition-colors"
+              title="Exit pick mode"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={startSuperlinkMode}
+            className="shrink-0 text-[10px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-[#494d64] text-gray-600 dark:text-[#cad3f5] hover:bg-gray-100 dark:hover:bg-[#363a4f] transition-colors"
+            title="Pick cards on the canvas and copy them into a new workspace"
+          >
+            <Send size={12} strokeWidth={2.4} />
+            <span>Pick Chain</span>
+          </button>
+        )}
         <AddFocusedToWorkspace focusedCardId={focusedCardId} />
       </div>
 
@@ -296,7 +566,58 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
           <MiniMap pannable zoomable position="top-right" maskColor="rgba(0,0,0,0.05)" />
         </ReactFlow>
       </div>
+      {superlinkWorkspacePickerOpen && (
+        <SuperlinkWorkspacePicker
+          onClose={() => setSuperlinkWorkspacePickerOpen(false)}
+          onPick={addSuperlinkToWorkspace}
+        />
+      )}
     </div>
+  );
+}
+
+function SuperlinkWorkspacePicker({
+  onClose,
+  onPick,
+}: {
+  onClose: () => void;
+  onPick: (workspaceId: string) => void;
+}) {
+  const wsQ = useQuery({ queryKey: ['workspaces'], queryFn: api.listWorkspaces });
+  const list = wsQ.data?.workspaces ?? [];
+  return createPortal(
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 backdrop-blur-[2px]">
+      <div className="w-[360px] max-w-[92vw] bg-white dark:bg-[#1e2030] border border-gray-200 dark:border-[#363a4f] rounded-lg shadow-2xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 dark:border-[#363a4f]">
+          <div className="text-sm font-bold text-ink dark:text-[#cad3f5]">Add picked cards to workspace</div>
+        </div>
+        <div className="max-h-72 overflow-y-auto py-1">
+          {wsQ.isLoading && <div className="px-4 py-3 text-xs text-gray-400">Loading…</div>}
+          {!wsQ.isLoading && list.length === 0 && (
+            <div className="px-4 py-3 text-xs text-gray-400">No workspaces yet</div>
+          )}
+          {list.map((ws) => (
+            <button
+              key={ws.id}
+              onClick={() => onPick(ws.id)}
+              className="w-full flex items-center justify-between px-4 py-2 text-left hover:bg-gray-50 dark:hover:bg-[#363a4f]"
+            >
+              <span className="text-sm font-semibold truncate">{ws.name}</span>
+              <span className="text-[10px] text-gray-400 ml-3 shrink-0">{ws.nodes.length} nodes</span>
+            </button>
+          ))}
+        </div>
+        <div className="px-4 py-3 flex justify-end border-t border-gray-100 dark:border-[#363a4f]">
+          <button
+            onClick={onClose}
+            className="text-xs font-bold px-3 py-1.5 rounded text-gray-600 hover:bg-gray-100"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

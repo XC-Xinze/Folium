@@ -1,0 +1,9 @@
+node_modules
+packages/*/node_modules
+packages/frontend/dist
+.git
+index.db
+index.db-shm
+index.db-wal
+.DS_Store
+npm-debug.log

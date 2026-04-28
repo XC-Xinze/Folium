@@ -10,15 +10,21 @@ export interface IndexNode {
 
 /**
  * 构建索引树：
- *  - INDEX = derived from structure（一张卡有任何 Folgezettel 子卡 → 它就是 INDEX）
+ *  - INDEX = derived from structure（顶层卡或有任何 Folgezettel 子卡 → 它就是 INDEX）
  *  - 顶层 = INDEX 且没有被任何其他 INDEX 通过 crossLinks 引用的卡
  *  - 子节点 = 当前 INDEX 通过 cross_links 引用的所有卡（INDEX 继续递归，其他做叶子）
  *  - 防环：访问过的节点不再展开
  */
 export function buildIndexTree(db: Database.Database, repo: CardRepository): IndexNode[] {
-  // status 不再存在 cards.status 列里，改成派生：被任何卡当 parent_id 的就是 INDEX
+  // status 不再存在 cards.status 列里，改成派生：
+  // - parent_id IS NULL 的顶层卡天然是 INDEX / 大盒子
+  // - 被任何卡当 parent_id 的卡也是 INDEX
   const allIndexes = (db
-    .prepare(`SELECT DISTINCT parent_id AS luhmann_id FROM cards WHERE parent_id IS NOT NULL`)
+    .prepare(
+      `SELECT luhmann_id FROM cards WHERE parent_id IS NULL
+       UNION
+       SELECT DISTINCT parent_id AS luhmann_id FROM cards WHERE parent_id IS NOT NULL`,
+    )
     .all() as { luhmann_id: string }[]).map((r) => r.luhmann_id);
 
   const indexSet = new Set(allIndexes);

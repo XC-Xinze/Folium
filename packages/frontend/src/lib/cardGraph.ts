@@ -39,6 +39,12 @@ export type CardNodeData = {
   /** 位置存储 scope（box:xxx 或 tag:xxx）—— 由父视图（Canvas/TagView/WorkspaceView）注入，
    *  不再读全局 useUIStore，多 pane 同屏时各算各的 */
   scope?: string;
+  /** Superlink 选择模式：在 Canvas 上直接点选一组卡片复制进 workspace */
+  superlinkSelection?: {
+    active: boolean;
+    selected: boolean;
+    onToggle: (cardId: string) => void;
+  };
 };
 
 /** 计算每张卡被哪些 INDEX 引用 */

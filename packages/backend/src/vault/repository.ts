@@ -9,6 +9,7 @@ export class CardRepository {
   upsertMany(cards: Card[]): void {
     const tx = this.db.transaction((batch: Card[]) => {
       for (const card of batch) this.upsertOne(card);
+      for (const card of batch) this.refreshLinks(card);
     });
     tx(cards);
   }
@@ -43,14 +44,35 @@ export class CardRepository {
       linkTag.run(card.luhmannId, t);
     }
 
-    // cross links
+    this.refreshLinks(card);
+
+    hooks.emit('card:afterSave', card);
+  }
+
+  refreshLinks(card: Card): void {
     this.db.prepare(`DELETE FROM cross_links WHERE source_id = ?`).run(card.luhmannId);
     const insLink = this.db.prepare(`INSERT OR IGNORE INTO cross_links(source_id, target_id) VALUES (?, ?)`);
     for (const target of card.crossLinks) {
-      if (target !== card.luhmannId) insLink.run(card.luhmannId, target);
+      const targetId = this.resolveLinkTarget(target);
+      if (targetId && targetId !== card.luhmannId) insLink.run(card.luhmannId, targetId);
     }
+  }
 
-    hooks.emit('card:afterSave', card);
+  resolveLinkTarget(target: string): string | null {
+    const raw = target.trim();
+    if (!raw) return null;
+
+    const exact = this.db.prepare(`SELECT luhmann_id FROM cards WHERE luhmann_id = ?`).get(raw) as
+      | { luhmann_id: string }
+      | undefined;
+    if (exact) return exact.luhmann_id;
+
+    const byTitle = this.db
+      .prepare(`SELECT luhmann_id FROM cards WHERE lower(title) = lower(?) ORDER BY sort_key LIMIT 1`)
+      .get(raw) as { luhmann_id: string } | undefined;
+    if (byTitle) return byTitle.luhmann_id;
+
+    return raw;
   }
 
   deleteByPath(filePath: string): string | null {
@@ -65,8 +87,9 @@ export class CardRepository {
 
   list(): Card[] {
     const rows = this.db.prepare(`SELECT * FROM cards ORDER BY sort_key`).all() as RawCardRow[];
-    // Derive status: 一张卡是 INDEX iff 有任何卡的 parent_id 指向它（自然生长）。
-    // 一次查询拿到所有"被当过 parent"的 id，rows 自己 lookup。
+    // Derive status:
+    // - 顶层 Folgezettel 卡（无 parent）天然是一个盒子 / INDEX
+    // - 任何被其他卡 parent_id 指向的卡也是 INDEX
     const indexIds = new Set(
       (
         this.db
@@ -74,7 +97,7 @@ export class CardRepository {
           .all() as { parent_id: string }[]
       ).map((r) => r.parent_id),
     );
-    return rows.map((r) => this.hydrate(r, indexIds.has(r.luhmann_id)));
+    return rows.map((r) => this.hydrate(r, r.parent_id === null || indexIds.has(r.luhmann_id)));
   }
 
   getById(luhmannId: string): Card | null {
@@ -82,10 +105,10 @@ export class CardRepository {
       | RawCardRow
       | undefined;
     if (!row) return null;
-    const isIndex =
+    const hasChildren =
       this.db.prepare(`SELECT 1 FROM cards WHERE parent_id = ? LIMIT 1`).get(luhmannId) !==
       undefined;
-    return this.hydrate(row, isIndex);
+    return this.hydrate(row, row.parent_id === null || hasChildren);
   }
 
   count(): number {
@@ -139,7 +162,7 @@ export class CardRepository {
     return {
       luhmannId: row.luhmann_id,
       title: row.title,
-      // status 是 derived from structure：有 Folgezettel 子卡就是 INDEX，否则 ATOMIC。
+      // status 是 derived from structure：顶层卡或有 Folgezettel 子卡就是 INDEX，否则 ATOMIC。
       // frontmatter 的 status 字段被彻底忽略（旧文件里的也没影响）。
       status: isIndex ? 'INDEX' : 'ATOMIC',
       parentId: row.parent_id,

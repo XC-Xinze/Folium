@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Background,
   Controls,
@@ -132,14 +133,16 @@ function WorkspaceInner({ workspaceId }: Props) {
         const sourceKind = nodeKinds.get(e.source) ?? 'card';
         const targetKind = nodeKinds.get(e.target) ?? 'card';
         const bothCards = sourceKind === 'card' && targetKind === 'card';
+        const readonlyVaultEdge = !!e.vaultLink || !!e.vaultStructure || e.label === 'tree';
         // Edges with a temp endpoint: dotted, no Apply button — they auto-materialize
         // when the temp is promoted to a vault card.
         // Card↔card: dashed when not applied, solid purple when applied.
+        const stroke = e.color ?? '#7c4dff';
         const styleBase = bothCards
-          ? e.applied
-            ? { stroke: '#7c4dff', strokeWidth: 2 }
-            : { stroke: '#9ca3af', strokeWidth: 1.5, strokeDasharray: '6 4' }
-          : { stroke: '#a78bfa', strokeWidth: 1.5, strokeDasharray: '2 4' };
+          ? e.applied || readonlyVaultEdge
+            ? { stroke, strokeWidth: 2 }
+            : { stroke: e.color ?? '#9ca3af', strokeWidth: 1.5, strokeDasharray: '6 4' }
+          : { stroke: e.color ?? '#a78bfa', strokeWidth: 1.5, strokeDasharray: '2 4' };
         return {
           id: e.id,
           source: e.source,
@@ -150,11 +153,16 @@ function WorkspaceInner({ workspaceId }: Props) {
           type: 'wsApply',
           data: {
             applied: !!e.applied,
+            vaultLink: !!e.vaultLink,
+            vaultStructure: !!e.vaultStructure || e.label === 'tree',
             workspaceId: ws.id,
             edgeId: e.id,
             bothCards,
             sourceKind,
             targetKind,
+            label: e.label,
+            color: e.color,
+            note: e.note,
           } as unknown as Record<string, unknown>,
           style: styleBase,
         };
@@ -263,64 +271,13 @@ function WorkspaceInner({ workspaceId }: Props) {
   );
 
   const [addCardInput, setAddCardInput] = useState('');
+  const [promotePicker, setPromotePicker] = useState<{
+    nodeId: string;
+    candidates: string[];
+  } | null>(null);
 
-  /**
-   * 智能提权 temp 卡：
-   *   - 1 个 workspace edge → 自动用对端卡作为 parent，next-available 子 id
-   *   - 0 / 多个 → prompt 让用户敲父级 id（空 = 顶层）
-   * 始终算出 next id 后再调 tempToVault。
-   */
-  const promoteTempToVault = useCallback(
-    async (nodeId: string) => {
-      const ws = wsQ.data;
-      if (!ws) return;
-
-      // 收集所有跟此 temp 相连的实体卡 id（去重）
-      const linkedCardIds = new Set<string>();
-      for (const e of ws.edges) {
-        const otherNodeId =
-          e.source === nodeId ? e.target : e.target === nodeId ? e.source : null;
-        if (!otherNodeId) continue;
-        const other = ws.nodes.find((n) => n.id === otherNodeId);
-        if (other && other.kind === 'card') {
-          linkedCardIds.add((other as { cardId: string }).cardId);
-        }
-      }
-      const candidates = [...linkedCardIds];
-
-      let parentId: string | null;
-      if (candidates.length === 1) {
-        parentId = candidates[0]!;
-      } else if (candidates.length > 1) {
-        // 多个候选 → 让用户挑一个
-        const picked = await dialog.prompt(
-          `This temp links to ${candidates.length} cards: ${candidates.join(', ')}\n\nType which one to use as parent (or empty for top-level):`,
-          {
-            title: 'Promote — pick parent',
-            defaultValue: candidates[0]!,
-            confirmLabel: 'Promote',
-          },
-        );
-        if (picked === null) return;
-        parentId = picked.trim() || null;
-        if (parentId && !candidates.includes(parentId)) {
-          // 用户敲的不在候选里 → 仍允许，但要求是合法卡
-          // 后端会校验 parent 存在
-        }
-      } else {
-        // 没有 edge → 让用户手动选父级
-        const picked = await dialog.prompt(
-          'Type parent id (empty for top-level):',
-          {
-            title: 'Promote — pick parent',
-            defaultValue: '',
-            confirmLabel: 'Promote',
-          },
-        );
-        if (picked === null) return;
-        parentId = picked.trim() || null;
-      }
-
+  const confirmPromoteTemp = useCallback(
+    async (nodeId: string, parentId: string | null) => {
       try {
         const { luhmannId } = await api.nextChildId(parentId);
         const ok = await dialog.confirm(
@@ -348,7 +305,24 @@ function WorkspaceInner({ workspaceId }: Props) {
         dialog.alert((err as Error).message, { title: 'Promote failed' });
       }
     },
-    [workspaceId, qc, wsQ.data],
+    [workspaceId, qc],
+  );
+
+  const promoteTempToVault = useCallback(
+    async (nodeId: string) => {
+      const ws = wsQ.data;
+      if (!ws) return;
+      const linkedCardIds = new Set<string>();
+      for (const e of ws.edges) {
+        const otherNodeId =
+          e.source === nodeId ? e.target : e.target === nodeId ? e.source : null;
+        if (!otherNodeId) continue;
+        const other = ws.nodes.find((n) => n.id === otherNodeId);
+        if (other && other.kind === 'card') linkedCardIds.add((other as { cardId: string }).cardId);
+      }
+      setPromotePicker({ nodeId, candidates: [...linkedCardIds] });
+    },
+    [wsQ.data],
   );
 
   const onConnect: OnConnect = useCallback(
@@ -541,6 +515,17 @@ function WorkspaceInner({ workspaceId }: Props) {
           <span className="text-[11px]">Then "Apply" an edge to write it back to the vault as a real [[link]]</span>
         </div>
       )}
+      {promotePicker && (
+        <ParentCardPicker
+          candidates={promotePicker.candidates}
+          onClose={() => setPromotePicker(null)}
+          onPick={(parentId) => {
+            const nodeId = promotePicker.nodeId;
+            setPromotePicker(null);
+            void confirmPromoteTemp(nodeId, parentId);
+          }}
+        />
+      )}
 
       <ReactFlow
         nodes={nodes}
@@ -573,6 +558,86 @@ const nodeTypes = {
   wsTemp: WorkspaceTempNode,
 };
 
+function ParentCardPicker({
+  candidates,
+  onClose,
+  onPick,
+}: {
+  candidates: string[];
+  onClose: () => void;
+  onPick: (parentId: string | null) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const typedParentId = query.trim();
+  const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
+  const candidateSet = new Set(candidates);
+  const cards = cardsQ.data?.cards ?? [];
+  const filtered = cards
+    .filter((card) => {
+      const q = query.trim().toLowerCase();
+      if (!q) return candidateSet.has(card.luhmannId) || card.status === 'INDEX';
+      return `${card.luhmannId} ${card.title}`.toLowerCase().includes(q);
+    })
+    .slice(0, 80);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 backdrop-blur-[2px]">
+      <div className="w-[520px] max-w-[92vw] max-h-[82vh] flex flex-col bg-white dark:bg-[#1e2030] border border-gray-200 dark:border-[#363a4f] rounded-lg shadow-2xl">
+        <div className="px-4 py-3 border-b border-gray-100 dark:border-[#363a4f]">
+          <div className="text-sm font-bold text-ink dark:text-[#cad3f5]">Pick parent card</div>
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search or type parent id"
+            className="mt-3 w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-[#494d64] rounded outline-none focus:border-accent bg-white dark:bg-[#24273a]"
+          />
+          {typedParentId && (
+            <button
+              onClick={() => onPick(typedParentId)}
+              className="mt-2 w-full text-left px-2 py-1.5 rounded border border-accent/30 text-xs font-bold text-accent hover:bg-accentSoft"
+            >
+              Use typed id: <span className="font-mono">{typedParentId}</span>
+            </button>
+          )}
+        </div>
+        <div className="flex-1 overflow-y-auto py-1">
+          <button
+            onClick={() => onPick(null)}
+            className="w-full px-4 py-2 text-left hover:bg-gray-50 dark:hover:bg-[#363a4f]"
+          >
+            <div className="text-sm font-semibold">Top level</div>
+            <div className="text-[10px] uppercase tracking-widest text-gray-400">No parent</div>
+          </button>
+          {filtered.map((card) => (
+            <button
+              key={card.luhmannId}
+              onClick={() => onPick(card.luhmannId)}
+              className="w-full px-4 py-2 text-left hover:bg-gray-50 dark:hover:bg-[#363a4f]"
+            >
+              <div className="flex items-baseline gap-2 min-w-0">
+                <span className="font-mono text-[11px] font-bold text-accent shrink-0">{card.luhmannId}</span>
+                <span className="text-sm font-semibold truncate">{card.title || card.luhmannId}</span>
+                {candidateSet.has(card.luhmannId) && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
+                    linked
+                  </span>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+        <div className="px-4 py-3 flex justify-end border-t border-gray-100 dark:border-[#363a4f]">
+          <button onClick={onClose} className="text-xs font-bold px-3 py-1.5 rounded text-gray-600 hover:bg-gray-100">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 /* -------- 自定义 Edge：带 apply/unapply 按钮 -------- */
 function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, style, label }: EdgeProps) {
   const qc = useQueryClient();
@@ -587,13 +652,59 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
   const d = data as unknown as
     | {
         applied: boolean;
+        vaultLink: boolean;
+        vaultStructure: boolean;
         workspaceId: string;
         edgeId: string;
         bothCards: boolean;
         sourceKind: 'card' | 'temp' | 'note';
         targetKind: 'card' | 'temp' | 'note';
+        label?: string;
+        color?: string;
+        note?: string;
       }
     | undefined;
+  const [metaOpen, setMetaOpen] = useState(false);
+  const [draftLabel, setDraftLabel] = useState(d?.label ?? '');
+  const [draftNote, setDraftNote] = useState(d?.note ?? '');
+  const [draftColor, setDraftColor] = useState(d?.color ?? '#7c4dff');
+  const relationKind = d?.vaultLink
+    ? 'vault'
+    : d?.vaultStructure
+      ? 'tree'
+      : d?.applied
+        ? 'applied'
+        : d?.bothCards
+          ? 'draft-link'
+          : d?.sourceKind === 'temp' || d?.targetKind === 'temp'
+            ? 'temp'
+            : 'workspace';
+  const relationBadge = {
+    'draft-link': {
+      label: '双链',
+      cls: 'border-amber-300 bg-amber-50 text-amber-700 hover:border-amber-400',
+    },
+    temp: {
+      label: 'temp',
+      cls: 'border-purple-300 bg-purple-50 text-purple-700 hover:border-purple-400',
+    },
+    vault: {
+      label: 'vault',
+      cls: 'border-sky-300 bg-sky-50 text-sky-700 hover:border-sky-400',
+    },
+    tree: {
+      label: 'tree',
+      cls: 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:border-emerald-400',
+    },
+    applied: {
+      label: 'applied',
+      cls: 'border-accent/40 bg-accentSoft text-accent hover:border-accent/60',
+    },
+    workspace: {
+      label: 'workspace',
+      cls: 'border-gray-300 bg-white text-gray-600 hover:border-gray-400',
+    },
+  }[relationKind];
   const invalidateCardData = () => {
     qc.invalidateQueries({ queryKey: ['workspace', d!.workspaceId] });
     qc.invalidateQueries({ queryKey: ['cards'] });
@@ -626,6 +737,25 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
       dialog.alert(err.message, { title: 'Delete failed' });
     },
   });
+  const updateEdge = async (patch: Partial<WorkspaceEdge>) => {
+    if (!d) return;
+    const ws = await api.getWorkspace(d.workspaceId);
+    const next = await api.updateWorkspace(d.workspaceId, {
+      edges: ws.edges.map((edge) => (edge.id === d.edgeId ? { ...edge, ...patch } : edge)),
+    });
+    qc.setQueryData(['workspace', d.workspaceId], next);
+    qc.invalidateQueries({ queryKey: ['workspaces'] });
+    qc.invalidateQueries({ queryKey: ['ws-links-batch'] });
+  };
+  const saveMeta = async () => {
+    const color = draftColor.trim();
+    await updateEdge({
+      label: draftLabel.trim() || undefined,
+      note: draftNote.trim() || undefined,
+      color: /^#[0-9a-fA-F]{6}$/.test(color) ? color : undefined,
+    });
+    setMetaOpen(false);
+  };
   const onDelete = async () => {
     if (deleteMut.isPending) return;
     const ok = await dialog.confirm('Delete this edge?', {
@@ -644,79 +774,142 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
       <BaseEdge id={id} path={edgePath} style={style} />
       <EdgeLabelRenderer>
         <div
-          className="absolute pointer-events-auto flex items-center gap-1"
+          className="absolute pointer-events-auto"
           style={{
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
           }}
         >
-          {d?.bothCards ? (
-            !d.applied ? (
-              <button
-                onClick={async () => {
-                  if (applyMut.isPending) return;
-                  const ok = await dialog.confirm(
-                    'Write this edge into the vault as a real [[link]] in the source card?',
-                    {
+          <button
+            onClick={() => {
+              setDraftLabel(d?.label ?? '');
+              setDraftNote(d?.note ?? '');
+              setDraftColor(d?.color ?? '#7c4dff');
+              setMetaOpen(true);
+            }}
+            className={`max-w-36 truncate text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-sm transition-colors ${relationBadge.cls}`}
+            title={d?.note || 'Edit workspace link'}
+          >
+            {d?.label || relationBadge.label}
+          </button>
+        </div>
+      </EdgeLabelRenderer>
+      {metaOpen && d && createPortal(
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 backdrop-blur-[2px]">
+          <div className="w-[460px] max-w-[92vw] bg-white dark:bg-[#1e2030] border border-gray-200 dark:border-[#363a4f] rounded-lg shadow-2xl">
+            <div className="px-4 py-3 border-b border-gray-100 dark:border-[#363a4f] flex items-center justify-between">
+              <div>
+                <div className="text-sm font-bold text-ink dark:text-[#cad3f5]">
+                  {d.bothCards ? '双链关系' : 'Workspace relation'}
+                </div>
+                <div className="text-[11px] text-gray-400 mt-0.5">
+                  {d.bothCards
+                    ? d.applied
+                      ? 'Already written to the vault'
+                      : d.vaultLink || d.vaultStructure
+                        ? 'Already exists in the vault'
+                        : 'Draft link between two real cards'
+                    : d.sourceKind === 'temp' || d.targetKind === 'temp'
+                      ? 'Temp edge; materializes when the temp card is promoted'
+                      : 'Workspace-only relation'}
+                </div>
+              </div>
+              <button onClick={() => setMetaOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={14} />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <label className="block">
+                <span className="text-[11px] font-bold text-gray-500">Label</span>
+                <input
+                  value={draftLabel}
+                  onChange={(e) => setDraftLabel(e.target.value)}
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded outline-none focus:border-accent"
+                  placeholder="supports, example, contradicts"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[11px] font-bold text-gray-500">Note</span>
+                <textarea
+                  value={draftNote}
+                  onChange={(e) => setDraftNote(e.target.value)}
+                  className="mt-1 w-full min-h-24 px-2 py-1.5 text-sm border border-gray-300 rounded outline-none focus:border-accent resize-y"
+                  placeholder="Why are these cards connected?"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[11px] font-bold text-gray-500">Color</span>
+                <div className="mt-1 flex items-center gap-2">
+                  {['#7c4dff', '#10b981', '#f59e0b', '#ef4444', '#0ea5e9'].map((color) => (
+                    <button
+                      key={color}
+                      onClick={() => setDraftColor(color)}
+                      className={`w-6 h-6 rounded border-2 ${draftColor === color ? 'border-ink' : 'border-white shadow'}`}
+                      style={{ backgroundColor: color }}
+                      title={color}
+                    />
+                  ))}
+                  <input
+                    value={draftColor}
+                    onChange={(e) => setDraftColor(e.target.value)}
+                    className="w-28 px-2 py-1.5 text-sm font-mono border border-gray-300 rounded outline-none focus:border-accent"
+                  />
+                </div>
+              </label>
+            </div>
+            <div className="px-4 py-3 flex items-center gap-2 border-t border-gray-100 dark:border-[#363a4f]">
+              {d.bothCards && !d.vaultLink && !d.vaultStructure && !d.applied && (
+                <button
+                  onClick={async () => {
+                    const ok = await dialog.confirm('Write this edge into the vault as a real [[link]] in the source card?', {
                       title: 'Apply edge',
                       confirmLabel: 'Apply',
-                    },
-                  );
-                  if (!ok) return;
-                  applyMut.mutate();
-                }}
-                disabled={applyMut.isPending}
-                className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-accent/40 text-accent hover:bg-accent hover:text-white shadow-sm transition-colors"
-                title="Persist this edge into the vault as a real [[link]]"
-              >
-                {applyMut.isPending ? 'Applying…' : 'Apply'}
-              </button>
-            ) : (
-              <button
-                onClick={async () => {
-                  if (unapplyMut.isPending) return;
-                  const ok = await dialog.confirm(
-                    'Remove this edge’s [[link]] from the vault?',
-                    {
+                    });
+                    if (ok) applyMut.mutate();
+                  }}
+                  className="text-xs font-bold px-3 py-1.5 rounded bg-accent text-white hover:bg-accent/90"
+                >
+                  Apply to vault
+                </button>
+              )}
+              {d.bothCards && d.applied && !d.vaultLink && !d.vaultStructure && (
+                <button
+                  onClick={async () => {
+                    const ok = await dialog.confirm('Remove this edge’s [[link]] from the vault?', {
                       title: 'Unapply edge',
                       confirmLabel: 'Unapply',
                       variant: 'danger',
-                    },
-                  );
-                  if (!ok) return;
-                  unapplyMut.mutate();
-                }}
-                disabled={unapplyMut.isPending}
-                className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-accent text-white hover:bg-accent/80 shadow-sm"
-                title="Unapply: remove from vault"
+                    });
+                    if (ok) unapplyMut.mutate();
+                  }}
+                  className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded bg-accent text-white hover:bg-accent/90"
+                >
+                  <Undo2 size={11} /> Unapply
+                </button>
+              )}
+              <button
+                onClick={onDelete}
+                className="text-xs font-bold px-3 py-1.5 rounded text-red-600 hover:bg-red-50"
               >
-                <Undo2 size={9} />
-                {unapplyMut.isPending ? 'Unapplying…' : 'Applied'}
+                Delete
               </button>
-            )
-          ) : (
-            // Edge involving a temp/note: no Apply button — auto-materializes when temps are promoted
-            <span
-              className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-50 border border-purple-200 text-purple-600 select-none"
-              title={
-                d?.sourceKind === 'temp' || d?.targetKind === 'temp'
-                  ? 'Auto-links into the vault when the temp card is promoted'
-                  : 'Workspace-only link'
-              }
-            >
-              workspace
-            </span>
-          )}
-          <button
-            onClick={onDelete}
-            disabled={deleteMut.isPending}
-            className="w-4 h-4 rounded-full bg-white border border-gray-300 text-gray-400 hover:bg-red-500 hover:text-white hover:border-red-500 shadow-sm flex items-center justify-center transition-colors"
-            title="Delete edge"
-          >
-            <X size={9} />
-          </button>
-          {label ? <span className="ml-1 text-[10px] text-gray-500">{label}</span> : null}
-        </div>
-      </EdgeLabelRenderer>
+              <div className="flex-1" />
+              <button
+                onClick={() => setMetaOpen(false)}
+                className="text-xs font-bold px-3 py-1.5 rounded text-gray-600 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void saveMeta()}
+                className="text-xs font-bold px-3 py-1.5 rounded bg-accent text-white hover:bg-accent/90"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </>
   );
 }

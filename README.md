@@ -68,12 +68,11 @@ ZettelkastenCard/
 ---
 luhmannId: 1a
 title: 维度灾难与特征选择器
-status: ATOMIC          # ATOMIC | HUB
 tags: [ML, TLS]
 crossLinks: [1a1, 3b]   # 手动指定的关联卡片
 ---
 
-正文中也可以用 [[1a1]] 或 [[标题]] 双链。
+正文中也可以用 [[1a1]] 或 [[标题]] 双链。`status` 不需要写入 frontmatter；系统会根据结构自动派生 `ATOMIC` / `INDEX`：顶层编号天然是 `INDEX`，有子卡的卡片也是 `INDEX`。
 ```
 
 ## 当前 MVP 完成的功能
@@ -84,14 +83,14 @@ crossLinks: [1a1, 3b]   # 手动指定的关联卡片
 - ✅ FTS5 全文索引
 - ✅ 链式阅读视图 + Linked / Potential / ReferencedFrom 三段
 - ✅ 潜在链接显示开关（关闭/仅标题/完整）
-- ✅ Tags + Hubs 侧栏
+- ✅ Tags + Index 侧栏
 - ✅ 设置页骨架
 - ✅ 后端事件钩子（card:beforeSave 等）+ 前端 PluginRegistry 接口
 
 ## 路线图
 
 - 卡片编辑器（当前是只读，编辑需直接改 .md 文件）
-- Promote 提权 UI 操作（HUB 状态可手动切换）
+- Promote / Demote 重编号操作
 - Graph View（语义缩放：放大到一定程度展开为完整内容）
 - 插件 SDK V2（动态加载 ES module）
 - 命令面板

@@ -88,7 +88,13 @@ export interface WorkspaceEdge {
   sourceHandle?: string | null;
   targetHandle?: string | null;
   label?: string;
+  color?: string;
+  note?: string;
   applied?: boolean;
+  /** True when this edge mirrors an existing vault [[link]], not a workspace draft. */
+  vaultLink?: boolean;
+  /** True when this edge mirrors vault structure such as Folgezettel parent-child. */
+  vaultStructure?: boolean;
 }
 
 export interface WorkspaceLinkEndpoint {

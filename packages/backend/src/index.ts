@@ -22,12 +22,31 @@ import { hooks } from './hooks.js';
 import { initVaultRegistry } from './services/vaultRegistry.js';
 import { startBackupScheduler, stopBackupScheduler } from './services/backup.js';
 
+function isAllowedCorsOrigin(origin: string | undefined): boolean {
+  if (!origin) return true;
+  if (config.corsOrigins.includes(origin)) return true;
+  try {
+    const url = new URL(origin);
+    return url.protocol === 'http:' && ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 async function main() {
   const app = Fastify({
     logger: { transport: { target: 'pino-pretty' } },
     bodyLimit: 25 * 1024 * 1024, // 25MB for attachment uploads
   });
-  await app.register(cors, { origin: true });
+  await app.register(cors, {
+    origin: (origin, cb) => {
+      if (isAllowedCorsOrigin(origin)) {
+        cb(null, true);
+        return;
+      }
+      cb(new Error(`CORS origin not allowed: ${origin}`), false);
+    },
+  });
   await app.register(multipart, {
     limits: { fileSize: 25 * 1024 * 1024 },
   });
@@ -112,7 +131,7 @@ async function main() {
   process.on('SIGINT', closeGracefully);
   process.on('SIGTERM', closeGracefully);
 
-  await app.listen({ port: config.port, host: '127.0.0.1' });
+  await app.listen({ port: config.port, host: config.host });
 }
 
 main().catch((err) => {

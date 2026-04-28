@@ -51,8 +51,14 @@ export interface WorkspaceEdge {
   sourceHandle?: string | null;
   targetHandle?: string | null;
   label?: string;
+  color?: string;
+  note?: string;
   /** 是否已写回 vault 形成真正的 [[link]] */
   applied?: boolean;
+  /** Mirrors an existing vault [[link]]; not owned by this workspace edge. */
+  vaultLink?: boolean;
+  /** Mirrors vault structure such as Folgezettel parent-child; not applyable. */
+  vaultStructure?: boolean;
   /** 应用时写到了哪张卡的 .md（保留以便撤销） */
   appliedToFile?: string;
   /** 应用时插入的 marker 字符串（HTML 注释 + 占位文本），撤销时按此精确定位 */
@@ -468,6 +474,9 @@ export async function applyEdge(
         'Apply only commits links between two real vault cards. Edges involving a temp card or a note will materialize automatically when the temp is promoted.',
     };
   }
+  if (edge.vaultLink || edge.vaultStructure || edge.label === 'tree') {
+    return { error: 'This edge already exists in the vault' };
+  }
   if (edge.applied) return { error: 'This edge has already been applied' };
 
   const sourceCard = repo.getById((source as CardRefNode).cardId);
@@ -507,6 +516,9 @@ export async function unapplyEdge(
   if (!edge) return { error: 'edge not found' };
   if (!edge.applied) {
     return { error: 'This edge has not been applied' };
+  }
+  if (edge.vaultLink || edge.vaultStructure || edge.label === 'tree') {
+    return { error: 'This edge mirrors an existing vault relationship and is not owned by the workspace' };
   }
 
   // If a vault file was written (real-card target), undo it.

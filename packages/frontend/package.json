@@ -20,6 +20,7 @@
     "d3-selection": "^3.0.0",
     "d3-zoom": "^3.0.0",
     "dagre": "^0.8.5",
+    "dompurify": "^3.4.1",
     "framer-motion": "^11.11.0",
     "lucide-react": "^0.451.0",
     "marked": "^14.1.2",

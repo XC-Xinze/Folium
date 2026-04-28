@@ -60,12 +60,14 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
   const showPotential = merged.potential;
   const showTagRelated = merged.tag;
   const showCrossLinks = merged.cross;
+  const showBoxLinks = merged.box;
   const showWorkspaceLinks = merged.workspaceLinks;
   // 没接 onFlagChange 的兜底：原地状态（用于 Canvas 被非 tab 场景用时不挂掉）
   const setFlag = (k: keyof CardDisplayFlags, v: boolean) => onFlagChange?.(k, v);
   const setShowPotential = (v: boolean) => setFlag('potential', v);
   const setShowTagRelated = (v: boolean) => setFlag('tag', v);
   const setShowCrossLinks = (v: boolean) => setFlag('cross', v);
+  const setShowBoxLinks = (v: boolean) => setFlag('box', v);
   const setShowWorkspaceLinks = (v: boolean) => setFlag('workspaceLinks', v);
   const qc = useQueryClient();
 
@@ -180,6 +182,7 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
       showPotential: isMaster ? false : showPotential,
       showTagRelated: isMaster ? false : showTagRelated,
       showCrossLinks: isMaster ? false : showCrossLinks,
+      showBoxLinks: isMaster ? false : showBoxLinks,
       workspaceLinks: showWorkspaceLinks && !isMaster ? workspaceLinksQ.data?.links ?? [] : [],
     });
     const anchored = applyAnchorPositions(raw.nodes, raw.edges, positionsQ.data ?? {});
@@ -212,6 +215,7 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
     showPotential,
     showTagRelated,
     showCrossLinks,
+    showBoxLinks,
     showWorkspaceLinks,
     workspaceLinksQ.data,
     positionsQ.data,
@@ -498,6 +502,7 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
         <div className="flex items-center gap-1.5">
           <EdgeToggle color="#385f73" label="Link" active={showCrossLinks} onClick={() => setShowCrossLinks(!showCrossLinks)} title="Manual [[link]] edges" />
           <EdgeToggle color="#10b981" label="Tag" active={showTagRelated} onClick={() => setShowTagRelated(!showTagRelated)} title="Tag co-occurrence edges (green)" />
+          <EdgeToggle color="#ba635c" label="Box" active={showBoxLinks} onClick={() => setShowBoxLinks(!showBoxLinks)} title="Same-box membership edges" />
           <EdgeToggle color="#cbd5e1" label="Potential" active={showPotential} onClick={() => setShowPotential(!showPotential)} title="Text-similarity potential edges (gray dashed)" />
           <EdgeToggle color="#536253" label="Temp" active={showWorkspaceLinks} onClick={() => setShowWorkspaceLinks(!showWorkspaceLinks)} title="Workspace temp ghost cards & their links" />
         </div>

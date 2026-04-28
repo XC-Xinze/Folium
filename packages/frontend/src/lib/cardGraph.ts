@@ -88,6 +88,8 @@ export interface BuildGraphInput {
   showTagRelated?: boolean;
   /** 默认 true：显示紫色手动 [[link]] cross-flank 边/节点 */
   showCrossLinks?: boolean;
+  /** 默认 false：显示同 INDEX box 成员之间的关系边。不额外拉新节点，只连当前可见节点。 */
+  showBoxLinks?: boolean;
   /** 工作区边（任何 vault 卡参与的）—— 当作 potential 显示在画布上 */
   workspaceLinks?: WorkspaceLink[];
 }
@@ -185,6 +187,7 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     showPotential,
     showTagRelated = true,
     showCrossLinks = true,
+    showBoxLinks = false,
     workspaceLinks,
   } = input;
   const cardMap = new Map(allCards.map((c) => [c.luhmannId, c]));
@@ -193,7 +196,7 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
   const backbone = computeBackbone(focusedBoxId, allCards, fullCards);
 
   /* ----- 收集 raw 节点和边 ----- */
-  type RawEdgeKind = 'tree' | 'cross' | 'tag' | 'potential';
+  type RawEdgeKind = 'tree' | 'cross' | 'tag' | 'box' | 'potential';
   interface RawEdge {
     id: string;
     source: string;
@@ -249,6 +252,32 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
   // 骨干 tree 边
   for (const e of backbone.treeEdges) {
     rawEdges.push({ id: `tree:${e.source}->${e.target}`, source: e.source, target: e.target, kind: 'tree' });
+  }
+
+  // Same-box 边：同一个 INDEX box 的可见成员之间的弱关系。
+  // 只连当前已在图上的节点，不借此把整库成员拉进来。
+  if (showBoxLinks) {
+    const seenBoxPairs = new Set<string>();
+    for (const index of allCards) {
+      if (index.status !== 'INDEX') continue;
+      const visibleMembers = index.crossLinks.filter((id) => rawNodes.has(id));
+      for (let i = 0; i < visibleMembers.length; i++) {
+        for (let j = i + 1; j < visibleMembers.length; j++) {
+          const source = visibleMembers[i]!;
+          const target = visibleMembers[j]!;
+          if (source === target) continue;
+          const key = [source, target].sort().join('|');
+          if (seenBoxPairs.has(key)) continue;
+          seenBoxPairs.add(key);
+          rawEdges.push({
+            id: `box:${index.luhmannId}:${source}->${target}`,
+            source,
+            target,
+            kind: 'box',
+          });
+        }
+      }
+    }
   }
 
   // 焦点卡若在 backbone 外（被 tag-related/cross-flank 拉进来后用户点选了它）→
@@ -669,6 +698,7 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     tree: { stroke: '#9ca3af', strokeWidth: 1.5 },
     cross: { stroke: '#385f73', strokeWidth: 1.3 },
     tag: { stroke: '#10b981', strokeWidth: 1.4 }, // 绿色实线，first-class
+    box: { stroke: '#ba635c', strokeWidth: 1, strokeDasharray: '3 4' },
     potential: { stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '6 4' },
   };
 

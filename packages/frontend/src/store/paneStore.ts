@@ -15,6 +15,7 @@ export interface CardDisplayFlags {
   potential: boolean;
   tag: boolean;
   cross: boolean;
+  box: boolean;
   workspaceLinks: boolean;
 }
 
@@ -22,6 +23,7 @@ export const DEFAULT_CARD_FLAGS: CardDisplayFlags = {
   potential: true,
   tag: true,
   cross: true,
+  box: false,
   workspaceLinks: true,
 };
 
@@ -36,7 +38,7 @@ export interface Tab {
   cardFocusId?: string;
   tagName?: string;
   workspaceId?: string;
-  /** 仅 kind='card' 用：四个边类型开关。缺省走 DEFAULT_CARD_FLAGS */
+  /** 仅 kind='card' 用：边类型开关。缺省走 DEFAULT_CARD_FLAGS */
   cardFlags?: Partial<CardDisplayFlags>;
   /** 仅 kind='card' 用：当前 box 内累计点过几层外部 tag/cross 卡 —— 到 3 后下一次点
    *  外部卡触发切 box。回到 backbone 内的卡片或 box 切换时重置。 */

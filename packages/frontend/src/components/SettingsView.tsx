@@ -193,7 +193,10 @@ function PluginsPanel() {
               ) : (
                 <XCircle size={12} className="text-red-500 shrink-0" />
               )}
-              <code className="font-mono text-[11px]">{p.name}</code>
+              <code className="font-mono text-[11px]">{p.manifest?.name ?? p.name}</code>
+              {p.manifest?.version && (
+                <span className="text-[10px] text-gray-400">v{p.manifest.version}</span>
+              )}
               {!p.ok && p.error && (
                 <span className="text-[11px] text-red-500 truncate">{p.error}</span>
               )}

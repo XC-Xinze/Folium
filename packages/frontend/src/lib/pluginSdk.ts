@@ -84,7 +84,7 @@ function uuid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-export function createPluginSdk(pluginName: string): PluginSdk {
+export function createPluginSdk(pluginName: string, disposables: Array<() => void> = []): PluginSdk {
   return {
     cards: {
       list: async () => (await api.listCards()).cards,
@@ -195,7 +195,13 @@ export function createPluginSdk(pluginName: string): PluginSdk {
       },
       alert: dialog.alert,
     },
-    commands: { register: registerCommand },
+    commands: {
+      register(command) {
+        const cleanup = registerCommand(command);
+        disposables.push(cleanup);
+        return cleanup;
+      },
+    },
     storage: createStorage(pluginName),
     registry: PluginRegistry,
     log: {

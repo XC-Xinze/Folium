@@ -165,6 +165,34 @@ export async function updateWorkspace(
   return next;
 }
 
+export async function renameCardRefsInWorkspaces(renames: Map<string, string>): Promise<number> {
+  if (renames.size === 0) return 0;
+  const map = await loadAll();
+  let changed = 0;
+  const now = new Date().toISOString();
+
+  for (const ws of Object.values(map)) {
+    let touched = false;
+    const nodes = ws.nodes.map((node) => {
+      if (node.kind !== 'card') return node;
+      const nextCardId = renames.get(node.cardId);
+      if (!nextCardId) return node;
+      touched = true;
+      return { ...node, cardId: nextCardId };
+    });
+    if (!touched) continue;
+    ws.nodes = nodes;
+    ws.updatedAt = now;
+    changed += 1;
+  }
+
+  if (changed > 0) {
+    await flush(map);
+    await repairWorkspaces();
+  }
+  return changed;
+}
+
 export interface WorkspaceRepairReport {
   workspacesScanned: number;
   nodesRemoved: number;

@@ -114,7 +114,7 @@ export function Sidebar() {
         {
           title: 'Reparent + renumber',
           description:
-            'All [[link]] references to renamed ids in any card body will be rewritten too.',
+            'All [[link]] references and workspace card references to renamed ids will be rewritten too.',
           confirmLabel: 'Reparent',
           variant: 'danger',
         },
@@ -123,14 +123,7 @@ export function Sidebar() {
       const result = await api.reparentCard(sourceId, newParentId, { dryRun: false });
       // id 大改 → 整个 cache 都不可信，全清
       qc.invalidateQueries();
-      // 任何 tab 指向被改名的卡 → 清掉避免点了 404
-      const renamedSet = new Set(Object.keys(result.renames));
-      usePaneStore.getState().removeTabsWhere(
-        (t) =>
-          t.kind === 'card' &&
-          ((t.cardBoxId !== undefined && renamedSet.has(t.cardBoxId)) ||
-            (t.cardFocusId !== undefined && renamedSet.has(t.cardFocusId))),
-      );
+      usePaneStore.getState().renameCardRefs(result.renames);
     } catch (err) {
       dialog.alert((err as Error).message, { title: 'Reparent failed' });
     }

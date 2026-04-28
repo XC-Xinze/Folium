@@ -27,6 +27,8 @@ export interface ReparentResult {
   renames: Record<string, string>;
   /** 被改写的 .md 文件数（含改名 + 引用重写） */
   filesUpdated: number;
+  /** Workspace canvases whose real-card references were retargeted. */
+  workspacesUpdated: number;
 }
 
 function escapeForRegex(s: string): string {
@@ -147,7 +149,7 @@ export async function reparentCard(
 
   const { renames } = planReparent(repo, sourceCanon, newParentCanon);
   if (renames.size === 0) {
-    return { renames: {}, filesUpdated: 0 };
+    return { renames: {}, filesUpdated: 0, workspacesUpdated: 0 };
   }
 
   // 1. Rename phase — 两步走避免中间路径冲突
@@ -203,12 +205,13 @@ export async function reparentCard(
     if (card) repo.upsertOne(card);
   }
 
-  // 4. 副作用：positions / starred 里的旧 id 改成新 id
-  // （workspaces 里的 cardId 引用暂不动 —— 用户主动改名应该不期望影响 workspace 状态）
+  // 4. 副作用：positions / starred / workspaces 里的旧 id 改成新 id
   for (const [oldId, newId] of renames) {
     await renameCardInAllScopes(oldId, newId);
     await renameStarred(oldId, newId);
   }
+  const { renameCardRefsInWorkspaces } = await import('./workspaces.js');
+  const workspacesUpdated = await renameCardRefsInWorkspaces(renames);
 
-  return { renames: Object.fromEntries(renames), filesUpdated };
+  return { renames: Object.fromEntries(renames), filesUpdated, workspacesUpdated };
 }

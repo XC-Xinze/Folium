@@ -65,7 +65,7 @@ export interface UpdateCardPatch {
  */
 export async function updateCardFile(filePath: string, patch: UpdateCardPatch): Promise<void> {
   const raw = await readFile(filePath, 'utf8');
-  const parsed = matter(raw);
+  const parsed = matter(raw, {});
   if (patch.title !== undefined) parsed.data.title = patch.title;
   if (patch.tags !== undefined) {
     parsed.data.tags = patch.tags.map((t) => String(t).toLowerCase());
@@ -76,4 +76,3 @@ export async function updateCardFile(filePath: string, patch: UpdateCardPatch): 
   const newContent = patch.content !== undefined ? patch.content : parsed.content;
   await writeFile(filePath, matter.stringify(newContent, parsed.data), 'utf8');
 }
-

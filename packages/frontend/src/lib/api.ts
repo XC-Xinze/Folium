@@ -546,7 +546,7 @@ export const api = {
     sourceId: string,
     newParentId: string | null,
     opts?: { dryRun?: boolean },
-  ): Promise<{ renames: Record<string, string>; filesUpdated: number; dryRun?: boolean }> => {
+  ): Promise<{ renames: Record<string, string>; filesUpdated: number; workspacesUpdated?: number; dryRun?: boolean }> => {
     const res = await fetch(`${BASE}/cards/reparent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

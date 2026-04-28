@@ -51,7 +51,7 @@ export async function parseCardFile(filePath: string): Promise<Card | null> {
 
   const raw = await readFile(filePath, 'utf8');
   const stats = await stat(filePath);
-  const { data: fm, content: body } = matter(raw);
+  const { data: fm, content: body } = matter(raw, {});
 
   // luhmannId: frontmatter 优先，否则用文件名（去 .md）
   const fileBase = basename(filePath, '.md');

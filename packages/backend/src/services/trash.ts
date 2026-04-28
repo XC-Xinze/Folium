@@ -35,7 +35,7 @@ export async function listTrash(): Promise<TrashEntry[]> {
     const fp = join(dir, fname);
     try {
       const raw = await readFile(fp, 'utf8');
-      const parsed = matter(raw);
+      const parsed = matter(raw, {});
       const luhmannId =
         (typeof parsed.data.luhmannId === 'string' && parsed.data.luhmannId) ||
         // fallback: 从文件名 timestamp-{id}.md 提取
@@ -78,7 +78,7 @@ export async function restoreFromTrash(
 ): Promise<{ luhmannId: string; conflict?: boolean; replacedExisting?: boolean }> {
   const src = join(TRASH_DIR(), fileName);
   const raw = await readFile(src, 'utf8');
-  const parsed = matter(raw);
+  const parsed = matter(raw, {});
   const originalId =
     (typeof parsed.data.luhmannId === 'string' && parsed.data.luhmannId) ||
     fileName.replace(/^\d{8}T\d{6}-/, '').replace(/\.md$/, '');

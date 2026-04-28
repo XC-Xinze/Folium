@@ -106,6 +106,8 @@ interface PaneActions {
   removeEmptyPane: (paneId: string) => void;
   /** 批量删除满足 pred 的 tab（删卡 / 删 workspace 后清理用） */
   removeTabsWhere: (pred: (tab: Tab) => boolean) => void;
+  /** 卡片重编号后，把已打开 card tab 和 per-pane 卡片显示状态指向新 id */
+  renameCardRefs: (renames: Record<string, string>) => void;
   /** 恢复最近关闭的 tab —— 失败（栈空）时无 op */
   reopenLastClosed: () => void;
   /** 选 active leaf 的第 idx (0-based) tab；越界无 op */
@@ -235,6 +237,30 @@ function tabsEqual(a: Omit<Tab, 'id'>, b: Tab): boolean {
 
 function makeTab(spec: Omit<Tab, 'id'>): Tab {
   return { ...spec, id: uid() };
+}
+
+function renameId(id: string | undefined, renames: Record<string, string>): string | undefined {
+  return id ? renames[id] ?? id : id;
+}
+
+function renameCardTabRefs(tab: Tab, renames: Record<string, string>): Tab {
+  if (tab.kind !== 'card') return tab;
+  const cardBoxId = renameId(tab.cardBoxId, renames);
+  const cardFocusId = renameId(tab.cardFocusId, renames);
+  const cardHistory = tab.cardHistory?.map((entry) => ({
+    box: renames[entry.box] ?? entry.box,
+    focus: renames[entry.focus] ?? entry.focus,
+  }));
+  const title = renames[tab.title] ?? tab.title;
+  if (
+    cardBoxId === tab.cardBoxId &&
+    cardFocusId === tab.cardFocusId &&
+    cardHistory === tab.cardHistory &&
+    title === tab.title
+  ) {
+    return tab;
+  }
+  return { ...tab, title, cardBoxId, cardFocusId, cardHistory };
 }
 
 // 不可变更新：返回新树
@@ -674,6 +700,27 @@ export const usePaneStore = create<PaneStore>()(
         set({
           root: nextRoot,
           activeLeafId: stillActive ? activeLeafId : findFirstLeaf(nextRoot).id,
+        });
+      },
+
+      renameCardRefs: (renames) => {
+        const entries = Object.entries(renames);
+        if (entries.length === 0) return;
+        const { root } = get();
+        set({
+          root: mapTree(root, (n) => {
+            if (n.kind !== 'leaf') return n;
+            const cardFlagsByCard = n.cardFlagsByCard
+              ? Object.fromEntries(
+                  Object.entries(n.cardFlagsByCard).map(([id, flags]) => [renames[id] ?? id, flags]),
+                )
+              : n.cardFlagsByCard;
+            return {
+              ...n,
+              tabs: n.tabs.map((tab) => renameCardTabRefs(tab, renames)),
+              cardFlagsByCard,
+            };
+          }),
         });
       },
 

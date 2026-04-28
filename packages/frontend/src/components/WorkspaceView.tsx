@@ -718,21 +718,30 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
   };
   const applyMut = useMutation({
     mutationFn: () => api.applyEdge(d!.workspaceId, d!.edgeId),
-    onSuccess: invalidateCardData,
+    onSuccess: () => {
+      setMetaOpen(false);
+      invalidateCardData();
+    },
     onError: (err: Error) => {
       dialog.alert(err.message, { title: 'Apply failed' });
     },
   });
   const unapplyMut = useMutation({
     mutationFn: () => api.unapplyEdge(d!.workspaceId, d!.edgeId),
-    onSuccess: invalidateCardData,
+    onSuccess: () => {
+      setMetaOpen(false);
+      invalidateCardData();
+    },
     onError: (err: Error) => {
       dialog.alert(err.message, { title: 'Unapply failed' });
     },
   });
   const deleteMut = useMutation({
     mutationFn: () => api.deleteWorkspaceEdge(d!.workspaceId, d!.edgeId),
-    onSuccess: invalidateCardData,
+    onSuccess: () => {
+      setMetaOpen(false);
+      invalidateCardData();
+    },
     onError: (err: Error) => {
       dialog.alert(err.message, { title: 'Delete failed' });
     },

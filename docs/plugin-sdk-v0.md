@@ -9,21 +9,31 @@ Plugins are ES modules stored in:
 Each plugin exports `activate(ctx)` or a default function:
 
 ```js
+export const manifest = {
+  id: 'my-plugin',
+  name: 'My Plugin',
+  version: '0.1.0',
+  minAppVersion: '0.0.1',
+  mobile: true,
+};
+
 export default function activate(ctx) {
-  const cleanup = ctx.sdk.commands.register({
+  ctx.sdk.commands.register({
     id: 'my-plugin.hello',
     title: 'My Plugin: hello',
     group: 'Plugins',
     run: () => ctx.sdk.ui.alert('Hello'),
   });
-
-  return { deactivate: cleanup };
 }
 ```
 
 ## Context
 
 Prefer `ctx.sdk`. Direct `ctx.api`, `ctx.registry`, and `ctx.commands` still exist for early plugins, but are compatibility shims and may be narrowed.
+
+Plugins may export `manifest`. It is optional in v0, but public plugins should include `id`, `name`, `version`, `minAppVersion`, and `mobile`.
+
+The SDK tracks disposables for `ctx.sdk.commands.register(...)`; commands are automatically unregistered on plugin reload even if the plugin does not return a `deactivate` cleanup. Plugins can still return `{ deactivate() {} }` for their own timers, DOM listeners, or other resources.
 
 ### `ctx.sdk.cards`
 
@@ -89,7 +99,6 @@ Namespaced per plugin in `localStorage`.
 
 ## Missing Before Public Plugins
 
-- Manifest: id, version, app compatibility, permissions, mobile support.
 - Permission checks: cards read/write/delete, workspace, vault files, network, system open.
 - Plugin lifecycle on vault switch and hot reload.
 - UI extension points for card menus, card toolbar, canvas nodes, markdown render hooks, ribbon/status bar.

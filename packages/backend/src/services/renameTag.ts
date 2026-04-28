@@ -41,7 +41,7 @@ export async function renameTag(
     } catch {
       continue;
     }
-    const parsed = matter(raw);
+    const parsed = matter(raw, {});
     let changed = false;
 
     // frontmatter.tags
@@ -102,7 +102,7 @@ export async function deleteTag(
     } catch {
       continue;
     }
-    const parsed = matter(raw);
+    const parsed = matter(raw, {});
     let changed = false;
 
     // frontmatter.tags 里去掉

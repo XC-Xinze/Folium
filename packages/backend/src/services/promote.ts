@@ -240,7 +240,7 @@ async function renameSubtree(
     const oldPath = oldRow.filePath;
     const newPath = join(dirname(oldPath), `${newCardId}.md`);
     const raw = await readFile(oldPath, 'utf8');
-    const parsed = matter(raw);
+    const parsed = matter(raw, {});
     parsed.data.luhmannId = newCardId;
     parsed.data.updated = today;
     if (Array.isArray(parsed.data.crossLinks)) {

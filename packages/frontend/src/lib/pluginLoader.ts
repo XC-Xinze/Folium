@@ -29,10 +29,19 @@ export interface PluginContext {
   log: Pick<Console, 'log' | 'warn' | 'error'>;
 }
 
+export interface PluginManifest {
+  id?: string;
+  name?: string;
+  version?: string;
+  minAppVersion?: string;
+  mobile?: boolean;
+}
+
 export interface LoadedPlugin {
   name: string;
   ok: boolean;
   error?: string;
+  manifest?: PluginManifest;
   /** activate 函数返回的 cleanup（如果有） */
   deactivate?: () => void;
 }
@@ -56,6 +65,7 @@ async function loadOne(name: string): Promise<LoadedPlugin> {
     blobUrls.set(name, url);
 
     const mod = (await import(/* @vite-ignore */ url)) as {
+      manifest?: PluginManifest;
       default?: (ctx: PluginContext) => void | { deactivate?: () => void };
       activate?: (ctx: PluginContext) => void | { deactivate?: () => void };
     };
@@ -63,11 +73,18 @@ async function loadOne(name: string): Promise<LoadedPlugin> {
     if (typeof activate !== 'function') {
       return { name, ok: false, error: 'no default export / activate function' };
     }
+    const disposables: Array<() => void> = [];
     const ctx: PluginContext = {
-      sdk: createPluginSdk(name),
+      sdk: createPluginSdk(name, disposables),
       registry: PluginRegistry,
       api,
-      commands: { register: registerCommand },
+      commands: {
+        register(command) {
+          const cleanup = registerCommand(command);
+          disposables.push(cleanup);
+          return cleanup;
+        },
+      },
       log: {
         log: (...args) => console.log(`[plugin:${name}]`, ...args),
         warn: (...args) => console.warn(`[plugin:${name}]`, ...args),
@@ -75,8 +92,13 @@ async function loadOne(name: string): Promise<LoadedPlugin> {
       },
     };
     const result = activate(ctx);
-    const deactivate = result?.deactivate;
-    return { name, ok: true, deactivate };
+    const pluginDeactivate = result?.deactivate;
+    const deactivate = () => {
+      pluginDeactivate?.();
+      for (const cleanup of [...disposables].reverse()) cleanup();
+      disposables.length = 0;
+    };
+    return { name, ok: true, manifest: mod.manifest, deactivate };
   } catch (err) {
     return { name, ok: false, error: (err as Error).message };
   }

@@ -59,7 +59,7 @@ export async function deleteVaultCard(
     } catch {
       continue;
     }
-    const parsed = matter(raw);
+    const parsed = matter(raw, {});
     if (Array.isArray(parsed.data.crossLinks)) {
       const before = parsed.data.crossLinks.length;
       parsed.data.crossLinks = parsed.data.crossLinks.filter(

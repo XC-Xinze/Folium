@@ -64,7 +64,7 @@ export async function runSearchReplace(
   for (const card of cards) {
     const raw = await readFile(card.filePath, 'utf8').catch(() => null);
     if (raw === null) continue;
-    const parsed = matter(raw);
+    const parsed = matter(raw, {});
     const target = input.bodyOnly === false ? raw : parsed.content;
 
     // count + first preview

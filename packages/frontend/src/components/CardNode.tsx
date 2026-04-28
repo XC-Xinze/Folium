@@ -1,7 +1,7 @@
 import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronDown, ChevronRight, GripVertical, Image, Layers, Pencil, Star, Trash2, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, GripVertical, Image, Layers, Link2, Pencil, Star, Trash2, X } from 'lucide-react';
 import { isCardDrag, readCardDragData, setCardDragData } from '../lib/dragCard';
 import { dialog } from '../lib/dialog';
 import { api, type Card } from '../lib/api';
@@ -522,29 +522,20 @@ export function CardNode({ data, id, selected }: NodeProps) {
         </div>
       )}
       {nodeData.isInWorkspace && !isGhost && !editing && (
-        <>
-          <div
-            draggable
-            onDragStart={(e) => {
-              e.stopPropagation();
-              setCardDragData(e, { luhmannId: cardLuhmannId, title: display.title });
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-            className="nodrag nopan absolute bottom-2 left-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white dark:bg-[#363a4f] hover:bg-accent hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 dark:border-[#494d64] hover:border-accent shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
-            title="Drag onto another workspace card to create a workspace-only link"
-          >
-            <GripVertical size={10} />
-            <span>LINK</span>
-          </div>
-          <div
-            className="absolute bottom-2 right-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white dark:bg-[#363a4f] text-gray-400 border border-gray-200 dark:border-[#494d64] shadow-sm text-[9px] font-bold uppercase tracking-wider cursor-grab active:cursor-grabbing"
-            title="Drag this card to move it inside the workspace"
-          >
-            <GripVertical size={10} />
-            <span>MOVE</span>
-          </div>
-        </>
+        <div
+          draggable
+          onDragStart={(e) => {
+            e.stopPropagation();
+            setCardDragData(e, { luhmannId: cardLuhmannId, title: display.title });
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="nodrag nopan absolute bottom-2 left-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white dark:bg-[#363a4f] hover:bg-accent hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 dark:border-[#494d64] hover:border-accent shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
+          title="Drag onto another workspace card to connect them"
+        >
+          <Link2 size={10} />
+          <span>CONNECT</span>
+        </div>
       )}
 
       {/* Floating card actions. Structure changes now go through drag/reparent handles. */}
@@ -770,7 +761,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
                   className={`nodrag nopan font-mono text-[11px] font-bold px-1.5 py-0.5 rounded cursor-grab active:cursor-grabbing hover:ring-2 hover:ring-accent ${styles.badge}`}
                   title={
                     nodeData.isInWorkspace
-                      ? `Drag ${display.luhmannId} to another workspace card to create a workspace-only link`
+                      ? `Drag ${display.luhmannId} to another workspace card to connect them`
                       : `Drag ${display.luhmannId} to another card to add [[${display.luhmannId}]]`
                   }
                 >

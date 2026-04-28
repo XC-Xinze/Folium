@@ -40,6 +40,26 @@ interface Props {
   workspaceId: string;
 }
 
+function sameWorkspacePair(a: Pick<WorkspaceEdge, 'source' | 'target'>, b: Pick<WorkspaceEdge, 'source' | 'target'>): boolean {
+  return (a.source === b.source && a.target === b.target) || (a.source === b.target && a.target === b.source);
+}
+
+function hasWorkspacePair(edges: WorkspaceEdge[], source: string, target: string): boolean {
+  return edges.some((edge) => sameWorkspacePair(edge, { source, target }));
+}
+
+function dedupeWorkspaceEdges(edges: WorkspaceEdge[]): WorkspaceEdge[] {
+  const seen = new Set<string>();
+  const out: WorkspaceEdge[] = [];
+  for (const edge of edges) {
+    const key = [edge.source, edge.target].sort().join('::');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(edge);
+  }
+  return out;
+}
+
 export function WorkspaceView(props: Props) {
   return (
     <ReactFlowProvider>
@@ -129,18 +149,19 @@ function WorkspaceInner({ workspaceId }: Props) {
         };
       });
       const nodeKinds = new Map(ws.nodes.map((n) => [n.id, n.kind] as const));
-      const wsEdges: Edge[] = ws.edges.map((e) => {
+      const wsEdges: Edge[] = dedupeWorkspaceEdges(ws.edges).map((e) => {
         const sourceKind = nodeKinds.get(e.source) ?? 'card';
         const targetKind = nodeKinds.get(e.target) ?? 'card';
         const bothCards = sourceKind === 'card' && targetKind === 'card';
         const readonlyVaultEdge = !!e.vaultLink || !!e.vaultStructure || e.label === 'tree';
+        const vaultLikeEdge = !!e.applied || readonlyVaultEdge;
         // Edges with a temp endpoint: dotted, no Apply button — they auto-materialize
         // when the temp is promoted to a vault card.
         // Card↔card: dashed when not applied, solid blue-gray when applied.
-        const stroke = e.color ?? '#385f73';
+        const defaultVaultStroke = e.vaultStructure || e.label === 'tree' ? '#9ca3af' : '#385f73';
         const styleBase = bothCards
-          ? e.applied || readonlyVaultEdge
-            ? { stroke, strokeWidth: 2 }
+          ? vaultLikeEdge
+            ? { stroke: defaultVaultStroke, strokeWidth: 2 }
             : { stroke: e.color ?? '#9ca3af', strokeWidth: 1.5, strokeDasharray: '6 4' }
           : { stroke: e.color ?? '#536253', strokeWidth: 1.5, strokeDasharray: '2 4' };
         return {
@@ -160,9 +181,9 @@ function WorkspaceInner({ workspaceId }: Props) {
             bothCards,
             sourceKind,
             targetKind,
-            label: e.label,
-            color: e.color,
-            note: e.note,
+            label: vaultLikeEdge ? undefined : e.label,
+            color: vaultLikeEdge ? undefined : e.color,
+            note: vaultLikeEdge ? undefined : e.note,
           } as unknown as Record<string, unknown>,
           style: styleBase,
         };
@@ -329,19 +350,23 @@ function WorkspaceInner({ workspaceId }: Props) {
     (conn: Connection) => {
       if (!conn.source || !conn.target) return;
       if (conn.source === conn.target) return;
-      mutateWs((ws) => ({
-        ...ws,
-        edges: [
-          ...ws.edges,
-          {
-            id: randomUUID(),
-            source: conn.source!,
-            target: conn.target!,
-            sourceHandle: conn.sourceHandle,
-            targetHandle: conn.targetHandle,
-          } as WorkspaceEdge,
-        ],
-      }));
+      mutateWs((ws) => {
+        const edges = dedupeWorkspaceEdges(ws.edges);
+        if (hasWorkspacePair(edges, conn.source!, conn.target!)) return { ...ws, edges };
+        return {
+          ...ws,
+          edges: [
+            ...edges,
+            {
+              id: randomUUID(),
+              source: conn.source!,
+              target: conn.target!,
+              sourceHandle: conn.sourceHandle,
+              targetHandle: conn.targetHandle,
+            } as WorkspaceEdge,
+          ],
+        };
+      });
     },
     [mutateWs],
   );
@@ -349,16 +374,15 @@ function WorkspaceInner({ workspaceId }: Props) {
   // CardNode 拖卡 → drop on 另一卡 触发的回调（替代用户找 Handle 拖小圆点）
   const addEdgeBetween = useCallback(
     (sourceWsNodeId: string, targetWsNodeId: string) => {
+      if (sourceWsNodeId === targetWsNodeId) return;
       mutateWs((ws) => {
-        // 已有同向同对的 edge → 静默
-        const dup = ws.edges.find(
-          (e) => e.source === sourceWsNodeId && e.target === targetWsNodeId,
-        );
-        if (dup) return ws;
+        const edges = dedupeWorkspaceEdges(ws.edges);
+        // Workspace card links are semantic relationships, not separate A→B/B→A arrows.
+        if (hasWorkspacePair(edges, sourceWsNodeId, targetWsNodeId)) return { ...ws, edges };
         return {
           ...ws,
           edges: [
-            ...ws.edges,
+            ...edges,
             {
               id: randomUUID(),
               source: sourceWsNodeId,
@@ -706,6 +730,7 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
       cls: 'border-gray-300 bg-white text-gray-600 hover:border-gray-400',
     },
   }[relationKind];
+  const metadataEditable = !(d?.applied || d?.vaultLink || d?.vaultStructure);
   const invalidateCardData = () => {
     qc.invalidateQueries({ queryKey: ['workspace', d!.workspaceId] });
     qc.invalidateQueries({ queryKey: ['cards'] });
@@ -784,7 +809,7 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
       <BaseEdge id={id} path={edgePath} style={style} />
       <EdgeLabelRenderer>
         <div
-          className="absolute pointer-events-auto"
+          className="absolute z-[1500] pointer-events-auto"
           style={{
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
           }}
@@ -797,13 +822,13 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
               setMetaOpen((open) => !open);
             }}
             className={`max-w-36 truncate text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-sm transition-colors ${relationBadge.cls}`}
-            title={d?.note || 'Edit workspace link'}
+            title={metadataEditable ? d?.note || 'Edit workspace link' : 'Vault link'}
           >
-            {d?.label || relationBadge.label}
+            {metadataEditable && d?.label ? d.label : relationBadge.label}
           </button>
           {metaOpen && d && (
             <div
-              className="absolute left-1/2 top-7 z-[1000] w-[380px] max-w-[92vw] -translate-x-1/2 rounded-lg border border-gray-200 bg-white shadow-2xl dark:border-[#363a4f] dark:bg-[#1e2030]"
+              className="absolute left-1/2 top-7 z-[2200] w-[380px] max-w-[92vw] -translate-x-1/2 rounded-lg border border-gray-200 bg-white shadow-2xl dark:border-[#363a4f] dark:bg-[#1e2030]"
               onMouseDown={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 dark:border-[#363a4f]">
@@ -827,36 +852,42 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
                   <X size={13} />
                 </button>
               </div>
-              <div className="space-y-2 p-3">
-                <input
-                  value={draftLabel}
-                  onChange={(e) => setDraftLabel(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs outline-none focus:border-accent dark:border-[#494d64] dark:bg-[#24273a]"
-                  placeholder="Label: supports, example, contradicts"
-                />
-                <textarea
-                  value={draftNote}
-                  onChange={(e) => setDraftNote(e.target.value)}
-                  className="min-h-20 w-full resize-y rounded border border-gray-300 px-2 py-1.5 text-xs outline-none focus:border-accent dark:border-[#494d64] dark:bg-[#24273a]"
-                  placeholder="Why are these cards connected?"
-                />
-                <div className="flex items-center gap-2">
-                  {['#385f73', '#536253', '#ba635c', '#f59e0b', '#ef4444'].map((color) => (
-                    <button
-                      key={color}
-                      onClick={() => setDraftColor(color)}
-                      className={`h-5 w-5 rounded border-2 ${draftColor === color ? 'border-ink dark:border-[#cad3f5]' : 'border-white shadow'}`}
-                      style={{ backgroundColor: color }}
-                      title={color}
-                    />
-                  ))}
+              {metadataEditable ? (
+                <div className="space-y-2 p-3">
                   <input
-                    value={draftColor}
-                    onChange={(e) => setDraftColor(e.target.value)}
-                    className="ml-auto w-24 rounded border border-gray-300 px-2 py-1 text-[11px] font-mono outline-none focus:border-accent dark:border-[#494d64] dark:bg-[#24273a]"
+                    value={draftLabel}
+                    onChange={(e) => setDraftLabel(e.target.value)}
+                    className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs outline-none focus:border-accent dark:border-[#494d64] dark:bg-[#24273a]"
+                    placeholder="Label: supports, example, contradicts"
                   />
+                  <textarea
+                    value={draftNote}
+                    onChange={(e) => setDraftNote(e.target.value)}
+                    className="min-h-20 w-full resize-y rounded border border-gray-300 px-2 py-1.5 text-xs outline-none focus:border-accent dark:border-[#494d64] dark:bg-[#24273a]"
+                    placeholder="Why are these cards connected?"
+                  />
+                  <div className="flex items-center gap-2">
+                    {['#385f73', '#536253', '#ba635c', '#f59e0b', '#ef4444'].map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => setDraftColor(color)}
+                        className={`h-5 w-5 rounded border-2 ${draftColor === color ? 'border-ink dark:border-[#cad3f5]' : 'border-white shadow'}`}
+                        style={{ backgroundColor: color }}
+                        title={color}
+                      />
+                    ))}
+                    <input
+                      value={draftColor}
+                      onChange={(e) => setDraftColor(e.target.value)}
+                      className="ml-auto w-24 rounded border border-gray-300 px-2 py-1 text-[11px] font-mono outline-none focus:border-accent dark:border-[#494d64] dark:bg-[#24273a]"
+                    />
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="p-3 text-xs text-gray-500 dark:text-[#a5adcb]">
+                  This relation is already represented by the vault. Workspace-only label, note, and color are not applied to real vault links.
+                </div>
+              )}
               <div className="flex items-center gap-2 border-t border-gray-100 px-3 py-2 dark:border-[#363a4f]">
                 {d.bothCards && !d.vaultLink && !d.vaultStructure && !d.applied && (
                   <button
@@ -900,12 +931,14 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
                 >
                   Cancel
                 </button>
-                <button
-                  onClick={() => void saveMeta()}
-                  className="rounded bg-accent px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-accent/90"
-                >
-                  Save
-                </button>
+                {metadataEditable && (
+                  <button
+                    onClick={() => void saveMeta()}
+                    className="rounded bg-accent px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-accent/90"
+                  >
+                    Save
+                  </button>
+                )}
               </div>
             </div>
           )}

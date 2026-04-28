@@ -1,7 +1,8 @@
 import Database from 'better-sqlite3';
-import { mkdtemp, mkdir } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import matter from 'gray-matter';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { setActiveVaultPath } from '../config.js';
 import { initSchema } from '../db/schema.js';
@@ -11,7 +12,9 @@ import {
   applyEdge,
   createWorkspace,
   getWorkspace,
+  repairWorkspaces,
   resetWorkspacesCache,
+  unapplyEdge,
   updateWorkspace,
   type WorkspaceEdge,
   type WorkspaceNode,
@@ -44,6 +47,16 @@ async function setupWorkspace(edgePatch: Partial<WorkspaceEdge>) {
   const db = new Database(':memory:');
   initSchema(db);
   const repo = new CardRepository(db);
+  await writeFile(
+    join(vault, '1.md'),
+    matter.stringify('Source body\n', { luhmannId: '1', title: 'Card 1', crossLinks: [] }),
+    'utf8',
+  );
+  await writeFile(
+    join(vault, '2.md'),
+    matter.stringify('Target body\n', { luhmannId: '2', title: 'Card 2', crossLinks: [] }),
+    'utf8',
+  );
   repo.upsertMany([
     card('1', join(vault, '1.md')),
     card('2', join(vault, '2.md')),
@@ -94,5 +107,63 @@ describe('workspace edge state guards', () => {
     expect(ws?.edges[0]?.vaultStructure).toBe(true);
     expect(ws?.edges[0]?.applied).toBe(false);
     expect(ws?.edges[0]?.vaultLink).toBe(false);
+  });
+
+  it('applies a draft card edge to the source file and can unapply its marker', async () => {
+    const { repo, workspaceId } = await setupWorkspace({});
+
+    await expect(applyEdge(repo, workspaceId, 'e1')).resolves.toEqual({ ok: true });
+    let source = matter(await readFile(repo.getById('1')!.filePath, 'utf8'));
+    expect(source.content).toContain(`<!-- ws:${workspaceId}:e1 --> [[2]]`);
+    expect(source.data.crossLinks).toContain('2');
+    expect((await getWorkspace(workspaceId))?.edges[0]?.applied).toBe(true);
+
+    await expect(unapplyEdge(repo, workspaceId, 'e1')).resolves.toEqual({ ok: true });
+    source = matter(await readFile(repo.getById('1')!.filePath, 'utf8'));
+    expect(source.content).not.toContain(`<!-- ws:${workspaceId}:e1 -->`);
+    expect(source.data.crossLinks ?? []).not.toContain('2');
+    expect((await getWorkspace(workspaceId))?.edges[0]?.applied).toBe(false);
+  });
+
+  it('keeps crossLinks when unapplying one marker but another body wikilink remains', async () => {
+    const { repo, workspaceId } = await setupWorkspace({});
+    const sourcePath = repo.getById('1')!.filePath;
+    await writeFile(
+      sourcePath,
+      matter.stringify('Manual reference [[2]]\n', { luhmannId: '1', title: 'Card 1', crossLinks: ['2'] }),
+      'utf8',
+    );
+
+    await applyEdge(repo, workspaceId, 'e1');
+    await unapplyEdge(repo, workspaceId, 'e1');
+    const source = matter(await readFile(sourcePath, 'utf8'));
+    expect(source.content).toContain('Manual reference [[2]]');
+    expect(source.data.crossLinks).toContain('2');
+  });
+
+  it('repairs duplicate card nodes and dangling workspace edges', async () => {
+    const { workspaceId } = await setupWorkspace({});
+    await updateWorkspace(workspaceId, {
+      nodes: [
+        { kind: 'card', id: 'n1', cardId: '1', x: 0, y: 0 },
+        { kind: 'card', id: 'n1-dupe', cardId: '1', x: 50, y: 50 },
+        { kind: 'card', id: 'n2', cardId: '2', x: 300, y: 0 },
+      ],
+      edges: [
+        { id: 'e1', source: 'n1-dupe', target: 'n2', label: 'rel' },
+        { id: 'e2', source: 'n1', target: 'n2', label: 'rel' },
+        { id: 'e3', source: 'missing', target: 'n2' },
+      ],
+    });
+
+    await expect(repairWorkspaces()).resolves.toMatchObject({
+      workspacesScanned: 1,
+      nodesRemoved: 1,
+      edgesRemoved: 2,
+    });
+    const ws = await getWorkspace(workspaceId);
+    expect(ws?.nodes.filter((node) => node.kind === 'card' && node.cardId === '1')).toHaveLength(1);
+    expect(ws?.edges).toHaveLength(1);
+    expect(ws?.edges[0]).toMatchObject({ source: 'n1', target: 'n2', label: 'rel' });
   });
 });

@@ -12,6 +12,7 @@ import {
   listWorkspaceLinksFor,
   purgeDeletedTempNode,
   purgeDeletedWorkspace,
+  repairWorkspaces,
   restoreTempNode,
   restoreWorkspace,
   restoreWorkspaceFromTrash,
@@ -33,6 +34,8 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
     const list = await listWorkspaces();
     return { workspaces: list };
   });
+
+  app.post('/workspaces/repair', async () => repairWorkspaces());
 
   app.post('/workspaces', async (req, reply) => {
     const body = req.body as { name?: string } | undefined;

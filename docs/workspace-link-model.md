@@ -2,6 +2,8 @@
 
 Workspace edges are relationship drafts or relationship mirrors. Their UI badge is derived from the endpoints plus a small set of persisted flags.
 
+Storage shape is documented in [Workspace JSON Schema](./workspace-json-schema.md).
+
 ## States
 
 | Badge | Meaning | Apply behavior |

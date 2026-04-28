@@ -165,6 +165,84 @@ export async function updateWorkspace(
   return next;
 }
 
+export interface WorkspaceRepairReport {
+  workspacesScanned: number;
+  nodesRemoved: number;
+  edgesRemoved: number;
+  edgesNormalized: number;
+  duplicatesMerged: number;
+}
+
+export async function repairWorkspaces(): Promise<WorkspaceRepairReport> {
+  const map = await loadAll();
+  const report: WorkspaceRepairReport = {
+    workspacesScanned: 0,
+    nodesRemoved: 0,
+    edgesRemoved: 0,
+    edgesNormalized: 0,
+    duplicatesMerged: 0,
+  };
+
+  for (const ws of Object.values(map)) {
+    report.workspacesScanned += 1;
+    const originalEdgesJson = JSON.stringify(ws.edges);
+    const cardNodeByCardId = new Map<string, string>();
+    const nodeIdRemap = new Map<string, string>();
+    const nextNodes: WorkspaceNode[] = [];
+
+    for (const node of ws.nodes) {
+      if (node.kind === 'card') {
+        const existingId = cardNodeByCardId.get(node.cardId);
+        if (existingId) {
+          nodeIdRemap.set(node.id, existingId);
+          report.nodesRemoved += 1;
+          report.duplicatesMerged += 1;
+          continue;
+        }
+        cardNodeByCardId.set(node.cardId, node.id);
+      }
+      nextNodes.push(node);
+    }
+
+    const liveNodeIds = new Set(nextNodes.map((node) => node.id));
+    const seenEdges = new Set<string>();
+    const nextEdges: WorkspaceEdge[] = [];
+    for (const rawEdge of ws.edges) {
+      const edge = normalizeEdge({
+        ...rawEdge,
+        source: nodeIdRemap.get(rawEdge.source) ?? rawEdge.source,
+        target: nodeIdRemap.get(rawEdge.target) ?? rawEdge.target,
+      });
+      if (!liveNodeIds.has(edge.source) || !liveNodeIds.has(edge.target) || edge.source === edge.target) {
+        report.edgesRemoved += 1;
+        continue;
+      }
+      const key = [
+        edge.source,
+        edge.target,
+        edge.sourceHandle ?? '',
+        edge.targetHandle ?? '',
+        edge.label ?? '',
+      ].join('\u0000');
+      if (seenEdges.has(key)) {
+        report.edgesRemoved += 1;
+        report.duplicatesMerged += 1;
+        continue;
+      }
+      seenEdges.add(key);
+      nextEdges.push(edge);
+    }
+
+    if (originalEdgesJson !== JSON.stringify(nextEdges)) report.edgesNormalized += 1;
+    ws.nodes = nextNodes;
+    ws.edges = nextEdges;
+    ws.updatedAt = new Date().toISOString();
+  }
+
+  await flush(map);
+  return report;
+}
+
 /* ============================================================
  * 软删 —— 全部落盘到 .zettel/ws-trash/ 和 .zettel/temp-trash/
  * 重启不丢；可以从 TrashPanel 还原。
@@ -506,7 +584,7 @@ export async function applyEdge(
   const marker = `<!-- ws:${workspaceId}:${edgeId} --> [[${targetCard.luhmannId}]]`;
 
   const raw = await readFile(sourceCard.filePath, 'utf8');
-  const parsed = matter(raw);
+  const parsed = matter(raw, {});
   const body = parsed.content.endsWith('\n')
     ? parsed.content + marker + '\n'
     : parsed.content + '\n\n' + marker + '\n';
@@ -545,7 +623,7 @@ export async function unapplyEdge(
   // Deferred temp-target applies didn't touch the vault, so nothing to do there.
   if (edge.appliedToFile) {
     const raw = await readFile(edge.appliedToFile, 'utf8');
-    const parsed = matter(raw);
+    const parsed = matter(raw, {});
     // Match by the stable `<!-- ws:wsId:edgeId` prefix (regardless of marker tail)
     const stableMarker = `<!-- ws:${workspaceId}:${edgeId}`;
     const lines = parsed.content.split('\n');
@@ -672,7 +750,7 @@ export async function tempToVault(
       const stableMarker = `<!-- ws:${wsNow.id}:${edge.id}`;
       const newMarker = `<!-- ws:${wsNow.id}:${edge.id} --> [[${targetCardId}]]`;
       const raw = await readFile(sourceCard.filePath, 'utf8');
-      const parsed = matter(raw);
+      const parsed = matter(raw, {});
       const hasOldMarker = parsed.content.split('\n').some((l) => l.includes(stableMarker));
       let newBody: string;
       if (hasOldMarker) {

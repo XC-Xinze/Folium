@@ -305,6 +305,20 @@ export const api = {
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     return res.json();
   },
+  repairWorkspaces: async (): Promise<{
+    workspacesScanned: number;
+    nodesRemoved: number;
+    edgesRemoved: number;
+    edgesNormalized: number;
+    duplicatesMerged: number;
+  }> => {
+    const res = await fetch(`${BASE}/workspaces/repair`, { method: 'POST' });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? j.error ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
   deleteWorkspace: async (id: string): Promise<void> => {
     await fetch(`${BASE}/workspaces/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },

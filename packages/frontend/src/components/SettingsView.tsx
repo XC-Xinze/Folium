@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Moon, Sun, Monitor, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
 import { useUIStore, type Theme } from '../store/uiStore';
 import { api } from '../lib/api';
+import { dialog } from '../lib/dialog';
 import { PluginRegistry } from '../lib/pluginRegistry';
 import { listLoadedPlugins, reloadPlugins, type LoadedPlugin } from '../lib/pluginLoader';
 import { HotkeysPanel } from './HotkeysPanel';
@@ -70,6 +71,10 @@ export function SettingsView() {
         <BackupAndRecoveryPanel />
       </Section>
 
+      <Section title="Maintenance">
+        <MaintenancePanel />
+      </Section>
+
       <Section title="Hotkeys">
         <HotkeysPanel />
       </Section>
@@ -102,6 +107,42 @@ export function SettingsView() {
           <p.Component />
         </Section>
       ))}
+    </div>
+  );
+}
+
+function MaintenancePanel() {
+  const qc = useQueryClient();
+  const repairMut = useMutation({
+    mutationFn: api.repairWorkspaces,
+    onSuccess: async (report) => {
+      qc.invalidateQueries({ queryKey: ['workspaces'] });
+      qc.invalidateQueries({ queryKey: ['workspace'] });
+      qc.invalidateQueries({ queryKey: ['ws-links-batch'] });
+      await dialog.alert(
+        `Scanned ${report.workspacesScanned} workspace(s).\nRemoved ${report.nodesRemoved} duplicate node(s).\nRemoved ${report.edgesRemoved} invalid/duplicate edge(s).\nNormalized ${report.edgesNormalized} workspace(s).`,
+        { title: 'Workspace repair complete' },
+      );
+    },
+    onError: (err: Error) => dialog.alert(err.message, { title: 'Workspace repair failed' }),
+  });
+
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div>
+        <div className="text-sm font-semibold">Repair workspace data</div>
+        <p className="text-[12px] text-gray-500 dark:text-gray-400 mt-1">
+          Normalizes old edge states, removes dangling edges, and merges duplicate card nodes.
+        </p>
+      </div>
+      <button
+        onClick={() => repairMut.mutate()}
+        disabled={repairMut.isPending}
+        className="shrink-0 inline-flex items-center gap-1.5 text-[12px] font-bold px-3 py-2 rounded bg-accent text-white hover:bg-accent/90 disabled:opacity-50"
+      >
+        <RefreshCw size={13} className={repairMut.isPending ? 'animate-spin' : ''} />
+        Repair
+      </button>
     </div>
   );
 }

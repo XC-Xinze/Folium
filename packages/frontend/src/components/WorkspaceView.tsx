@@ -40,6 +40,8 @@ interface Props {
   workspaceId: string;
 }
 
+type RelationFilter = 'all' | 'draft' | 'vault' | 'temp' | 'workspace';
+
 function sameWorkspacePair(a: Pick<WorkspaceEdge, 'source' | 'target'>, b: Pick<WorkspaceEdge, 'source' | 'target'>): boolean {
   return (a.source === b.source && a.target === b.target) || (a.source === b.target && a.target === b.source);
 }
@@ -60,6 +62,40 @@ function dedupeWorkspaceEdges(edges: WorkspaceEdge[]): WorkspaceEdge[] {
   return out;
 }
 
+function workspaceRelationKind(
+  edge: WorkspaceEdge,
+  nodeKinds: Map<string, WorkspaceNode['kind']>,
+): Exclude<RelationFilter, 'all'> {
+  const sourceKind = nodeKinds.get(edge.source) ?? 'card';
+  const targetKind = nodeKinds.get(edge.target) ?? 'card';
+  const bothCards = sourceKind === 'card' && targetKind === 'card';
+  if (edge.applied || edge.vaultLink || edge.vaultStructure || edge.label === 'tree') return 'vault';
+  if (sourceKind === 'temp' || targetKind === 'temp') return 'temp';
+  if (bothCards) return 'draft';
+  return 'workspace';
+}
+
+function edgeMatchesRelationFilter(edge: Edge, filter: RelationFilter): boolean {
+  if (filter === 'all') return true;
+  const data = edge.data as
+    | {
+        applied?: boolean;
+        vaultLink?: boolean;
+        vaultStructure?: boolean;
+        bothCards?: boolean;
+        sourceKind?: 'card' | 'temp' | 'note';
+        targetKind?: 'card' | 'temp' | 'note';
+      }
+    | undefined;
+  if (!data) return true;
+  const isVault = !!data.applied || !!data.vaultLink || !!data.vaultStructure;
+  const hasTemp = data.sourceKind === 'temp' || data.targetKind === 'temp';
+  if (filter === 'vault') return isVault;
+  if (filter === 'temp') return !isVault && hasTemp;
+  if (filter === 'draft') return !isVault && !hasTemp && !!data.bothCards;
+  return !isVault && !hasTemp && !data.bothCards;
+}
+
 export function WorkspaceView(props: Props) {
   return (
     <ReactFlowProvider>
@@ -78,6 +114,7 @@ function WorkspaceInner({ workspaceId }: Props) {
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [relationFilter, setRelationFilter] = useState<RelationFilter>('all');
 
   // 把后端 workspace data 转成 React Flow 的 nodes/edges
   const buildNodes = useCallback(
@@ -192,6 +229,25 @@ function WorkspaceInner({ workspaceId }: Props) {
     },
     [],
   );
+
+  const relationCounts = useMemo(() => {
+    const ws = wsQ.data;
+    const counts: Record<RelationFilter, number> = {
+      all: 0,
+      draft: 0,
+      vault: 0,
+      temp: 0,
+      workspace: 0,
+    };
+    if (!ws) return counts;
+    const nodeKinds = new Map(ws.nodes.map((n) => [n.id, n.kind] as const));
+    for (const edge of dedupeWorkspaceEdges(ws.edges)) {
+      const kind = workspaceRelationKind(edge, nodeKinds);
+      counts.all += 1;
+      counts[kind] += 1;
+    }
+    return counts;
+  }, [wsQ.data]);
 
   // —— 自动保存（debounced）。保存完同步刷新 ws-links-batch，让主画布看到新边
   const saveTimer = useRef<number | null>(null);
@@ -406,8 +462,8 @@ function WorkspaceInner({ workspaceId }: Props) {
         position: prevPos.get(n.id) ?? n.position,
       }));
     });
-    setEdges(built.edges);
-  }, [wsQ.data, buildNodes, updateNode, deleteNode, promoteTempToVault, addEdgeBetween, setNodes, setEdges]);
+    setEdges(built.edges.filter((edge) => edgeMatchesRelationFilter(edge, relationFilter)));
+  }, [wsQ.data, buildNodes, updateNode, deleteNode, promoteTempToVault, addEdgeBetween, relationFilter, setNodes, setEdges]);
 
   // 拖动结束 → 同步位置到 workspace data
   const onNodeDragStop = useCallback(
@@ -508,6 +564,24 @@ function WorkspaceInner({ workspaceId }: Props) {
         >
           <FilePlus size={12} /> Temp card
         </button>
+        <div className="border-l border-gray-200 mx-1 h-4" />
+        {(['all', 'draft', 'vault', 'temp', 'workspace'] as const).map((filter) => (
+          <button
+            key={filter}
+            onClick={() => setRelationFilter(filter)}
+            className={`text-[10px] font-bold px-2 py-1 rounded-full transition-colors ${
+              relationFilter === filter
+                ? 'bg-accent text-white'
+                : 'text-gray-500 hover:bg-gray-100 hover:text-ink'
+            }`}
+            title={`Show ${filter} relations`}
+          >
+            {filter === 'all' ? 'All' : filter}
+            <span className={relationFilter === filter ? 'text-white/70 ml-1' : 'text-gray-400 ml-1'}>
+              {relationCounts[filter]}
+            </span>
+          </button>
+        ))}
         <div className="border-l border-gray-200 mx-1 h-4" />
         <input
           value={addCardInput}

@@ -569,6 +569,22 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     return c - 1;
   };
   const FLANK_STEP_Y = NODE_HEIGHT + 30;
+  const flankY = (anchorY: number, index: number) => {
+    if (index === 0) return anchorY;
+    const magnitude = Math.ceil(index / 2);
+    const direction = index % 2 === 1 ? 1 : -1;
+    return anchorY + direction * magnitude * FLANK_STEP_Y;
+  };
+  let fallbackCount = 0;
+  const fallbackPosition = () => {
+    const i = fallbackCount++;
+    const col = i % 3;
+    const row = Math.floor(i / 3);
+    return {
+      x: 1500 + col * (NODE_WIDTH + X_GAP),
+      y: -500 + row * (NODE_HEIGHT + 40),
+    };
+  };
 
   // 焦点卡若是外部（不在 backbone）—— 给它一个位置（贴在与它有边的某张 backbone 卡旁边），
   // 这样它就能作为 tag-related 节点的锚，避免堆叠
@@ -619,7 +635,7 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     if (data.variant !== 'cross-flank' && data.variant !== 'tag-related') continue;
     const anchorId = findAnchor(id);
     if (!anchorId) {
-      positions.set(id, { x: 1500, y: -500 });
+      positions.set(id, fallbackPosition());
       continue;
     }
     const anchor = positions.get(anchorId)!;
@@ -631,13 +647,13 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
       const i = bumpFlank(`${anchorId}::L`);
       positions.set(id, {
         x: row.minX - NODE_WIDTH - FLANK_OFFSET_X,
-        y: anchor.y + i * FLANK_STEP_Y,
+        y: flankY(anchor.y, i),
       });
     } else {
       const i = bumpFlank(`${anchorId}::R`);
       positions.set(id, {
         x: row.maxX + NODE_WIDTH + FLANK_OFFSET_X,
-        y: anchor.y + i * FLANK_STEP_Y,
+        y: flankY(anchor.y, i),
       });
     }
   }
@@ -649,7 +665,7 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     if (data.variant !== 'potential') continue;
     const anchorId = findAnchor(id);
     if (!anchorId) {
-      positions.set(id, { x: 1500, y: -500 });
+      positions.set(id, fallbackPosition());
       continue;
     }
     const anchor = positions.get(anchorId)!;
@@ -665,14 +681,14 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
         : NODE_WIDTH + FLANK_OFFSET_X + POTENTIAL_OFFSET_X;
     positions.set(id, {
       x: row.maxX + xOffset,
-      y: anchor.y + i * FLANK_STEP_Y,
+      y: flankY(anchor.y, i),
     });
   }
 
   // Pass 3: 兜底（不应触达，但 focus / tree 漏了的话不至于崩）
   for (const [id] of rawNodes) {
     if (positions.has(id)) continue;
-    positions.set(id, { x: 1500, y: -500 });
+    positions.set(id, fallbackPosition());
   }
 
   /* ----- 4. 边：智能 handle 选择 ----- */

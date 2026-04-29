@@ -90,10 +90,6 @@ export interface WorkspaceEdge {
   label?: string;
   color?: string;
   note?: string;
-  /** Workspace-only label position along the edge, 0..1. */
-  labelT?: number;
-  /** Workspace-only label offset perpendicular to the edge, in flow px. */
-  labelOffset?: number;
   applied?: boolean;
   /** True when this edge mirrors an existing vault [[link]], not a workspace draft. */
   vaultLink?: boolean;

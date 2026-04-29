@@ -225,8 +225,6 @@ function WorkspaceInner({ workspaceId }: Props) {
             label: vaultLikeEdge ? undefined : e.label,
             color: vaultLikeEdge ? undefined : e.color,
             note: vaultLikeEdge ? undefined : e.note,
-            labelT: e.labelT,
-            labelOffset: e.labelOffset,
           } as unknown as Record<string, unknown>,
           style: styleBase,
         };
@@ -746,7 +744,6 @@ function ParentCardPicker({
 /* -------- 自定义 Edge：带 apply/unapply 按钮 -------- */
 function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, style }: EdgeProps) {
   const qc = useQueryClient();
-  const reactFlow = useReactFlow();
   const [edgePath] = getBezierPath({
     sourceX,
     sourceY,
@@ -768,8 +765,6 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
         label?: string;
         color?: string;
         note?: string;
-        labelT?: number;
-        labelOffset?: number;
       }
     | undefined;
   const [metaOpen, setMetaOpen] = useState(false);
@@ -779,26 +774,9 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
   const edgeDx = targetX - sourceX;
   const edgeDy = targetY - sourceY;
   const edgeLength = Math.max(1, Math.hypot(edgeDx, edgeDy));
-  const defaultLabelT = 0.5;
-  const defaultLabelOffset = edgeLength < 220 ? clamp(34 + (220 - edgeLength) * 0.18, 34, 74) : 0;
-  const [labelT, setLabelT] = useState(() => clamp(d?.labelT ?? defaultLabelT, 0.18, 0.82));
-  const [labelOffset, setLabelOffset] = useState(() => clamp(d?.labelOffset ?? defaultLabelOffset, -140, 140));
-  const labelPosRef = useRef({ t: labelT, offset: labelOffset });
-  const dragState = useRef<{
-    pointerId: number;
-    moved: boolean;
-    startX: number;
-    startY: number;
-  } | null>(null);
-  const dragMoved = useRef(false);
-  useEffect(() => {
-    if (dragState.current) return;
-    const nextT = clamp(d?.labelT ?? defaultLabelT, 0.18, 0.82);
-    const nextOffset = clamp(d?.labelOffset ?? defaultLabelOffset, -140, 140);
-    labelPosRef.current = { t: nextT, offset: nextOffset };
-    setLabelT(nextT);
-    setLabelOffset(nextOffset);
-  }, [d?.labelT, d?.labelOffset, defaultLabelOffset]);
+  const shortEdge = edgeLength < 280;
+  const labelT = shortEdge ? (sourceX <= targetX ? 0.42 : 0.58) : 0.5;
+  const labelOffset = shortEdge ? clamp(40 + (280 - edgeLength) * 0.22, 40, 92) : 0;
   const relationKind = d?.vaultLink
     ? 'vault'
     : d?.vaultStructure
@@ -888,29 +866,6 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
     qc.invalidateQueries({ queryKey: ['workspaces'] });
     qc.invalidateQueries({ queryKey: ['ws-links-batch'] });
   };
-  const updateLabelPositionFromPointer = (clientX: number, clientY: number) => {
-    const { x: pointX, y: pointY } = reactFlow.screenToFlowPosition({ x: clientX, y: clientY });
-    const vx = edgeDx;
-    const vy = edgeDy;
-    const len2 = Math.max(1, vx * vx + vy * vy);
-    const rawT = ((pointX - sourceX) * vx + (pointY - sourceY) * vy) / len2;
-    const nextT = clamp(rawT, 0.18, 0.82);
-    const baseX = sourceX + vx * nextT;
-    const baseY = sourceY + vy * nextT;
-    const nx = -vy / edgeLength;
-    const ny = vx / edgeLength;
-    const nextOffset = clamp((pointX - baseX) * nx + (pointY - baseY) * ny, -140, 140);
-    labelPosRef.current = { t: nextT, offset: nextOffset };
-    setLabelT(nextT);
-    setLabelOffset(nextOffset);
-  };
-  const saveLabelPosition = async () => {
-    const pos = labelPosRef.current;
-    await updateEdge({
-      labelT: Number(pos.t.toFixed(3)),
-      labelOffset: Math.round(pos.offset),
-    });
-  };
   const saveMeta = async () => {
     const color = draftColor.trim();
     await updateEdge({
@@ -944,48 +899,17 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
           style={{
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
           }}
-          onPointerMove={(e) => {
-            const drag = dragState.current;
-            if (!drag || drag.pointerId !== e.pointerId) return;
-            const distance = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
-            if (distance > 3) {
-              drag.moved = true;
-              dragMoved.current = true;
-            }
-            updateLabelPositionFromPointer(e.clientX, e.clientY);
-          }}
-          onPointerUp={(e) => {
-            const drag = dragState.current;
-            if (!drag || drag.pointerId !== e.pointerId) return;
-            dragState.current = null;
-            e.currentTarget.releasePointerCapture(e.pointerId);
-            if (drag.moved) void saveLabelPosition();
-            window.setTimeout(() => {
-              dragMoved.current = false;
-            }, 0);
-          }}
         >
           <button
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              dragState.current = {
-                pointerId: e.pointerId,
-                moved: false,
-                startX: e.clientX,
-                startY: e.clientY,
-              };
-              e.currentTarget.parentElement?.setPointerCapture(e.pointerId);
-            }}
             onClick={(e) => {
               e.stopPropagation();
-              if (dragMoved.current) return;
               setDraftLabel(d?.label ?? '');
               setDraftNote(d?.note ?? '');
               setDraftColor(d?.color ?? '#385f73');
               setMetaOpen((open) => !open);
             }}
-            className={`max-w-36 cursor-grab truncate text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-sm transition-colors active:cursor-grabbing ${relationBadge.cls}`}
-            title={metadataEditable ? d?.note || 'Click to edit, drag to reposition' : 'Vault link · drag to reposition'}
+            className={`max-w-36 truncate text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-sm transition-colors ${relationBadge.cls}`}
+            title={metadataEditable ? d?.note || 'Edit workspace link' : 'Vault link'}
           >
             {metadataEditable && d?.label ? d.label : relationBadge.label}
           </button>

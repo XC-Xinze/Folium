@@ -17,6 +17,7 @@ import {
   EdgeLabelRenderer,
   BaseEdge,
   getBezierPath,
+  Position,
 } from '@xyflow/react';
 import { isCardDrag, readCardDragData } from '../lib/dragCard';
 import { RenamableName } from './RenamableName';
@@ -94,6 +95,54 @@ function edgeMatchesRelationFilter(edge: Edge, filter: RelationFilter): boolean 
   if (filter === 'temp') return !isVault && hasTemp;
   if (filter === 'draft') return !isVault && !hasTemp && !!data.bothCards;
   return !isVault && !hasTemp && !data.bothCards;
+}
+
+function controlOffset(distance: number, curvature = 0.25): number {
+  return distance >= 0 ? 0.5 * distance : curvature * 25 * Math.sqrt(-distance);
+}
+
+function bezierControlPoint({
+  position,
+  x1,
+  y1,
+  x2,
+  y2,
+}: {
+  position: Position;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}): { x: number; y: number } {
+  switch (position) {
+    case Position.Left:
+      return { x: x1 - controlOffset(x1 - x2), y: y1 };
+    case Position.Right:
+      return { x: x1 + controlOffset(x2 - x1), y: y1 };
+    case Position.Top:
+      return { x: x1, y: y1 - controlOffset(y1 - y2) };
+    case Position.Bottom:
+    default:
+      return { x: x1, y: y1 + controlOffset(y2 - y1) };
+  }
+}
+
+function cubicBezierPoint(
+  t: number,
+  p0: { x: number; y: number },
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+  p3: { x: number; y: number },
+): { x: number; y: number } {
+  const u = 1 - t;
+  const tt = t * t;
+  const uu = u * u;
+  const uuu = uu * u;
+  const ttt = tt * t;
+  return {
+    x: uuu * p0.x + 3 * uu * t * p1.x + 3 * u * tt * p2.x + ttt * p3.x,
+    y: uuu * p0.y + 3 * uu * t * p1.y + 3 * u * tt * p2.y + ttt * p3.y,
+  };
 }
 
 export function WorkspaceView(props: Props) {
@@ -770,8 +819,22 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
   const edgeDx = targetX - sourceX;
   const edgeDy = targetY - sourceY;
   const edgeLength = Math.max(1, Math.hypot(edgeDx, edgeDy));
-  const shortEdgeSlide = Math.max(0, Math.min(0.18, ((280 - edgeLength) / 280) * 0.18));
+  const shortEdgeSlide = Math.max(0, Math.min(0.12, ((280 - edgeLength) / 280) * 0.12));
   const labelT = sourceX <= targetX ? 0.5 - shortEdgeSlide : 0.5 + shortEdgeSlide;
+  const sourceControl = bezierControlPoint({
+    position: sourcePosition,
+    x1: sourceX,
+    y1: sourceY,
+    x2: targetX,
+    y2: targetY,
+  });
+  const targetControl = bezierControlPoint({
+    position: targetPosition,
+    x1: targetX,
+    y1: targetY,
+    x2: sourceX,
+    y2: sourceY,
+  });
   const relationKind = d?.vaultLink
     ? 'vault'
     : d?.vaultStructure
@@ -883,8 +946,13 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
     if (!ok) return;
     deleteMut.mutate();
   };
-  const labelX = sourceX + edgeDx * labelT;
-  const labelY = sourceY + edgeDy * labelT;
+  const { x: labelX, y: labelY } = cubicBezierPoint(
+    labelT,
+    { x: sourceX, y: sourceY },
+    sourceControl,
+    targetControl,
+    { x: targetX, y: targetY },
+  );
   return (
     <>
       <BaseEdge id={id} path={edgePath} style={style} />

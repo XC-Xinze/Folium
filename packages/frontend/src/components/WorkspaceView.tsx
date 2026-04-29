@@ -37,12 +37,13 @@ import { dialog } from '../lib/dialog';
 import { CardNode } from './CardNode';
 import { WorkspaceNoteNode } from './WorkspaceNoteNode';
 import { WorkspaceTempNode } from './WorkspaceTempNode';
+import { useUIStore, type WorkspaceRelationFilter } from '../store/uiStore';
 
 interface Props {
   workspaceId: string;
 }
 
-type RelationFilter = 'all' | 'draft' | 'vault' | 'temp' | 'workspace';
+type RelationFilter = WorkspaceRelationFilter;
 
 const RELATION_FILTER_OPTIONS: Array<{
   id: RelationFilter;
@@ -173,11 +174,23 @@ function WorkspaceInner({ workspaceId }: Props) {
     queryKey: ['workspace', workspaceId],
     queryFn: () => api.getWorkspace(workspaceId),
   });
+  const savedRelationFilter = useUIStore((s) => s.workspaceRelationFilters[workspaceId] ?? 'all');
+  const setSavedRelationFilter = useUIStore((s) => s.setWorkspaceRelationFilter);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const [relationFilter, setRelationFilter] = useState<RelationFilter>('all');
+  const [relationFilter, setRelationFilter] = useState<RelationFilter>(savedRelationFilter);
   const [relationMenuOpen, setRelationMenuOpen] = useState(false);
+  useEffect(() => {
+    setRelationFilter(savedRelationFilter);
+  }, [savedRelationFilter, workspaceId]);
+  const chooseRelationFilter = useCallback(
+    (filter: RelationFilter) => {
+      setRelationFilter(filter);
+      setSavedRelationFilter(workspaceId, filter);
+    },
+    [setSavedRelationFilter, workspaceId],
+  );
 
   // 把后端 workspace data 转成 React Flow 的 nodes/edges
   const buildNodes = useCallback(
@@ -224,10 +237,15 @@ function WorkspaceInner({ workspaceId }: Props) {
             id: n.id,
             type: 'wsNote',
             position: { x: n.x, y: n.y },
+            width: n.w,
+            height: n.h,
             data: {
               content: n.content,
               onChange: (content: string) => handlers.updateNode(n.id, { content }),
               onDelete: () => handlers.deleteNode(n.id),
+              savedW: n.w,
+              savedH: n.h,
+              onResize: (w: number, h: number) => handlers.updateNode(n.id, { w, h } as Partial<WorkspaceNode>),
             } as unknown as Record<string, unknown>,
           };
         }
@@ -236,12 +254,17 @@ function WorkspaceInner({ workspaceId }: Props) {
           id: n.id,
           type: 'wsTemp',
           position: { x: n.x, y: n.y },
+          width: n.w,
+          height: n.h,
           data: {
             title: n.title,
             content: n.content,
             onChange: (patch: { title?: string; content?: string }) => handlers.updateNode(n.id, patch),
             onDelete: () => handlers.deleteNode(n.id),
             onPromoteToVault: () => handlers.promoteTempToVault(n.id),
+            savedW: n.w,
+            savedH: n.h,
+            onResize: (w: number, h: number) => handlers.updateNode(n.id, { w, h } as Partial<WorkspaceNode>),
             // 拖一张实体卡 drop 到本 temp → workspace edge
             onCardLinkDrop: (sourceLuhmannId: string) => {
               const sourceNode = ws.nodes.find(
@@ -652,7 +675,7 @@ function WorkspaceInner({ workspaceId }: Props) {
                 <button
                   key={option.id}
                   onClick={() => {
-                    setRelationFilter(option.id);
+                    chooseRelationFilter(option.id);
                     setRelationMenuOpen(false);
                   }}
                   className={`w-full px-3 py-2 text-left transition-colors ${

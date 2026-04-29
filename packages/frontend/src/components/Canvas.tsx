@@ -107,21 +107,32 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
     return [...bb.ids];
   }, [cardsQ.data, boxQ.data, fullCards, focusedBoxId, isMaster]);
 
-  // Tag trail：本 box 会话期间出现过的、有 tag 的焦点卡集合。
-  // Trail 累加：焦点每切到一张有 tag 的卡，把它加进去；
-  // 老锚的 tag-related 邻居不消失，新锚的也加进画布。
-  // Box 切换 → 重置为 [boxId]。Potential 卡（无 tag）不进 trail。
+  // Exploration trail：只保留当前思维链上的少量锚点。
+  // 旧逻辑会在本 box 会话内无限累加，导致沿链接探索几步以后旧锚点拉进来的卡一直留在画布里。
+  // 新规则：点击回 tree/主链时清理旧探索；沿外部链接探索时最多保留 box + MAX_FOCUS_DEPTH 个锚点。
   const [tagTrailIds, setTagTrailIds] = useState<string[]>(() => [focusedBoxId]);
   // box 切了 → 重置 trail
   useEffect(() => {
     setTagTrailIds([focusedBoxId]);
   }, [focusedBoxId]);
-  // 焦点切到一张有 tag 的卡 → 加进 trail（去重）
+  // 焦点切换：tree/主链 focusDepth=0 时收束；外部探索时只保留当前链的最近几步。
   useEffect(() => {
     const focusCard = cardsQ.data?.cards.find((c) => c.luhmannId === focusedCardId);
-    if (!focusCard || focusCard.tags.length === 0) return;
-    setTagTrailIds((prev) => (prev.includes(focusedCardId) ? prev : [...prev, focusedCardId]));
-  }, [focusedCardId, cardsQ.data]);
+    const base = [focusedBoxId];
+    if (!focusCard || focusCard.tags.length === 0) {
+      if (focusDepth === 0) setTagTrailIds(base);
+      return;
+    }
+    if (focusDepth === 0) {
+      setTagTrailIds(focusedCardId === focusedBoxId ? base : [...base, focusedCardId]);
+      return;
+    }
+    setTagTrailIds((prev) => {
+      const withoutCurrent = prev.filter((id) => id !== focusedCardId && id !== focusedBoxId);
+      const recent = [...withoutCurrent, focusedCardId].slice(-MAX_FOCUS_DEPTH);
+      return [focusedBoxId, ...recent];
+    });
+  }, [focusedBoxId, focusedCardId, focusDepth, cardsQ.data]);
 
   // 焦点卡若是从外部 tag-related 拉进来的（不在 backbone 里），单独把它加进 relatedBatch
   // 否则它的 tagRelated 拿不到 → buildGraph 退化成"所有 backbone 卡两两连"

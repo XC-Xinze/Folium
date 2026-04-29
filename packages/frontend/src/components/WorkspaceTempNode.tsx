@@ -1,4 +1,4 @@
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpCircle, Trash2 } from 'lucide-react';
 import { renderMarkdown } from '../lib/markdown';
@@ -12,19 +12,26 @@ interface TempNodeData {
   onPromoteToVault: () => void;
   /** 跟 CardNode 一致：拖一张实体卡 drop 到本 temp → 创建 workspace edge */
   onCardLinkDrop?: (sourceLuhmannId: string) => void;
+  savedW?: number;
+  savedH?: number;
+  onResize?: (w: number, h: number) => void;
 }
 
-export function WorkspaceTempNode({ data }: NodeProps) {
+export function WorkspaceTempNode({ data, selected }: NodeProps) {
   const d = data as unknown as TempNodeData;
   const [editing, setEditing] = useState(false);
   const [linkDropOver, setLinkDropOver] = useState(false);
   const [draftTitle, setDraftTitle] = useState(d.title);
   const [draftContent, setDraftContent] = useState(d.content);
+  const [w, setW] = useState<number | undefined>(d.savedW);
+  const [h, setH] = useState<number | undefined>(d.savedH);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (editing && taRef.current) taRef.current.focus();
   }, [editing]);
+  useEffect(() => { if (d.savedW != null) setW(d.savedW); }, [d.savedW]);
+  useEffect(() => { if (d.savedH != null) setH(d.savedH); }, [d.savedH]);
 
   const commit = () => {
     const patch: { title?: string; content?: string } = {};
@@ -53,10 +60,23 @@ export function WorkspaceTempNode({ data }: NodeProps) {
         e.stopPropagation();
         d.onCardLinkDrop?.(dragged.luhmannId);
       }}
-      className={`group relative bg-[#fffdf8] border-2 border-dashed border-accent/40 rounded-lg shadow-md w-[300px] min-h-[140px] ${
+      className={`group relative bg-[#fffdf8] border-2 border-dashed border-accent/40 rounded-lg shadow-md min-h-[140px] ${
         linkDropOver ? 'ring-2 ring-accent ring-offset-2' : ''
       }`}
+      style={{ width: w ?? 300, height: h }}
     >
+      <NodeResizer
+        isVisible={selected}
+        minWidth={220}
+        minHeight={140}
+        lineClassName="!border-accent/40"
+        handleClassName="!bg-accent !border !border-white !w-2 !h-2"
+        onResize={(_e, params) => {
+          setW(params.width);
+          setH(params.height);
+        }}
+        onResizeEnd={(_e, params) => d.onResize?.(params.width, params.height)}
+      />
       <Handle id="top" type="target" position={Position.Top} className="!bg-accent !w-2 !h-2 !border-0" />
       <Handle id="bottom" type="source" position={Position.Bottom} className="!bg-accent !w-2 !h-2 !border-0" />
       <Handle id="left-in" type="target" position={Position.Left} className="!bg-transparent !w-2 !h-2 !border-0" />

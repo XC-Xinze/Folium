@@ -8,6 +8,7 @@ export type SidebarTab = 'vault' | 'workspaces';
 export type WorkspacePanelPosition = 'right' | 'left' | 'top' | 'bottom';
 
 export type Theme = 'light' | 'dark' | 'auto';
+export type WorkspaceRelationFilter = 'all' | 'draft' | 'vault' | 'temp' | 'workspace';
 
 interface UIState {
   focusedBoxId: string | null;
@@ -44,6 +45,8 @@ interface UIState {
   theme: Theme;
   /** 用户自定义的快捷键映射：commandId → "Mod+Shift+K" 这种字符串 */
   shortcutOverrides: Record<string, string>;
+  /** 每个 workspace 上一次使用的关系过滤器。 */
+  workspaceRelationFilters: Record<string, WorkspaceRelationFilter>;
   setFocus: (id: string | null) => void;
   setBoxAndFocus: (boxId: string, cardId?: string) => void;
   setFocusTag: (tag: string | null) => void;
@@ -65,6 +68,7 @@ interface UIState {
   setCommandPaletteOpen: (b: boolean) => void;
   setTheme: (t: Theme) => void;
   setShortcut: (commandId: string, shortcut: string | null) => void;
+  setWorkspaceRelationFilter: (workspaceId: string, filter: WorkspaceRelationFilter) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -91,6 +95,7 @@ export const useUIStore = create<UIState>()(
       commandPaletteOpen: false,
       theme: 'auto',
       shortcutOverrides: {},
+      workspaceRelationFilters: {},
       setFocus: (id) =>
         set({ focusedCardId: id, viewMode: 'chain', focusedTag: null }),
       setBoxAndFocus: (boxId, cardId) =>
@@ -126,6 +131,13 @@ export const useUIStore = create<UIState>()(
           else next[commandId] = shortcut;
           return { shortcutOverrides: next };
         }),
+      setWorkspaceRelationFilter: (workspaceId, filter) =>
+        set((s) => ({
+          workspaceRelationFilters: {
+            ...s.workspaceRelationFilters,
+            [workspaceId]: filter,
+          },
+        })),
     }),
     {
       name: 'zettel-ui',
@@ -143,6 +155,7 @@ export const useUIStore = create<UIState>()(
         showWorkspaceLinks: state.showWorkspaceLinks,
         theme: state.theme,
         shortcutOverrides: state.shortcutOverrides,
+        workspaceRelationFilters: state.workspaceRelationFilters,
         ...(state.workspacePanelPinned && {
           focusedWorkspaceId: state.focusedWorkspaceId,
         }),

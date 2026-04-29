@@ -1,4 +1,4 @@
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { renderMarkdown } from '../lib/markdown';
@@ -7,17 +7,24 @@ interface NoteNodeData {
   content: string;
   onChange: (content: string) => void;
   onDelete: () => void;
+  savedW?: number;
+  savedH?: number;
+  onResize?: (w: number, h: number) => void;
 }
 
-export function WorkspaceNoteNode({ data }: NodeProps) {
+export function WorkspaceNoteNode({ data, selected }: NodeProps) {
   const d = data as unknown as NoteNodeData;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(d.content);
+  const [w, setW] = useState<number | undefined>(d.savedW);
+  const [h, setH] = useState<number | undefined>(d.savedH);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (editing && taRef.current) taRef.current.focus();
   }, [editing]);
+  useEffect(() => { if (d.savedW != null) setW(d.savedW); }, [d.savedW]);
+  useEffect(() => { if (d.savedH != null) setH(d.savedH); }, [d.savedH]);
 
   const commit = () => {
     if (draft !== d.content) d.onChange(draft);
@@ -25,7 +32,22 @@ export function WorkspaceNoteNode({ data }: NodeProps) {
   };
 
   return (
-    <div className="group relative bg-yellow-50 border border-yellow-300 rounded-lg shadow-md w-[280px] min-h-[120px]">
+    <div
+      className="group relative bg-yellow-50 border border-yellow-300 rounded-lg shadow-md min-h-[120px]"
+      style={{ width: w ?? 280, height: h }}
+    >
+      <NodeResizer
+        isVisible={selected}
+        minWidth={200}
+        minHeight={120}
+        lineClassName="!border-[#9a6a2f]/40"
+        handleClassName="!bg-[#9a6a2f] !border !border-white !w-2 !h-2"
+        onResize={(_e, params) => {
+          setW(params.width);
+          setH(params.height);
+        }}
+        onResizeEnd={(_e, params) => d.onResize?.(params.width, params.height)}
+      />
       <Handle id="top" type="target" position={Position.Top} className="!bg-yellow-400 !w-2 !h-2 !border-0" />
       <Handle id="bottom" type="source" position={Position.Bottom} className="!bg-yellow-400 !w-2 !h-2 !border-0" />
       <Handle id="left-in" type="target" position={Position.Left} className="!bg-transparent !w-2 !h-2 !border-0" />

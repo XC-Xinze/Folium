@@ -23,6 +23,7 @@ import { isCardDrag, readCardDragData } from '../lib/dragCard';
 import { RenamableName } from './RenamableName';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  ChevronDown,
   FilePlus,
   Layers,
   StickyNote,
@@ -42,6 +43,18 @@ interface Props {
 }
 
 type RelationFilter = 'all' | 'draft' | 'vault' | 'temp' | 'workspace';
+
+const RELATION_FILTER_OPTIONS: Array<{
+  id: RelationFilter;
+  label: string;
+  description: string;
+}> = [
+  { id: 'all', label: 'All relations', description: 'Show every visible workspace edge.' },
+  { id: 'draft', label: 'Draft card links', description: 'Real card pairs that are not written to the vault yet.' },
+  { id: 'vault', label: 'Vault links', description: 'Relations already represented by vault links or structure.' },
+  { id: 'temp', label: 'Temp links', description: 'Relations touching a workspace temp card.' },
+  { id: 'workspace', label: 'Workspace only', description: 'Relations between notes or other local workspace items.' },
+];
 
 function sameWorkspacePair(a: Pick<WorkspaceEdge, 'source' | 'target'>, b: Pick<WorkspaceEdge, 'source' | 'target'>): boolean {
   return (a.source === b.source && a.target === b.target) || (a.source === b.target && a.target === b.source);
@@ -164,6 +177,7 @@ function WorkspaceInner({ workspaceId }: Props) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [relationFilter, setRelationFilter] = useState<RelationFilter>('all');
+  const [relationMenuOpen, setRelationMenuOpen] = useState(false);
 
   // 把后端 workspace data 转成 React Flow 的 nodes/edges
   const buildNodes = useCallback(
@@ -614,23 +628,42 @@ function WorkspaceInner({ workspaceId }: Props) {
           <FilePlus size={12} /> Temp card
         </button>
         <div className="border-l border-gray-200 mx-1 h-4" />
-        {(['all', 'draft', 'vault', 'temp', 'workspace'] as const).map((filter) => (
+        <div className="relative">
           <button
-            key={filter}
-            onClick={() => setRelationFilter(filter)}
-            className={`text-[10px] font-bold px-2 py-1 rounded-full transition-colors ${
-              relationFilter === filter
-                ? 'bg-accent text-white'
-                : 'zk-subtle-button border'
-            }`}
-            title={`Show ${filter} relations`}
+            onClick={() => setRelationMenuOpen((open) => !open)}
+            className="zk-subtle-button border flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full transition-colors"
+            title="Filter visible workspace relations"
           >
-            {filter === 'all' ? 'All' : filter}
-            <span className={relationFilter === filter ? 'text-white/70 ml-1' : 'text-gray-400 ml-1'}>
-              {relationCounts[filter]}
+            Relations
+            <span className="text-gray-400">
+              {RELATION_FILTER_OPTIONS.find((opt) => opt.id === relationFilter)?.label.replace(' relations', '')}
             </span>
+            <span className="text-gray-400">{relationCounts[relationFilter]}</span>
+            <ChevronDown size={11} />
           </button>
-        ))}
+          {relationMenuOpen && (
+            <div className="absolute left-0 top-8 z-[2300] w-64 overflow-hidden rounded-lg border border-paperEdge bg-paper shadow-2xl">
+              {RELATION_FILTER_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  onClick={() => {
+                    setRelationFilter(option.id);
+                    setRelationMenuOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 text-left transition-colors ${
+                    relationFilter === option.id ? 'bg-accentSoft text-ink' : 'hover:bg-surfaceAlt text-ink'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-bold">{option.label}</span>
+                    <span className="font-mono text-[10px] text-gray-400">{relationCounts[option.id]}</span>
+                  </div>
+                  <div className="mt-0.5 text-[10px] leading-snug text-gray-500">{option.description}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="border-l border-gray-200 mx-1 h-4" />
         <input
           value={addCardInput}

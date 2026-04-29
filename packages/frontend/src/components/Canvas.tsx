@@ -646,10 +646,16 @@ function HistoryButtons() {
   if (!tab || tab.kind !== 'card') return null;
   const hist = tab.cardHistory ?? [];
   const idx = tab.cardHistoryIndex ?? -1;
-  const canBack = idx > 0;
+  const returnTab = tab.returnToTabId ? leaf.tabs.find((t) => t.id === tab.returnToTabId) : null;
+  const canBack = idx > 0 || !!returnTab;
   const canFwd = idx >= 0 && idx < hist.length - 1;
-  const back = () =>
-    usePaneStoreImported.getState().goBackInTab(leaf.id, leaf.activeTabId!);
+  const back = () => {
+    if (idx > 0) {
+      usePaneStoreImported.getState().goBackInTab(leaf.id, leaf.activeTabId!);
+      return;
+    }
+    if (returnTab) usePaneStoreImported.getState().setActiveTab(leaf.id, returnTab.id);
+  };
   const forward = () =>
     usePaneStoreImported.getState().goForwardInTab(leaf.id, leaf.activeTabId!);
   return (

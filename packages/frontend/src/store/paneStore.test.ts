@@ -137,6 +137,21 @@ describe('paneStore', () => {
     }
   });
 
+  it('records source tab when opening a card from workspace', () => {
+    const st = usePaneStore.getState();
+    st.openTab({ kind: 'workspace', title: 'W', workspaceId: 'w1' });
+    const before = usePaneStore.getState();
+    if (before.root.kind !== 'leaf') throw new Error('expected leaf');
+    const workspaceTab = before.root.tabs[0]!;
+
+    st.openTab({ kind: 'card', title: 'A', cardBoxId: '1', cardFocusId: '1' });
+
+    const after = usePaneStore.getState();
+    if (after.root.kind !== 'leaf') throw new Error('expected leaf');
+    const cardTab = after.root.tabs.find((t) => t.kind === 'card');
+    expect(cardTab?.returnToTabId).toBe(workspaceTab.id);
+  });
+
   it('moveTab moves between panes', () => {
     const st = usePaneStore.getState();
     st.openTab({ kind: 'card', title: 'A', cardBoxId: '1', cardFocusId: '1' });

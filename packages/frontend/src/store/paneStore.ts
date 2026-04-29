@@ -47,6 +47,8 @@ export interface Tab {
   cardHistory?: Array<{ box: string; focus: string }>;
   /** 当前在 history 里的位置（0-based）。允许"回到中间再前进"截断后续 */
   cardHistoryIndex?: number;
+  /** 从非 card tab 打开 card tab 时记录来源，供 card toolbar 的 back 返回上一视图。 */
+  returnToTabId?: string;
 }
 
 export interface LeafPane {
@@ -294,6 +296,7 @@ export const usePaneStore = create<PaneStore>()(
       openTab: (spec, opts) => {
         const { activeLeafId, root } = get();
         const leaf = findLeaf(root, activeLeafId) ?? findFirstLeaf(root);
+        const activeTab = leaf.tabs.find((t) => t.id === leaf.activeTabId);
 
         if (opts?.splitDirection) {
           get().splitPane(leaf.id, opts.splitDirection, spec);
@@ -305,7 +308,17 @@ export const usePaneStore = create<PaneStore>()(
         if (existing && !opts?.newTab) {
           set({
             root: mapTree(root, (n) =>
-              n.kind === 'leaf' && n.id === leaf.id ? { ...n, activeTabId: existing.id } : n,
+              n.kind === 'leaf' && n.id === leaf.id
+                ? {
+                    ...n,
+                    tabs: n.tabs.map((t) =>
+                      t.id === existing.id && activeTab && activeTab.id !== existing.id && activeTab.kind !== existing.kind
+                        ? { ...t, returnToTabId: activeTab.id }
+                        : t,
+                    ),
+                    activeTabId: existing.id,
+                  }
+                : n,
             ),
             activeLeafId: leaf.id,
           });
@@ -318,9 +331,11 @@ export const usePaneStore = create<PaneStore>()(
         //   - 同类型 active tab 存在 → 替换它（看 card→点 card 不会一直叠 tab）
         //   - 不同类型（card↔workspace 等）→ 新建（避免一点 workspace 就把 card 顶掉）
         //   - 没 active tab → 新建（空 pane 第一张）
-        const activeTab = leaf.tabs.find((t) => t.id === leaf.activeTabId);
         const sameKind = activeTab && activeTab.kind === spec.kind;
         const replace = !opts?.newTab && !!sameKind;
+        if (!replace && activeTab && newTab.kind === 'card' && activeTab.kind !== 'card') {
+          newTab.returnToTabId = activeTab.id;
+        }
 
         // 替换路径：保留 history —— back 应该能回到旧 tab 的内容
         // 仅 card→card 替换时维护 cardHistory；其他类型暂不需要

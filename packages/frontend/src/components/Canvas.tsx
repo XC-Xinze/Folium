@@ -521,7 +521,7 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
           <EdgeToggle color="#536253" label="Tag" active={showTagRelated} onClick={() => setShowTagRelated(!showTagRelated)} title="Tag co-occurrence edges" />
           <EdgeToggle color="#ba635c" label="Box" active={showBoxCards} onClick={() => setShowBoxCards(!showBoxCards)} title="Cards inside the current index / box" />
           <EdgeToggle color="#cbd5e1" label="Potential" active={showPotential} onClick={() => setShowPotential(!showPotential)} title="Text-similarity potential edges (gray dashed)" />
-          <EdgeToggle color="#536253" label="Temp" active={showWorkspaceLinks} onClick={() => setShowWorkspaceLinks(!showWorkspaceLinks)} title="Workspace temp ghost cards & their links" />
+          <EdgeToggle color="#536253" label="Workspace" active={showWorkspaceLinks} onClick={() => setShowWorkspaceLinks(!showWorkspaceLinks)} title="Workspace-derived links and temp ghost cards" />
         </div>
         <span className="w-px h-4 bg-paperEdge/80 dark:bg-[#494d64]" />
         <FocusDepthBadge depth={focusDepth} max={MAX_FOCUS_DEPTH} />

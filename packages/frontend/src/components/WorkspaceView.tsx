@@ -105,10 +105,11 @@ function edgeMatchesRelationFilter(edge: Edge, filter: RelationFilter): boolean 
   if (!data) return true;
   const isVault = !!data.applied || !!data.vaultLink || !!data.vaultStructure;
   const hasTemp = data.sourceKind === 'temp' || data.targetKind === 'temp';
+  const bothCards = data.bothCards || (data.sourceKind === 'card' && data.targetKind === 'card');
   if (filter === 'vault') return isVault;
   if (filter === 'temp') return !isVault && hasTemp;
-  if (filter === 'draft') return !isVault && !hasTemp && !!data.bothCards;
-  return !isVault && !hasTemp && !data.bothCards;
+  if (filter === 'draft') return !isVault && !hasTemp && bothCards;
+  return !isVault && !hasTemp && !bothCards;
 }
 
 function controlOffset(distance: number, curvature = 0.25): number {
@@ -896,15 +897,17 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
     x2: sourceX,
     y2: sourceY,
   });
+  const bothRealCards = !!d && (d.bothCards || (d.sourceKind === 'card' && d.targetKind === 'card'));
+  const hasTempEndpoint = d?.sourceKind === 'temp' || d?.targetKind === 'temp';
   const relationKind = d?.vaultLink
     ? 'vault'
     : d?.vaultStructure
       ? 'tree'
       : d?.applied
         ? 'applied'
-        : d?.bothCards
+        : bothRealCards
           ? 'draft-link'
-          : d?.sourceKind === 'temp' || d?.targetKind === 'temp'
+          : hasTempEndpoint
             ? 'temp'
             : 'workspace';
   const relationBadge = {
@@ -1045,16 +1048,16 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
               <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 dark:border-[#363a4f]">
                 <div className="min-w-0">
                   <div className="truncate text-xs font-bold text-ink dark:text-[#cad3f5]">
-                    {d.bothCards ? '双链关系' : 'Workspace relation'}
+                    {bothRealCards ? '双链关系' : 'Workspace relation'}
                   </div>
                   <div className="truncate text-[10px] text-gray-400">
-                    {d.bothCards
+                    {bothRealCards
                       ? d.applied
                         ? 'Already written to the vault'
                         : d.vaultLink || d.vaultStructure
                           ? 'Already exists in the vault'
                           : 'Draft link between two real cards'
-                      : d.sourceKind === 'temp' || d.targetKind === 'temp'
+                      : hasTempEndpoint
                         ? 'Temp edge; materializes when promoted'
                         : 'Workspace-only relation'}
                   </div>
@@ -1100,7 +1103,7 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
                 </div>
               )}
               <div className="flex items-center gap-2 border-t border-gray-100 px-3 py-2 dark:border-[#363a4f]">
-                {d.bothCards && !d.vaultLink && !d.vaultStructure && !d.applied && (
+                {bothRealCards && !d.vaultLink && !d.vaultStructure && !d.applied && (
                   <button
                     onClick={async () => {
                       const ok = await dialog.confirm('Write this edge into the vault as a real [[link]] in the source card?', {
@@ -1114,7 +1117,7 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
                     Apply
                   </button>
                 )}
-                {d.bothCards && d.applied && !d.vaultLink && !d.vaultStructure && (
+                {bothRealCards && d.applied && !d.vaultLink && !d.vaultStructure && (
                   <button
                     onClick={async () => {
                       const ok = await dialog.confirm('Remove this edge’s [[link]] from the vault?', {

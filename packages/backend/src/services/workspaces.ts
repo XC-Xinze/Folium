@@ -510,11 +510,13 @@ export interface WorkspaceLink {
 }
 
 /**
- * Find all workspace edges that touch any of the given vault cards (by luhmannId).
- * Used by the vault canvas to overlay workspace-derived links/temps as "potential"-style nodes.
+ * Find workspace temp edges that touch any of the given vault cards (by luhmannId).
+ * Used by the vault canvas to surface temp cards that do not exist in the vault yet.
  *
  * Excludes:
  *   - edges involving notes
+ *   - card ↔ card edges: draft links only belong inside the workspace until applied;
+ *     applied/vault links are already represented by the vault graph itself.
  *   - temp ↔ temp edges (those stay workspace-only per the user's spec)
  */
 export async function listWorkspaceLinksFor(cardIds: string[]): Promise<WorkspaceLink[]> {
@@ -528,6 +530,7 @@ export async function listWorkspaceLinksFor(cardIds: string[]): Promise<Workspac
       const tgt = nodeById.get(edge.target);
       if (!src || !tgt) continue;
       if (src.kind === 'note' || tgt.kind === 'note') continue;
+      if (src.kind === 'card' && tgt.kind === 'card') continue;
       if (src.kind === 'temp' && tgt.kind === 'temp') continue;
 
       const srcIsRelevantCard = src.kind === 'card' && cardSet.has((src as CardRefNode).cardId);

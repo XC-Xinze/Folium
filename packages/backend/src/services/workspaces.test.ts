@@ -168,7 +168,7 @@ describe('workspace edge state guards', () => {
     expect(ws?.edges[0]).toMatchObject({ source: 'n1', target: 'n2', label: 'rel' });
   });
 
-  it('keeps workspace overlay links stable after duplicate card refs are repaired', async () => {
+  it('does not expose card-to-card draft links to the vault canvas overlay', async () => {
     const { workspaceId } = await setupWorkspace({});
     await updateWorkspace(workspaceId, {
       nodes: [
@@ -184,11 +184,28 @@ describe('workspace edge state guards', () => {
 
     await repairWorkspaces();
     const links = await listWorkspaceLinksFor(['1']);
+    expect(links).toHaveLength(0);
+    expect(await getWorkspace(workspaceId)).toBeTruthy();
+  });
+
+  it('exposes temp edges that touch visible vault cards', async () => {
+    const { workspaceId } = await setupWorkspace({});
+    await updateWorkspace(workspaceId, {
+      nodes: [
+        { kind: 'card', id: 'n1', cardId: '1', x: 0, y: 0 },
+        { kind: 'temp', id: 'tmp1', title: 'Temp idea', content: 'draft', x: 300, y: 0 },
+      ],
+      edges: [
+        { id: 'e1', source: 'n1', target: 'tmp1', label: 'draft' },
+      ],
+    });
+
+    const links = await listWorkspaceLinksFor(['1']);
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({
       workspaceId,
       source: { kind: 'card', id: '1' },
-      target: { kind: 'card', id: '2' },
+      target: { kind: 'temp', id: 'tmp1', title: 'Temp idea', content: 'draft' },
     });
   });
 });

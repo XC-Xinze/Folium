@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Moon, Sun, Monitor, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
+import { Moon, Sun, Monitor, RefreshCw, CheckCircle, XCircle, Trash2, ExternalLink } from 'lucide-react';
 import { useUIStore, type Theme } from '../store/uiStore';
 import { api } from '../lib/api';
 import { dialog } from '../lib/dialog';
@@ -73,6 +73,7 @@ export function SettingsView() {
 
       <Section title="Attachments">
         <AttachmentPolicyField />
+        <AttachmentManager />
       </Section>
 
       <Section title="Backup & Recovery">
@@ -388,6 +389,95 @@ function AttachmentPolicyField() {
         ))}
       </div>
     </Field>
+  );
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function AttachmentManager() {
+  const qc = useQueryClient();
+  const attachmentsQ = useQuery({ queryKey: ['attachments'], queryFn: api.listAttachments });
+  const deleteMut = useMutation({
+    mutationFn: ({ path, force }: { path: string; force?: boolean }) => api.deleteAttachment(path, { force }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['attachments'] }),
+    onError: (err: Error) => dialog.alert(err.message, { title: 'Delete attachment failed' }),
+  });
+  const attachments = attachmentsQ.data?.attachments ?? [];
+
+  const deleteAttachment = async (path: string, refCount: number) => {
+    const ok = await dialog.confirm(`Delete attachment?\n\n${path}`, {
+      title: refCount > 0 ? 'Delete referenced attachment' : 'Delete attachment',
+      description:
+        refCount > 0
+          ? `This file is referenced by ${refCount} card${refCount === 1 ? '' : 's'}. The Markdown link will remain but point to a missing file.`
+          : 'This removes the file from the vault attachments folder.',
+      confirmLabel: 'Delete file',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    deleteMut.mutate({ path, force: refCount > 0 });
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[12px] font-semibold">Attachment files</div>
+          <div className="text-[11px] text-gray-400 dark:text-gray-500">
+            PDFs and other files stay in the vault's attachments folder. Referenced files can be opened here.
+          </div>
+        </div>
+        <button
+          onClick={() => attachmentsQ.refetch()}
+          className="text-[11px] font-bold px-2.5 py-1 rounded border border-gray-200 dark:border-[#363a4f] hover:bg-gray-50 dark:hover:bg-gray-800"
+        >
+          Refresh
+        </button>
+      </div>
+
+      <div className="border border-gray-200 dark:border-[#363a4f] rounded-lg overflow-hidden">
+        {attachmentsQ.isLoading && <div className="px-3 py-3 text-[12px] text-gray-400">Loading attachments...</div>}
+        {!attachmentsQ.isLoading && attachments.length === 0 && (
+          <div className="px-3 py-3 text-[12px] text-gray-400">No attachments found.</div>
+        )}
+        {attachments.map((file) => (
+          <div
+            key={file.relativePath}
+            className="flex items-center gap-3 px-3 py-2 border-t first:border-t-0 border-gray-100 dark:border-[#363a4f]"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="font-mono text-[11px] truncate">{file.relativePath}</div>
+              <div className="text-[10px] text-gray-400">
+                {formatBytes(file.size)} · {file.referencedBy.length === 0 ? 'unused' : `used by ${file.referencedBy.map((r) => r.luhmannId).join(', ')}`}
+              </div>
+            </div>
+            <button
+              onClick={() => api.openAttachment(file.relativePath).catch((err) => dialog.alert((err as Error).message, { title: 'Open attachment failed' }))}
+              className="p-1 text-gray-400 hover:text-accent"
+              title="Open attachment"
+            >
+              <ExternalLink size={14} />
+            </button>
+            <button
+              onClick={() => void deleteAttachment(file.relativePath, file.referencedBy.length)}
+              disabled={deleteMut.isPending}
+              className={`p-1 ${
+                file.referencedBy.length > 0
+                  ? 'text-gray-300 hover:text-red-500'
+                  : 'text-gray-400 hover:text-red-500'
+              } disabled:opacity-40`}
+              title={file.referencedBy.length > 0 ? 'Delete referenced file' : 'Delete unused file'}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

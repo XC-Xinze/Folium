@@ -1,10 +1,12 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { mkdir, writeFile, access } from 'node:fs/promises';
+import { mkdir, writeFile, access, readdir, stat, unlink } from 'node:fs/promises';
 import { join, extname, basename, resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
 import { platform } from 'node:os';
 import { config } from '../config.js';
 import { getVaultSettings } from '../services/vaultSettings.js';
+import { getDb } from '../db/client.js';
+import { CardRepository } from '../vault/repository.js';
 
 const ATTACHMENTS_DIR = 'attachments';
 
@@ -39,7 +41,59 @@ async function resolveAttachmentDir(boxId: string | null): Promise<{
   };
 }
 
+function assertVaultRelativeAttachmentPath(relativePath: string): string {
+  const rel = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!rel.startsWith(`${ATTACHMENTS_DIR}/`) || rel.includes('\0')) {
+    throw new Error('attachment path required');
+  }
+  const vault = resolve(config.vaultPath);
+  const target = resolve(vault, rel);
+  if (target === vault || !target.startsWith(vault + sep)) {
+    throw new Error('path escapes vault');
+  }
+  return target;
+}
+
+async function walkAttachments(dir: string, base = ATTACHMENTS_DIR): Promise<Array<{ relativePath: string; size: number; mtime: number }>> {
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  const out: Array<{ relativePath: string; size: number; mtime: number }> = [];
+  for (const entry of entries) {
+    const abs = join(dir, entry.name);
+    const rel = `${base}/${entry.name}`;
+    if (entry.isDirectory()) {
+      out.push(...await walkAttachments(abs, rel));
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    const s = await stat(abs).catch(() => null);
+    if (!s) continue;
+    out.push({ relativePath: rel, size: s.size, mtime: s.mtimeMs });
+  }
+  return out;
+}
+
+function findAttachmentReferences(relativePath: string): Array<{ luhmannId: string; title: string }> {
+  const repo = new CardRepository(getDb());
+  const encoded = encodeURI(relativePath);
+  return repo
+    .list()
+    .filter((card) => card.contentMd.includes(relativePath) || card.contentMd.includes(encoded))
+    .map((card) => ({ luhmannId: card.luhmannId, title: card.title }));
+}
+
 export const attachmentRoutes: FastifyPluginAsync = async (app) => {
+  app.get('/attachments', async () => {
+    const files = await walkAttachments(join(config.vaultPath, ATTACHMENTS_DIR));
+    return {
+      attachments: files
+        .map((file) => ({
+          ...file,
+          referencedBy: findAttachmentReferences(file.relativePath),
+        }))
+        .sort((a, b) => a.relativePath.localeCompare(b.relativePath)),
+    };
+  });
+
   // 注意：不在 register 时确定 dir —— vault 切换 / 设置改变时都会变。
   // 每次 upload 现算。
   app.post<{ Querystring: { boxId?: string } }>('/attachments', async (req, reply) => {
@@ -104,4 +158,28 @@ export const attachmentRoutes: FastifyPluginAsync = async (app) => {
       return { ok: true };
     },
   );
+
+  app.delete<{ Querystring: { path?: string; force?: string } }>('/attachments', async (req, reply) => {
+    const rel = req.query.path;
+    if (!rel || typeof rel !== 'string') {
+      return reply.code(400).send({ error: 'path required' });
+    }
+    let target: string;
+    try {
+      target = assertVaultRelativeAttachmentPath(rel);
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message });
+    }
+    const refs = findAttachmentReferences(rel);
+    const force = req.query.force === '1' || req.query.force === 'true';
+    if (refs.length > 0 && !force) {
+      return reply.code(409).send({ error: 'attachment is referenced', referencedBy: refs });
+    }
+    try {
+      await unlink(target);
+      return { ok: true, deleted: rel, referencedBy: refs };
+    } catch (err) {
+      return reply.code(404).send({ error: (err as Error).message });
+    }
+  });
 };

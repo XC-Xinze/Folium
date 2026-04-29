@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -58,6 +58,7 @@ async function createWindow() {
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
+      preload: join(__dirname, 'preload.cjs'),
     },
   });
 
@@ -72,6 +73,18 @@ async function createWindow() {
     await win.loadFile(join(projectRoot, 'packages', 'frontend', 'dist', 'index.html'));
   }
 }
+
+ipcMain.handle('vault:select-directory', async (_event, opts = {}) => {
+  const properties = ['openDirectory'];
+  if (opts.createDirectory) properties.push('createDirectory');
+  const result = await dialog.showOpenDialog({
+    title: opts.title ?? 'Choose vault folder',
+    buttonLabel: opts.buttonLabel ?? 'Choose',
+    properties,
+  });
+  if (result.canceled) return null;
+  return result.filePaths[0] ?? null;
+});
 
 app.whenReady().then(() => {
   void createWindow().catch((err) => {

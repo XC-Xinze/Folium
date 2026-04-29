@@ -161,6 +161,13 @@ export interface VaultEntry {
   name: string;
 }
 
+export interface AttachmentEntry {
+  relativePath: string;
+  size: number;
+  mtime: number;
+  referencedBy: Array<{ luhmannId: string; title: string }>;
+}
+
 const BASE = '/api';
 
 async function get<T>(path: string): Promise<T> {
@@ -548,6 +555,21 @@ export const api = {
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
       throw new Error(j.message ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+  listAttachments: () => get<{ attachments: AttachmentEntry[] }>(`/attachments`),
+  deleteAttachment: async (
+    relativePath: string,
+    opts?: { force?: boolean },
+  ): Promise<{ ok: true; deleted: string; referencedBy: AttachmentEntry['referencedBy'] }> => {
+    const res = await fetch(
+      `${BASE}/attachments?path=${encodeURIComponent(relativePath)}${opts?.force ? '&force=1' : ''}`,
+      { method: 'DELETE' },
+    );
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? `${res.status} ${res.statusText}`);
     }
     return res.json();
   },

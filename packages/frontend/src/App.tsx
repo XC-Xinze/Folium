@@ -11,6 +11,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { NewCardBar } from './components/NewCardBar';
 import { Maximize2 } from 'lucide-react';
 import { EmptyVault } from './components/EmptyVault';
+import { FirstRunVaultOnboarding } from './components/FirstRunVaultOnboarding';
 import { PaneRoot } from './components/PaneRoot';
 import { useIsMobile } from './lib/useIsMobile';
 import { useUIStore } from './store/uiStore';
@@ -318,6 +319,7 @@ export function App() {
         <TopBar />
         {isVaultEmpty ? <EmptyVault /> : <PaneRoot />}
       </main>
+      <FirstRunVaultOnboarding />
       <Dialog />
       <QuickSwitcher />
       <SettingsModal />

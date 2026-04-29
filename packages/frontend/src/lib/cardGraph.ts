@@ -258,6 +258,15 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
   ) {
     addNode(focusedCardId, 'focus');
   }
+  // Exploration trail anchors stay visible even when the Box layer is hidden.
+  // This keeps link-only walks such as 1a -> 1 -> 4 understandable without
+  // bringing back every card in the box.
+  if (anyExternalToggle) {
+    for (const id of tagAnchorIds) {
+      if (rawNodes.has(id) || !cardMap.has(id)) continue;
+      addNode(id, id === focusedCardId ? 'focus' : backbone.ids.has(id) ? 'tree' : 'cross-flank');
+    }
+  }
   // 当前 box 内部 tree 边
   for (const e of backbone.treeEdges) {
     if (!visibleBoxIds.has(e.source) || !visibleBoxIds.has(e.target)) continue;
@@ -267,6 +276,9 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
   // 焦点卡若在 backbone 外（被 tag-related/cross-flank 拉进来后用户点选了它）→
   // 把它也纳入 cross/potential 的迭代集合，让"以焦点为中心的所有边"都画出来
   const radialIds = new Set<string>(visibleBoxIds);
+  for (const id of tagAnchorIds) {
+    if (rawNodes.has(id)) radialIds.add(id);
+  }
   if (!radialIds.has(focusedCardId) && cardMap.has(focusedCardId)) {
     radialIds.add(focusedCardId);
   }

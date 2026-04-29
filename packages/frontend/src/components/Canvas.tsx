@@ -55,6 +55,18 @@ interface Props {
 
 const MAX_FOCUS_DEPTH = 3;
 
+function deriveParentId(luhmannId: string): string | null {
+  if (luhmannId.length <= 1) return null;
+  const lastChar = luhmannId.at(-1)!;
+  const isLastDigit = /\d/.test(lastChar);
+  for (let i = luhmannId.length - 2; i >= 0; i--) {
+    const ch = luhmannId[i]!;
+    const isDigit = /\d/.test(ch);
+    if (isDigit !== isLastDigit) return luhmannId.slice(0, i + 1);
+  }
+  return null;
+}
+
 function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDepth = 0 }: Props) {
   const merged = { ...DEFAULT_CARD_FLAGS, ...(flags ?? {}) };
   const showPotential = merged.potential;
@@ -107,32 +119,56 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
     return [...bb.ids];
   }, [cardsQ.data, boxQ.data, fullCards, focusedBoxId, isMaster]);
 
-  // Exploration trail：只保留当前思维链上的少量锚点。
-  // 旧逻辑会在本 box 会话内无限累加，导致沿链接探索几步以后旧锚点拉进来的卡一直留在画布里。
-  // 新规则：点击回 tree/主链时清理旧探索；沿外部链接探索时最多保留 box + MAX_FOCUS_DEPTH 个锚点。
+  const cardsAreStructurallyLinked = useCallback(
+    (a: string, b: string) => {
+      if (a === b) return true;
+      const cardA = cardsQ.data?.cards.find((c) => c.luhmannId === a);
+      const cardB = cardsQ.data?.cards.find((c) => c.luhmannId === b);
+      if (!cardA || !cardB) return false;
+      if (deriveParentId(cardA.luhmannId) === b || deriveParentId(cardB.luhmannId) === a) return true;
+      if (cardA.crossLinks.includes(b) || cardB.crossLinks.includes(a)) return true;
+      return false;
+    },
+    [cardsQ.data],
+  );
+  const appendTrail = useCallback(
+    (prev: string[], id: string) => {
+      const withoutCurrent = prev.filter((existing) => existing !== id && existing !== focusedBoxId);
+      const next = id === focusedBoxId ? withoutCurrent : [...withoutCurrent, id];
+      return [focusedBoxId, ...next.slice(-MAX_FOCUS_DEPTH)];
+    },
+    [focusedBoxId],
+  );
+
+  // Exploration trail：记录用户连续点过的关系锚点，而不是无限累加所有曾经拉进来的邻居。
+  // Box toggle 负责是否铺开当前盒子的结构卡；trail 负责在 link-only/tag-only 探索时保留路径上下文。
   const [tagTrailIds, setTagTrailIds] = useState<string[]>(() => [focusedBoxId]);
+  const prevTrailFocusRef = useRef(focusedCardId);
   // box 切了 → 重置 trail
   useEffect(() => {
     setTagTrailIds([focusedBoxId]);
+    prevTrailFocusRef.current = focusedBoxId;
   }, [focusedBoxId]);
-  // 焦点切换：tree/主链 focusDepth=0 时收束；外部探索时只保留当前链的最近几步。
+  // 焦点切换：沿 tree/link 走就保留路径；跳到无关卡时收束到新的上下文。
   useEffect(() => {
     const focusCard = cardsQ.data?.cards.find((c) => c.luhmannId === focusedCardId);
-    const base = [focusedBoxId];
-    if (!focusCard || focusCard.tags.length === 0) {
-      if (focusDepth === 0) setTagTrailIds(base);
+    const prevFocus = prevTrailFocusRef.current;
+    prevTrailFocusRef.current = focusedCardId;
+    if (!focusCard) {
+      setTagTrailIds([focusedBoxId]);
       return;
     }
     if (focusDepth === 0) {
-      setTagTrailIds(focusedCardId === focusedBoxId ? base : [...base, focusedCardId]);
+      setTagTrailIds((prev) => {
+        const continuingPath =
+          prev.includes(prevFocus) && cardsAreStructurallyLinked(prevFocus, focusedCardId);
+        if (continuingPath) return appendTrail(prev, focusedCardId);
+        return focusedCardId === focusedBoxId ? [focusedBoxId] : [focusedBoxId, focusedCardId];
+      });
       return;
     }
-    setTagTrailIds((prev) => {
-      const withoutCurrent = prev.filter((id) => id !== focusedCardId && id !== focusedBoxId);
-      const recent = [...withoutCurrent, focusedCardId].slice(-MAX_FOCUS_DEPTH);
-      return [focusedBoxId, ...recent];
-    });
-  }, [focusedBoxId, focusedCardId, focusDepth, cardsQ.data]);
+    setTagTrailIds((prev) => appendTrail(prev, focusedCardId));
+  }, [appendTrail, cardsAreStructurallyLinked, focusedBoxId, focusedCardId, focusDepth, cardsQ.data]);
 
   // 焦点卡若是从外部 tag-related 拉进来的（不在 backbone 里），单独把它加进 relatedBatch
   // 否则它的 tagRelated 拿不到 → buildGraph 退化成"所有 backbone 卡两两连"
@@ -140,9 +176,9 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
   const relatedIds = useMemo(() => {
     const set = new Set<string>();
     if (focusedCardId) set.add(focusedCardId);
+    for (const id of tagTrailIds) set.add(id);
     if (showBoxCards) {
       for (const id of backboneIds) set.add(id);
-      for (const id of tagTrailIds) set.add(id);
     }
     return [...set];
   }, [backboneIds, focusedCardId, tagTrailIds, showBoxCards]);

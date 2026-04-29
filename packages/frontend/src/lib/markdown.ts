@@ -1,5 +1,6 @@
 import { marked } from 'marked';
 import createDOMPurify from 'dompurify';
+import { VAULT_BASE } from './backendUrl';
 
 const purifier = typeof window !== 'undefined' ? createDOMPurify(window) : null;
 
@@ -8,7 +9,7 @@ function rewriteAttachmentUrl(url: string): string {
   if (!url) return url;
   if (/^(https?:|data:|\/)/.test(url)) return url;
   // 其它相对路径，假定是 vault 内的资源
-  return `/vault/${url.replace(/^\.?\/?/, '')}`;
+  return `${VAULT_BASE}/${url.replace(/^\.?\/?/, '')}`;
 }
 
 const renderer = new marked.Renderer();
@@ -69,7 +70,7 @@ export function attachAttachmentClickHandler(
   root: HTMLElement,
   openInSystem: (relativePath: string) => void,
 ): () => void {
-  const VAULT_PREFIX = '/vault/';
+  const vaultUrlPrefix = `${VAULT_BASE}/`;
   const onClick = (e: Event) => {
     const target = e.target as HTMLElement | null;
     if (!target) return;
@@ -77,10 +78,10 @@ export function attachAttachmentClickHandler(
     if (!a) return;
     const href = a.getAttribute('href') ?? '';
     // 仅处理 vault 内的附件链接（renderMarkdown 已重写过 attachments/* → /vault/attachments/*）
-    if (!href.startsWith(VAULT_PREFIX)) return;
+    if (!href.startsWith(vaultUrlPrefix)) return;
     // 排除被嵌入的图片（点 <img> 上的话 closest('a') 还可能拿到外层 a，但通常图片不在 a 里）
     e.preventDefault();
-    const rel = href.slice(VAULT_PREFIX.length);
+    const rel = href.slice(vaultUrlPrefix.length);
     openInSystem(rel);
   };
   root.addEventListener('click', onClick);

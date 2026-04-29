@@ -5,6 +5,7 @@ import { useUIStore } from '../store/uiStore';
 import { usePaneStore } from '../store/paneStore';
 import { makeMarkdownInsert, uploadAttachment } from '../lib/uploadAttachment';
 import { api } from '../lib/api';
+import { API_BASE } from '../lib/backendUrl';
 
 // status 是 derived from structure（有 Folgezettel 子卡 = INDEX），用户不再手动选
 interface CreateBody {
@@ -14,7 +15,7 @@ interface CreateBody {
 }
 
 async function createCard(body: CreateBody): Promise<{ luhmannId: string }> {
-  const res = await fetch('/api/cards', {
+  const res = await fetch(`${API_BASE}/cards`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

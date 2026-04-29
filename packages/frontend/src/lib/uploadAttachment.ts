@@ -1,3 +1,5 @@
+import { API_BASE } from './backendUrl';
+
 export interface UploadResult {
   filename: string;
   relativePath: string;
@@ -13,7 +15,9 @@ export interface UploadResult {
 export async function uploadAttachment(file: File, boxId?: string | null): Promise<UploadResult> {
   const fd = new FormData();
   fd.append('file', file, file.name);
-  const url = boxId ? `/api/attachments?boxId=${encodeURIComponent(boxId)}` : '/api/attachments';
+  const url = boxId
+    ? `${API_BASE}/attachments?boxId=${encodeURIComponent(boxId)}`
+    : `${API_BASE}/attachments`;
   const res = await fetch(url, {
     method: 'POST',
     body: fd,

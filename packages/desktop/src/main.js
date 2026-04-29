@@ -4,29 +4,76 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const projectRoot = resolve(__dirname, '..', '..', '..');
+const devProjectRoot = resolve(__dirname, '..', '..', '..');
 const backendPort = process.env.PORT ?? '8000';
 const backendUrl = `http://127.0.0.1:${backendPort}`;
 const rendererUrl = process.env.ELECTRON_RENDERER_URL;
 
 let backendProcess = null;
 
+function projectRoot() {
+  return app.isPackaged ? app.getAppPath() : devProjectRoot;
+}
+
 function startBackend() {
   if (process.env.ELECTRON_SKIP_BACKEND === '1') return;
 
-  backendProcess = spawn(
-    process.platform === 'win32' ? 'npm.cmd' : 'npm',
-    ['run', 'start', '--workspace=backend'],
-    {
-      cwd: projectRoot,
+  const root = projectRoot();
+  const env = {
+    ...process.env,
+    HOST: '127.0.0.1',
+    PORT: backendPort,
+    DB_PATH: process.env.DB_PATH ?? join(app.getPath('userData'), 'index.db'),
+    CORS_ORIGINS: rendererUrl ?? 'http://localhost:5173,http://127.0.0.1:5173',
+  };
+
+  if (app.isPackaged) {
+    backendProcess = spawn(process.execPath, [join(root, 'packages', 'backend', 'dist', 'index.js')], {
+      cwd: root,
       env: {
-        ...process.env,
-        HOST: '127.0.0.1',
-        PORT: backendPort,
-        CORS_ORIGINS: rendererUrl ?? 'http://localhost:5173,http://127.0.0.1:5173',
+        ...env,
+        ELECTRON_RUN_AS_NODE: '1',
       },
       stdio: 'inherit',
+    });
+    return;
+  }
+
+  backendProcess = spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'start', '--workspace=backend'], {
+    cwd: root,
+    env,
+    stdio: 'inherit',
+  });
+}
+
+function stopBackend() {
+  if (backendProcess && !backendProcess.killed) {
+    backendProcess.kill();
+  }
+  backendProcess = null;
+}
+
+async function openBackendFailureWindow(message) {
+  const win = new BrowserWindow({
+    width: 720,
+    height: 360,
+    title: 'Zettelkasten Card',
+    webPreferences: {
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
     },
+  });
+  await win.loadURL(
+    `data:text/html;charset=utf-8,${encodeURIComponent(`
+      <html>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 32px; color: #1c1b1b; background: #fdf8f8;">
+          <h2>Backend failed to start</h2>
+          <p>${message}</p>
+          <p style="color: #747878;">Please quit and reopen the app. If this keeps happening, start the development build and check the terminal log.</p>
+        </body>
+      </html>
+    `)}`,
   );
 }
 
@@ -46,7 +93,12 @@ async function waitForBackend(timeoutMs = 15_000) {
 
 async function createWindow() {
   startBackend();
-  await waitForBackend();
+  try {
+    await waitForBackend();
+  } catch (err) {
+    await openBackendFailureWindow((err instanceof Error ? err.message : String(err)));
+    return;
+  }
 
   const win = new BrowserWindow({
     width: 1320,
@@ -70,7 +122,7 @@ async function createWindow() {
   if (rendererUrl) {
     await win.loadURL(rendererUrl);
   } else {
-    await win.loadFile(join(projectRoot, 'packages', 'frontend', 'dist', 'index.html'));
+    await win.loadFile(join(projectRoot(), 'packages', 'frontend', 'dist', 'index.html'));
   }
 }
 
@@ -104,7 +156,5 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  if (backendProcess && !backendProcess.killed) {
-    backendProcess.kill();
-  }
+  stopBackend();
 });

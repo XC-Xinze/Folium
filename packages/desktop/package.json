@@ -9,6 +9,7 @@
     "start": "electron ."
   },
   "devDependencies": {
-    "electron": "^41.3.0"
+    "electron": "^41.3.0",
+    "electron-builder": "^26.8.1"
   }
 }

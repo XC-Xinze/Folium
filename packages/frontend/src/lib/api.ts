@@ -168,7 +168,9 @@ export interface AttachmentEntry {
   referencedBy: Array<{ luhmannId: string; title: string }>;
 }
 
-const BASE = '/api';
+import { API_BASE } from './backendUrl';
+
+const BASE = API_BASE;
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);

@@ -86,6 +86,15 @@ export function CardNode({ data, id, selected }: NodeProps) {
   const qc = useQueryClient();
   const starredQ = useQuery({ queryKey: ['starred'], queryFn: api.listStarred });
   const isStarred = !!starredQ.data?.ids.includes(cardLuhmannId);
+  const openGhostWorkspace = () => {
+    const ws = nodeData.ghostFromWorkspace;
+    if (!ws) return;
+    usePaneStoreImported.getState().openTab({
+      kind: 'workspace',
+      title: ws.workspaceName,
+      workspaceId: ws.workspaceId,
+    });
+  };
   const contentRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [promoting, setPromoting] = useState(false);
@@ -478,7 +487,10 @@ export function CardNode({ data, id, selected }: NodeProps) {
       }}
       onDoubleClick={(e) => {
         e.stopPropagation();
-        if (isGhost) return;
+        if (isGhost) {
+          openGhostWorkspace();
+          return;
+        }
         navigate(cardLuhmannId);
       }}
     >
@@ -902,11 +914,19 @@ export function CardNode({ data, id, selected }: NodeProps) {
 
       {/* Ghost-from-workspace label */}
       {isGhost && nodeData.ghostFromWorkspace && (
-        <div className="absolute -bottom-2.5 left-3 px-1.5 py-0.5 rounded text-[9px] font-bold bg-white border border-accent/30 text-accent shadow-sm flex items-center gap-1">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            openGhostWorkspace();
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="nodrag nopan absolute -bottom-2.5 left-3 px-1.5 py-0.5 rounded text-[9px] font-bold bg-white border border-accent/30 text-accent shadow-sm flex items-center gap-1 hover:bg-accentSoft hover:border-accent/50"
+          title={`Open workspace: ${nodeData.ghostFromWorkspace.workspaceName}`}
+        >
           <span className="text-[8px]">⌘</span>
           <span>from workspace</span>
           <span className="text-accent">{nodeData.ghostFromWorkspace.workspaceName}</span>
-        </div>
+        </button>
       )}
 
       {/* Source-box label: this card is borrowed from another box */}

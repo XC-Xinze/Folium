@@ -577,13 +577,13 @@ function WorkspaceInner({ workspaceId }: Props) {
   return (
     <div
       ref={containerRef}
-      className={`w-full h-full relative bg-surface transition-colors ${dragHover ? 'bg-accentSoft/40' : ''}`}
+      className={`w-full h-full relative zk-canvas-bg transition-colors ${dragHover ? 'bg-accentSoft/40' : ''}`}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
       {/* Toolbar —— 之前的 dock/fullscreen/close 按钮在 pane 系统下都被 tab 系统替代了 */}
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-1 bg-paper/90 px-2 py-1.5 rounded-lg shadow-md border border-paperEdge backdrop-blur">
+      <div className="absolute top-4 left-4 z-10 flex items-center gap-1 zk-toolbar-surface px-2 py-1.5 rounded-lg border">
         <RenamableName
           value={wsQ.data.name}
           onSave={(name) => {
@@ -601,7 +601,7 @@ function WorkspaceInner({ workspaceId }: Props) {
         <div className="border-l border-gray-200 mx-1 h-4" />
         <button
           onClick={() => addNote(200, 200)}
-          className="flex items-center gap-1 text-[11px] font-bold text-yellow-700 hover:text-yellow-800 px-2 py-1 rounded hover:bg-yellow-50"
+          className="flex items-center gap-1 text-[11px] font-bold text-[#9a6a2f] hover:text-ink px-2 py-1 rounded hover:bg-[#f3e6c8]"
           title="Add sticky note"
         >
           <StickyNote size={12} /> Note
@@ -621,7 +621,7 @@ function WorkspaceInner({ workspaceId }: Props) {
             className={`text-[10px] font-bold px-2 py-1 rounded-full transition-colors ${
               relationFilter === filter
                 ? 'bg-accent text-white'
-                : 'text-gray-500 hover:bg-gray-100 hover:text-ink'
+                : 'zk-subtle-button border'
             }`}
             title={`Show ${filter} relations`}
           >
@@ -642,14 +642,14 @@ function WorkspaceInner({ workspaceId }: Props) {
             }
           }}
           placeholder="vault card id"
-          className="w-24 text-[11px] font-mono px-2 py-0.5 border border-gray-200 rounded focus:border-accent outline-none"
+          className="w-24 text-[11px] font-mono px-2 py-0.5 border border-paperEdge rounded bg-paper/80 focus:border-accent outline-none"
         />
         <button
           onClick={() => {
             addCardRef(addCardInput);
             setAddCardInput('');
           }}
-          className="flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 px-2 py-1 rounded hover:bg-emerald-50"
+          className="flex items-center gap-1 text-[11px] font-bold text-accent hover:text-ink px-2 py-1 rounded hover:bg-accentSoft"
           title="Add a vault card by luhmannId (e.g. 1a2)"
         >
           <Layers size={12} /> Add card
@@ -690,7 +690,7 @@ function WorkspaceInner({ workspaceId }: Props) {
         maxZoom={2}
         proOptions={{ hideAttribution: true }}
       >
-        <Background id={`ws-bg-${workspaceId}`} gap={24} size={1.5} color="#e5e7eb" />
+        <Background id={`ws-bg-${workspaceId}`} gap={24} size={1.2} color="#d8d3ca" />
         <Controls position="bottom-right" showInteractive={false}>
           <ZoomIn size={12} />
         </Controls>

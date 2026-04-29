@@ -8,6 +8,17 @@ html, body, #root { height: 100%; }
   --font-body: 'Inter';
   --font-display: 'Newsreader';
   --font-mono: 'JetBrains Mono';
+  --zk-bg: #f8f6f1;
+  --zk-paper: #fffdf8;
+  --zk-paper-warm: #fbf8f0;
+  --zk-paper-edge: #d8d3ca;
+  --zk-ink: #1c1b1b;
+  --zk-muted: #747878;
+  --zk-accent: #536253;
+  --zk-link: #385f73;
+  --zk-rust: #ba635c;
+  --zk-shadow-paper: 0 1px 2px rgba(45, 45, 45, 0.04), 0 14px 36px rgba(45, 45, 45, 0.10);
+  --zk-shadow-paper-hover: 0 2px 4px rgba(45, 45, 45, 0.06), 0 18px 46px rgba(45, 45, 45, 0.13);
 }
 body {
   font-family: var(--font-ui), 'Inter', system-ui, sans-serif;
@@ -24,6 +35,66 @@ body {
 html.dark body {
   background: #24273a; /* base */
   color: #cad3f5;      /* text */
+  --zk-bg: #24273a;
+  --zk-paper: #1e2030;
+  --zk-paper-warm: #24273a;
+  --zk-paper-edge: #494d64;
+  --zk-ink: #cad3f5;
+  --zk-muted: #a5adcb;
+  --zk-accent: #a7c7a1;
+  --zk-link: #9bc2cf;
+  --zk-rust: #ee99a0;
+  --zk-shadow-paper: 0 1px 2px rgba(0, 0, 0, 0.18), 0 14px 38px rgba(0, 0, 0, 0.28);
+  --zk-shadow-paper-hover: 0 2px 4px rgba(0, 0, 0, 0.24), 0 18px 48px rgba(0, 0, 0, 0.34);
+}
+
+.zk-canvas-bg {
+  background:
+    radial-gradient(circle at 20% 0%, rgba(211, 228, 209, 0.22), transparent 32%),
+    linear-gradient(135deg, #fffdf8 0%, #f8f6f1 58%, #efebe4 100%);
+}
+html.dark .zk-canvas-bg {
+  background:
+    radial-gradient(circle at 20% 0%, rgba(167, 199, 161, 0.10), transparent 32%),
+    linear-gradient(135deg, #24273a 0%, #1e2030 62%, #181926 100%);
+}
+
+.zk-paper-surface {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255,255,255,0) 44%),
+    linear-gradient(135deg, var(--zk-paper) 0%, var(--zk-paper-warm) 100%);
+  border-color: color-mix(in srgb, var(--zk-paper-edge) 88%, var(--zk-ink) 12%);
+  box-shadow: var(--zk-shadow-paper);
+}
+html.dark .zk-paper-surface {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0) 46%),
+    linear-gradient(135deg, var(--zk-paper) 0%, var(--zk-paper-warm) 100%);
+}
+
+.zk-paper-surface:hover {
+  box-shadow: var(--zk-shadow-paper-hover);
+}
+
+.zk-toolbar-surface {
+  background: color-mix(in srgb, var(--zk-paper) 88%, transparent);
+  border-color: var(--zk-paper-edge);
+  box-shadow: 0 10px 28px rgba(45, 45, 45, 0.08);
+  backdrop-filter: blur(12px);
+}
+html.dark .zk-toolbar-surface {
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.26);
+}
+
+.zk-subtle-button {
+  color: var(--zk-muted);
+  border-color: color-mix(in srgb, var(--zk-paper-edge) 85%, transparent);
+  background: color-mix(in srgb, var(--zk-paper) 72%, transparent);
+}
+.zk-subtle-button:hover {
+  color: var(--zk-ink);
+  border-color: color-mix(in srgb, var(--zk-accent) 45%, var(--zk-paper-edge));
+  background: color-mix(in srgb, var(--zk-accent) 12%, var(--zk-paper));
 }
 
 /* 全局覆盖常用的 Tailwind gray 工具类。组件没显式写 dark: 也能看 */

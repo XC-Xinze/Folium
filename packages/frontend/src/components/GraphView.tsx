@@ -481,7 +481,7 @@ function GraphInner() {
 
   return (
     <div className="w-full h-full flex flex-col bg-surface dark:bg-[#181926]">
-      <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-paper/85 dark:bg-[#1e2030] border-b border-paperEdge dark:border-[#363a4f] overflow-x-auto backdrop-blur">
+      <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 zk-toolbar-surface border-b overflow-x-auto">
         <EdgeToggle color="#475569" label="Hierarchy" active={toggles.hierarchy} onClick={() => flip('hierarchy')} />
         <EdgeToggle color={GRAPH_BLUE} label="Link" active={toggles.link} onClick={() => flip('link')} />
         <EdgeToggle color={GRAPH_MOSS} label="Tag" active={toggles.tag} onClick={() => flip('tag')} />
@@ -491,7 +491,7 @@ function GraphInner() {
           {cardsQ.data.cards.length} cards · zoom {zoom.toFixed(2)}x · click select · dbl open · drag move
         </span>
       </div>
-      <div className="flex-1 relative overflow-hidden bg-[radial-gradient(circle_at_20%_0%,rgba(211,228,209,0.28),transparent_32%),linear-gradient(135deg,#fffdf8_0%,#f8f6f1_58%,#efebe4_100%)] dark:bg-none">
+      <div className="flex-1 relative overflow-hidden zk-canvas-bg">
         <svg ref={svgRef} className="w-full h-full" />
         {selectedId && overlayPos && selectedCardQ.data && (
           <SelectedCardOverlay
@@ -527,10 +527,10 @@ function SelectedCardOverlay({
   const H = 240;
   return (
     <div
-      className={`absolute pointer-events-auto rounded-xl flex flex-col overflow-hidden border backdrop-blur ${
+      className={`absolute pointer-events-auto rounded-lg zk-paper-surface flex flex-col overflow-hidden border backdrop-blur ${
         isIndex
-          ? 'bg-[#fffdf8]/95 text-ink border-accent shadow-[0_14px_42px_rgba(83,98,83,0.18)]'
-          : 'bg-[#fffdf8]/95 border-paperEdge text-ink shadow-[0_14px_42px_rgba(45,45,45,0.10)]'
+          ? 'text-ink border-accent'
+          : 'border-paperEdge text-ink'
       }`}
       style={{
         left: x - W / 2,
@@ -541,7 +541,7 @@ function SelectedCardOverlay({
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <header className="flex items-center gap-2 px-4 py-3 border-b border-paperEdge/70 shrink-0">
+      <header className="flex items-center gap-2 px-4 py-3 border-b border-paperEdge/70 bg-gradient-to-b from-white/55 to-transparent dark:from-white/5 shrink-0">
         <span className={`font-mono font-bold text-[11px] ${isIndex ? 'text-accent' : 'text-link'}`}>
           {card.luhmannId}
         </span>
@@ -568,7 +568,7 @@ function SelectedCardOverlay({
         dangerouslySetInnerHTML={{ __html: html }}
       />
       {card.tags.length > 0 && (
-        <div className="px-4 py-2 border-t border-paperEdge/70 flex flex-wrap gap-1.5 shrink-0">
+        <div className="px-4 py-2 border-t border-paperEdge/70 bg-[#fffdf8]/45 dark:bg-white/5 flex flex-wrap gap-1.5 shrink-0">
           {card.tags.slice(0, 8).map((t) => (
             <span key={t} className="text-[9px] font-bold text-accent">
               #{t}
@@ -622,8 +622,8 @@ function EdgeToggle({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${
-        active ? 'text-gray-700 dark:text-[#cad3f5]' : 'text-gray-300 dark:text-gray-600'
+      className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-widest transition-all ${
+        active ? 'text-gray-700 dark:text-[#cad3f5] border-paperEdge bg-paper/70' : 'text-gray-300 dark:text-gray-600 border-transparent'
       }`}
     >
       <span

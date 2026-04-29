@@ -463,7 +463,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
           dialog.alert((err as Error).message, { title: 'Link failed' });
         }
       }}
-      className={`nowheel group relative rounded-lg ${styles.border} ${styles.bg} ${styles.shadow} ${styles.opacity} cursor-default flex flex-col transition-shadow duration-150 hover:shadow-[0_2px_4px_rgba(45,45,45,0.06),0_18px_46px_rgba(45,45,45,0.13)] ${
+      className={`nowheel group relative rounded-lg zk-paper-surface ${styles.border} ${styles.opacity} cursor-default flex flex-col transition-shadow duration-150 ${
         linkDropOver ? 'ring-2 ring-accent ring-offset-2' : ''
       } ${
         superlinkSelection?.active
@@ -526,7 +526,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
           }}
           onMouseDown={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          className="nodrag nopan absolute bottom-2 right-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white dark:bg-[#363a4f] hover:bg-accent hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 dark:border-[#494d64] hover:border-accent shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
+          className="nodrag nopan zk-subtle-button absolute bottom-2 right-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 cursor-grab active:cursor-grabbing border shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
           title="Link/reparent handle: drop on another card to link, on sidebar tree to reparent, on workspace to add"
         >
           <GripVertical size={10} />
@@ -542,7 +542,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
           }}
           onMouseDown={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          className="nodrag nopan absolute bottom-2 left-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 bg-white dark:bg-[#363a4f] hover:bg-accent hover:text-white text-gray-400 cursor-grab active:cursor-grabbing border border-gray-200 dark:border-[#494d64] hover:border-accent shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
+          className="nodrag nopan zk-subtle-button absolute bottom-2 left-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 cursor-grab active:cursor-grabbing border shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
           title="Drag onto another workspace card to connect them"
         >
           <Link2 size={10} />
@@ -565,7 +565,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
         <button
           onClick={startEdit}
           disabled={promoting || editing || !full}
-          className="absolute -top-2 right-6 z-10 w-6 h-6 rounded-full bg-gray-700 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-ink transition-all disabled:opacity-30"
+          className="absolute -top-2 right-6 z-10 w-6 h-6 rounded-full bg-ink text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-accent transition-all disabled:opacity-30"
           title={`Edit ${cardLuhmannId}`}
         >
           <Pencil size={11} />
@@ -579,7 +579,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
           className={`absolute -top-2 right-14 z-10 w-6 h-6 rounded-full shadow-md flex items-center justify-center transition-all ${
             isStarred
               ? 'bg-amber-400 text-white opacity-100'
-              : 'bg-gray-200 text-gray-500 opacity-0 group-hover:opacity-100 hover:bg-amber-400 hover:text-white'
+              : 'zk-subtle-button border text-gray-500 opacity-0 group-hover:opacity-100 hover:bg-amber-400 hover:text-white'
           }`}
           title={isStarred ? `Unstar ${cardLuhmannId}` : `Star ${cardLuhmannId}`}
         >
@@ -750,7 +750,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
       ) : (
         <>
           <header
-            className="px-5 pt-4 pb-3 flex items-start justify-between gap-3 cursor-grab active:cursor-grabbing border-b border-paperEdge/70 bg-gradient-to-b from-white/60 to-transparent dark:border-[#494d64] dark:from-white/5"
+            className="px-5 pt-4 pb-3 flex items-start justify-between gap-3 cursor-grab active:cursor-grabbing border-b border-paperEdge/70 bg-gradient-to-b from-white/55 to-transparent dark:border-[#494d64] dark:from-white/5"
             title="Drag this header to move the card"
           >
             <div className="flex items-baseline gap-2 min-w-0">
@@ -874,7 +874,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
           )}
 
           {(tags.length > 0 || full) && !isGhost && (
-            <footer className="px-5 pb-3 pt-2 border-t border-paperEdge/70 bg-white/30 dark:bg-white/5 dark:border-[#494d64] space-y-1">
+            <footer className="px-5 pb-3 pt-2 border-t border-paperEdge/70 bg-[#fffdf8]/45 dark:bg-white/5 dark:border-[#494d64] space-y-1">
               {tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {tags.slice(0, 6).map((t) => (
@@ -920,7 +920,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
             openGhostWorkspace();
           }}
           onMouseDown={(e) => e.stopPropagation()}
-          className="nodrag nopan absolute -bottom-2.5 left-3 px-1.5 py-0.5 rounded text-[9px] font-bold bg-white border border-accent/30 text-accent shadow-sm flex items-center gap-1 hover:bg-accentSoft hover:border-accent/50"
+          className="nodrag nopan absolute -bottom-2.5 left-3 px-1.5 py-0.5 rounded text-[9px] font-bold bg-paper border border-accent/30 text-accent shadow-sm flex items-center gap-1 hover:bg-accentSoft hover:border-accent/50"
           title={`Open workspace: ${nodeData.ghostFromWorkspace.workspaceName}`}
         >
           <span className="text-[8px]">⌘</span>
@@ -931,7 +931,7 @@ export function CardNode({ data, id, selected }: NodeProps) {
 
       {/* Source-box label: this card is borrowed from another box */}
       {!isGhost && showSourceLabel && (
-        <div className="absolute -bottom-2.5 left-3 px-1.5 py-0.5 rounded text-[9px] font-bold bg-white border border-gray-300 text-gray-600 shadow-sm flex items-center gap-1">
+        <div className="absolute -bottom-2.5 left-3 px-1.5 py-0.5 rounded text-[9px] font-bold bg-paper border border-gray-300 text-gray-600 shadow-sm flex items-center gap-1">
           <span className="text-[8px]">↗</span>
           <span>from</span>
           {otherBoxLabels.slice(0, 2).map((b, i) => (

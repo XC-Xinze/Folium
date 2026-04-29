@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronDown, ChevronRight, GripVertical, Image, Layers, Link2, Pencil, Star, Trash2, X } from 'lucide-react';
 import { isCardDrag, readCardDragData, setCardDragData } from '../lib/dragCard';
 import { dialog } from '../lib/dialog';
-import { api, type Card } from '../lib/api';
+import { api, type Card, type PositionMap } from '../lib/api';
 import { countWords, relativeTime } from '../lib/cardStats';
 import { attachAttachmentClickHandler, attachTransclusion, attachWikilinkHandler, renderMarkdown } from '../lib/markdown';
 import type { CardNodeData } from '../lib/cardGraph';
@@ -17,7 +17,7 @@ import { pushUndo } from '../lib/undoStack';
 import { fuzzyScore } from '../lib/fuzzy';
 import { EditorAutocomplete, type AutocompleteItem } from './EditorAutocomplete';
 
-export function CardNode({ data, id, selected }: NodeProps) {
+export function CardNode({ data, id, selected, positionAbsoluteX, positionAbsoluteY }: NodeProps) {
   const nodeData = data as unknown as CardNodeData;
   const { card, variant } = nodeData;
   const savedW = nodeData.savedW;
@@ -599,9 +599,24 @@ export function CardNode({ data, id, selected }: NodeProps) {
             setH(params.height);
           }}
           onResizeEnd={(_e, params) => {
-            api.setSize(scope, cardLuhmannId, params.width, params.height).catch((err) => {
-              console.error('save size failed', err);
-            });
+            if (nodeData.onResizeOverride) {
+              nodeData.onResizeOverride(params.width, params.height);
+              return;
+            }
+            qc.setQueryData<PositionMap>(['positions', scope], (old = {}) => ({
+              ...old,
+              [cardLuhmannId]: {
+                x: old[cardLuhmannId]?.x ?? positionAbsoluteX,
+                y: old[cardLuhmannId]?.y ?? positionAbsoluteY,
+                w: params.width,
+                h: params.height,
+              },
+            }));
+            api
+              .setPosition(scope, cardLuhmannId, positionAbsoluteX, positionAbsoluteY, params.width, params.height)
+              .catch((err) => {
+                console.error('save size failed', err);
+              });
           }}
         />
       )}

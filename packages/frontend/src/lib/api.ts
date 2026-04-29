@@ -63,6 +63,8 @@ export interface CardRefNode {
   cardId: string;
   x: number;
   y: number;
+  w?: number;
+  h?: number;
 }
 export interface TempCardNode {
   kind: 'temp';
@@ -71,6 +73,8 @@ export interface TempCardNode {
   content: string;
   x: number;
   y: number;
+  w?: number;
+  h?: number;
 }
 export interface NoteNode {
   kind: 'note';
@@ -78,6 +82,8 @@ export interface NoteNode {
   content: string;
   x: number;
   y: number;
+  w?: number;
+  h?: number;
 }
 export type WorkspaceNode = CardRefNode | TempCardNode | NoteNode;
 

@@ -196,11 +196,16 @@ function WorkspaceInner({ workspaceId }: Props) {
             id: n.id,
             type: 'card',
             position: { x: n.x, y: n.y },
+            width: n.w,
+            height: n.h,
             data: {
               card: { luhmannId: n.cardId, title: '', status: 'ATOMIC', tags: [], crossLinks: [], depth: 0, sortKey: '' },
               variant: 'tree',
               isInWorkspace: true,
+              savedW: n.w,
+              savedH: n.h,
               onDeleteOverride: () => handlers.deleteNode(n.id),
+              onResizeOverride: (w: number, h: number) => handlers.updateNode(n.id, { w, h } as Partial<WorkspaceNode>),
               // 拖卡到本卡 → 创建 workspace edge（不写 vault）
               // dragged 是 luhmann id，需要查找 ws 里对应的 node id
               onCardLinkDrop: (sourceLuhmannId: string) => {

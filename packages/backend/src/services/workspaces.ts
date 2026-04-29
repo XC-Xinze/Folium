@@ -22,6 +22,8 @@ export interface CardRefNode {
   cardId: string; // vault 中的 luhmannId
   x: number;
   y: number;
+  w?: number;
+  h?: number;
 }
 
 export interface TempCardNode {
@@ -31,6 +33,8 @@ export interface TempCardNode {
   content: string; // markdown
   x: number;
   y: number;
+  w?: number;
+  h?: number;
 }
 
 export interface NoteNode {
@@ -39,6 +43,8 @@ export interface NoteNode {
   content: string; // markdown
   x: number;
   y: number;
+  w?: number;
+  h?: number;
 }
 
 export type WorkspaceNode = CardRefNode | TempCardNode | NoteNode;

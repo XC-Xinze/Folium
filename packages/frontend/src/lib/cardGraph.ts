@@ -34,6 +34,8 @@ export type CardNodeData = {
   isInWorkspace?: boolean;
   /** Workspace 上下文专用：拖一张卡 drop 到本卡 → 创建 workspace edge（不动 vault） */
   onCardLinkDrop?: (sourceLuhmannId: string) => void;
+  /** Workspace 上下文专用：尺寸保存在 workspace node 本身，而不是全局 positions scope。 */
+  onResizeOverride?: (width: number, height: number) => void;
   /** 来自工作区的"幽灵 temp 节点"——只读、不发请求、只显示标题/正文 */
   ghostFromWorkspace?: { workspaceId: string; workspaceName: string };
   /** 位置存储 scope（box:xxx 或 tag:xxx）—— 由父视图（Canvas/TagView/WorkspaceView）注入，

@@ -96,10 +96,6 @@ function edgeMatchesRelationFilter(edge: Edge, filter: RelationFilter): boolean 
   return !isVault && !hasTemp && !data.bothCards;
 }
 
-function clamp(n: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, n));
-}
-
 export function WorkspaceView(props: Props) {
   return (
     <ReactFlowProvider>
@@ -774,9 +770,8 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
   const edgeDx = targetX - sourceX;
   const edgeDy = targetY - sourceY;
   const edgeLength = Math.max(1, Math.hypot(edgeDx, edgeDy));
-  const shortEdge = edgeLength < 280;
-  const labelT = shortEdge ? (sourceX <= targetX ? 0.42 : 0.58) : 0.5;
-  const labelOffset = shortEdge ? clamp(40 + (280 - edgeLength) * 0.22, 40, 92) : 0;
+  const shortEdgeSlide = Math.max(0, Math.min(0.18, ((280 - edgeLength) / 280) * 0.18));
+  const labelT = sourceX <= targetX ? 0.5 - shortEdgeSlide : 0.5 + shortEdgeSlide;
   const relationKind = d?.vaultLink
     ? 'vault'
     : d?.vaultStructure
@@ -888,8 +883,8 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
     if (!ok) return;
     deleteMut.mutate();
   };
-  const labelX = sourceX + edgeDx * labelT + (-edgeDy / edgeLength) * labelOffset;
-  const labelY = sourceY + edgeDy * labelT + (edgeDx / edgeLength) * labelOffset;
+  const labelX = sourceX + edgeDx * labelT;
+  const labelY = sourceY + edgeDy * labelT;
   return (
     <>
       <BaseEdge id={id} path={edgePath} style={style} />

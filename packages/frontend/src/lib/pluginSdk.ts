@@ -46,6 +46,7 @@ export interface PluginSdk {
   };
   ui: {
     openCard(id: string, opts?: { newTab?: boolean }): void;
+    openWorkspace(id: string, opts?: { newTab?: boolean }): Promise<void>;
     openGraph(opts?: { newTab?: boolean }): void;
     openSettings(opts?: { newTab?: boolean }): void;
     alert(message: string, opts?: { title?: string }): Promise<void>;
@@ -152,7 +153,11 @@ export function createPluginSdk(pluginName: string, disposables: Array<() => voi
         const source = findNode(sourceCardId);
         const target = findNode(targetCardId);
         if (!source || !target) throw new Error('Unable to resolve workspace card nodes');
-        const duplicate = next.edges.some((edge) => edge.source === source.id && edge.target === target.id);
+        const duplicate = next.edges.some(
+          (edge) =>
+            (edge.source === source.id && edge.target === target.id) ||
+            (edge.source === target.id && edge.target === source.id),
+        );
         if (duplicate) return next;
         return api.updateWorkspace(workspaceId, {
           edges: [
@@ -184,6 +189,13 @@ export function createPluginSdk(pluginName: string, disposables: Array<() => voi
       openCard(id, opts) {
         usePaneStore.getState().openTab(
           { kind: 'card', title: id, cardBoxId: id, cardFocusId: id },
+          { newTab: opts?.newTab },
+        );
+      },
+      async openWorkspace(id, opts) {
+        const workspace = await api.getWorkspace(id);
+        usePaneStore.getState().openTab(
+          { kind: 'workspace', title: workspace.name, workspaceId: id },
           { newTab: opts?.newTab },
         );
       },

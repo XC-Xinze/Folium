@@ -52,7 +52,7 @@ export function PotentialEdge(props: EdgeProps) {
                 promoteMut.mutate();
               }}
               disabled={promoteMut.isPending}
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white border border-accent/30 text-accent text-[9px] font-bold shadow-sm hover:bg-accent hover:text-white hover:border-accent transition-colors opacity-60 hover:opacity-100"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded-full border zk-subtle-button text-[9px] font-bold shadow-sm hover:text-accent transition-colors opacity-60 hover:opacity-100"
               title={`Promote potential to real [[link]]: write [[${target}]] into ${source}`}
             >
               <Link2 size={9} />
@@ -102,7 +102,7 @@ export function CrossEdge(props: EdgeProps) {
           <button
             onClick={onUnlink}
             disabled={removeMut.isPending}
-            className="w-4 h-4 rounded-full bg-white border border-link/30 text-link hover:bg-red-500 hover:text-white hover:border-red-500 shadow-sm flex items-center justify-center transition-colors opacity-50 hover:opacity-100"
+            className="w-4 h-4 rounded-full border zk-subtle-button hover:text-[#ba635c] hover:border-[#ba635c]/45 shadow-sm flex items-center justify-center transition-colors opacity-50 hover:opacity-100"
             title={`Unlink: remove [[${target}]] from ${source}`}
           >
             <X size={9} />

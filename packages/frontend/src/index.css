@@ -97,6 +97,43 @@ html.dark .zk-toolbar-surface {
   background: color-mix(in srgb, var(--zk-accent) 12%, var(--zk-paper));
 }
 
+.react-flow__renderer {
+  background: transparent;
+}
+
+.react-flow__controls {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--zk-paper-edge) 82%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--zk-paper) 84%, transparent);
+  box-shadow: 0 8px 26px rgba(45, 45, 45, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+.react-flow__controls-button {
+  width: 30px;
+  height: 30px;
+  border-bottom: 0 !important;
+  background: transparent;
+  color: var(--zk-muted);
+  fill: var(--zk-muted);
+}
+
+.react-flow__controls-button:hover {
+  background: color-mix(in srgb, var(--zk-accent) 12%, var(--zk-paper));
+  color: var(--zk-ink);
+  fill: var(--zk-ink);
+}
+
+.react-flow__minimap {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--zk-paper-edge) 76%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--zk-paper) 78%, transparent);
+  box-shadow: 0 8px 26px rgba(45, 45, 45, 0.06);
+  backdrop-filter: blur(10px);
+}
+
 /* 全局覆盖常用的 Tailwind gray 工具类。组件没显式写 dark: 也能看 */
 html.dark .bg-white { background-color: #363a4f !important; }       /* surface0 */
 html.dark .bg-gray-50 { background-color: #363a4f !important; }
@@ -210,11 +247,17 @@ html.dark ::-webkit-scrollbar-thumb { background: #494d64; }
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* React Flow 在 dark 下的画布样式 */
-html.dark .react-flow__background { background-color: #24273a !important; }
-html.dark .react-flow__minimap { background-color: #1e2030 !important; }
-html.dark .react-flow__controls { background-color: #1e2030 !important; }
+html.dark .react-flow__background { background-color: transparent !important; }
+html.dark .react-flow__minimap {
+  background-color: rgba(30, 32, 48, 0.82) !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.26);
+}
+html.dark .react-flow__controls {
+  background-color: rgba(30, 32, 48, 0.82) !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.26);
+}
 html.dark .react-flow__controls-button {
-  background-color: #363a4f !important;
+  background-color: transparent !important;
   border-bottom-color: #494d64 !important;
   fill: #cad3f5 !important;
 }

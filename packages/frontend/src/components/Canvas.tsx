@@ -512,18 +512,18 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
 
   return (
     <div className="w-full h-full flex flex-col">
-      {/* Canvas 顶部工具栏 —— 实色 inline，不再浮动避免分屏时跟其他东西重叠 */}
-      <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-[#1e2030] border-b border-gray-200 dark:border-[#363a4f] overflow-x-auto">
+      {/* Canvas 顶部工具栏 —— inline，但使用和 Graph/Workspace 一致的纸感表面。 */}
+      <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 zk-toolbar-surface border-b overflow-x-auto">
         <HistoryButtons />
-        <span className="w-px h-4 bg-gray-200 dark:bg-[#494d64]" />
+        <span className="w-px h-4 bg-paperEdge/80 dark:bg-[#494d64]" />
         <div className="flex items-center gap-1.5">
           <EdgeToggle color="#385f73" label="Link" active={showCrossLinks} onClick={() => setShowCrossLinks(!showCrossLinks)} title="Manual [[link]] edges" />
-          <EdgeToggle color="#10b981" label="Tag" active={showTagRelated} onClick={() => setShowTagRelated(!showTagRelated)} title="Tag co-occurrence edges (green)" />
+          <EdgeToggle color="#536253" label="Tag" active={showTagRelated} onClick={() => setShowTagRelated(!showTagRelated)} title="Tag co-occurrence edges" />
           <EdgeToggle color="#ba635c" label="Box" active={showBoxCards} onClick={() => setShowBoxCards(!showBoxCards)} title="Cards inside the current index / box" />
           <EdgeToggle color="#cbd5e1" label="Potential" active={showPotential} onClick={() => setShowPotential(!showPotential)} title="Text-similarity potential edges (gray dashed)" />
           <EdgeToggle color="#536253" label="Temp" active={showWorkspaceLinks} onClick={() => setShowWorkspaceLinks(!showWorkspaceLinks)} title="Workspace temp ghost cards & their links" />
         </div>
-        <span className="w-px h-4 bg-gray-200 dark:bg-[#494d64]" />
+        <span className="w-px h-4 bg-paperEdge/80 dark:bg-[#494d64]" />
         <FocusDepthBadge depth={focusDepth} max={MAX_FOCUS_DEPTH} />
         <div className="flex-1" />
         {superlinkMode ? (
@@ -533,7 +533,7 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
             </span>
             <button
               onClick={createSuperlinkWorkspace}
-              className="text-[10px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full bg-accent text-white hover:bg-accent/90 transition-colors"
+              className="text-[10px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full bg-accent text-white hover:bg-accent/90 transition-colors shadow-sm"
               title="Create a workspace from picked cards"
             >
               <Send size={12} strokeWidth={2.4} />
@@ -541,14 +541,14 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
             </button>
             <button
               onClick={() => setSuperlinkWorkspacePickerOpen(true)}
-              className="text-[10px] font-bold px-2.5 py-1 rounded-full border border-accent/40 text-accent hover:bg-accentSoft transition-colors"
+              className="text-[10px] font-bold px-2.5 py-1 rounded-full border zk-subtle-button hover:bg-accentSoft transition-colors"
               title="Add picked cards to an existing workspace"
             >
               Add to Workspace
             </button>
             <button
               onClick={cancelSuperlinkMode}
-              className="text-[10px] font-bold px-2.5 py-1 rounded-full border border-gray-200 dark:border-[#494d64] text-gray-500 hover:bg-gray-100 dark:hover:bg-[#363a4f] transition-colors"
+              className="text-[10px] font-bold px-2.5 py-1 rounded-full border zk-subtle-button transition-colors"
               title="Exit pick mode"
             >
               Cancel
@@ -557,7 +557,7 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
         ) : (
           <button
             onClick={startSuperlinkMode}
-            className="shrink-0 text-[10px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-[#494d64] text-gray-600 dark:text-[#cad3f5] hover:bg-gray-100 dark:hover:bg-[#363a4f] transition-colors"
+            className="shrink-0 text-[10px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full border zk-subtle-button transition-colors"
             title="Pick cards on the canvas and copy them into a new workspace"
           >
             <Send size={12} strokeWidth={2.4} />
@@ -567,7 +567,7 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
         <AddFocusedToWorkspace focusedCardId={focusedCardId} />
       </div>
 
-      <div className="flex-1 relative min-h-0">
+      <div className="flex-1 relative min-h-0 zk-canvas-bg">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -582,9 +582,9 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
           maxZoom={2}
           proOptions={{ hideAttribution: true }}
         >
-          <Background id={`vault-bg-${focusedBoxId}`} gap={24} size={1.5} color="#e5e7eb" />
+          <Background id={`vault-bg-${focusedBoxId}`} gap={24} size={1.2} color="rgba(116,120,120,0.20)" />
           <Controls position="bottom-right" showInteractive={false} />
-          <MiniMap pannable zoomable position="top-right" maskColor="rgba(0,0,0,0.05)" />
+          <MiniMap pannable zoomable position="top-right" maskColor="rgba(83,98,83,0.07)" />
         </ReactFlow>
       </div>
       {superlinkWorkspacePickerOpen && (
@@ -677,7 +677,7 @@ function HistoryButtons() {
       <button
         onClick={back}
         disabled={!canBack}
-        className="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-[#494d64] disabled:opacity-25 text-gray-600 dark:text-[#cad3f5]"
+        className="p-0.5 rounded zk-subtle-button disabled:opacity-25 border border-transparent"
         title="Back (⌘[)"
       >
         <ChevronLeftHistory />
@@ -685,7 +685,7 @@ function HistoryButtons() {
       <button
         onClick={forward}
         disabled={!canFwd}
-        className="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-[#494d64] disabled:opacity-25 text-gray-600 dark:text-[#cad3f5]"
+        className="p-0.5 rounded zk-subtle-button disabled:opacity-25 border border-transparent"
         title="Forward (⌘])"
       >
         <ChevronRightHistory />
@@ -792,7 +792,7 @@ function AddFocusedToWorkspace({ focusedCardId }: { focusedCardId: string }) {
           );
         }}
         onClick={() => setOpen((v) => !v)}
-        className="shrink-0 text-[10px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full bg-accentSoft text-accent hover:bg-accent hover:text-white transition-colors cursor-pointer active:cursor-grabbing"
+        className="shrink-0 text-[10px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full border zk-subtle-button hover:text-accent transition-colors cursor-pointer active:cursor-grabbing"
         title="Click to pick a workspace · Drag onto a workspace tab to add"
       >
         + Workspace
@@ -852,14 +852,8 @@ function ChevronRightHistory() {
 
 function FocusDepthBadge({ depth, max }: { depth: number; max: number }) {
   const atMax = depth >= max;
-  // 渐变色：0 灰、1 蓝、2 黄、3 橙
-  const color = depth === 0
-    ? 'text-gray-400'
-    : depth === 1
-      ? 'text-sky-500'
-      : depth === 2
-        ? 'text-amber-500'
-        : 'text-orange-600';
+  const color = depth === 0 ? 'text-gray-400' : atMax ? 'text-[#ba635c]' : 'text-accent';
+  const dotColor = depth === 0 ? 'bg-paperEdge dark:bg-[#494d64]' : atMax ? 'bg-[#ba635c]' : 'bg-accent';
   return (
     <div className="flex items-center gap-1.5">
       <div className="flex items-center gap-0.5">
@@ -867,7 +861,7 @@ function FocusDepthBadge({ depth, max }: { depth: number; max: number }) {
           <span
             key={i}
             className={`block w-1.5 h-1.5 rounded-full ${
-              i < depth ? color.replace('text-', 'bg-') : 'bg-gray-200 dark:bg-[#494d64]'
+              i < depth ? dotColor : 'bg-paperEdge/80 dark:bg-[#494d64]'
             }`}
           />
         ))}
@@ -896,10 +890,10 @@ function EdgeToggle({
     <button
       onClick={onClick}
       title={title}
-      className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${
+      className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-widest transition-all ${
         active
-          ? 'text-gray-700 hover:bg-gray-50'
-          : 'text-gray-300 hover:text-gray-500 hover:bg-gray-50'
+          ? 'text-gray-700 dark:text-[#cad3f5] border-paperEdge bg-paper/70 hover:border-accent/40'
+          : 'text-gray-300 dark:text-gray-600 border-transparent hover:text-gray-500 hover:bg-paper/40'
       }`}
     >
       <span

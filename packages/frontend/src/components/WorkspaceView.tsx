@@ -640,22 +640,22 @@ function WorkspaceInner({ workspaceId }: Props) {
         <span className="text-[10px] text-gray-400">
           {wsQ.data.nodes.length} nodes · {wsQ.data.edges.length} edges
         </span>
-        <div className="border-l border-gray-200 mx-1 h-4" />
+        <div className="border-l border-paperEdge/80 mx-1 h-4" />
         <button
           onClick={() => addNote(200, 200)}
-          className="flex items-center gap-1 text-[11px] font-bold text-[#9a6a2f] hover:text-ink px-2 py-1 rounded hover:bg-[#f3e6c8]"
+          className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded border border-transparent text-[#9a6a2f] hover:text-ink hover:border-[#d6c09b] hover:bg-[#f3e6c8]/70"
           title="Add sticky note"
         >
           <StickyNote size={12} /> Note
         </button>
         <button
           onClick={() => addTempCard(400, 200)}
-          className="flex items-center gap-1 text-[11px] font-bold text-accent hover:text-ink px-2 py-1 rounded hover:bg-accentSoft"
+          className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded border border-transparent text-accent hover:text-ink hover:border-accent/30 hover:bg-accentSoft"
           title="Add temporary card"
         >
           <FilePlus size={12} /> Temp card
         </button>
-        <div className="border-l border-gray-200 mx-1 h-4" />
+        <div className="border-l border-paperEdge/80 mx-1 h-4" />
         <div className="relative">
           <button
             onClick={() => setRelationMenuOpen((open) => !open)}
@@ -692,7 +692,7 @@ function WorkspaceInner({ workspaceId }: Props) {
             </div>
           )}
         </div>
-        <div className="border-l border-gray-200 mx-1 h-4" />
+        <div className="border-l border-paperEdge/80 mx-1 h-4" />
         <input
           value={addCardInput}
           onChange={(e) => setAddCardInput(e.target.value)}
@@ -710,7 +710,7 @@ function WorkspaceInner({ workspaceId }: Props) {
             addCardRef(addCardInput);
             setAddCardInput('');
           }}
-          className="flex items-center gap-1 text-[11px] font-bold text-accent hover:text-ink px-2 py-1 rounded hover:bg-accentSoft"
+          className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded border border-transparent text-accent hover:text-ink hover:border-accent/30 hover:bg-accentSoft"
           title="Add a vault card by luhmannId (e.g. 1a2)"
         >
           <Layers size={12} /> Add card
@@ -751,11 +751,11 @@ function WorkspaceInner({ workspaceId }: Props) {
         maxZoom={2}
         proOptions={{ hideAttribution: true }}
       >
-        <Background id={`ws-bg-${workspaceId}`} gap={24} size={1.2} color="#d8d3ca" />
+        <Background id={`ws-bg-${workspaceId}`} gap={24} size={1.2} color="rgba(116,120,120,0.20)" />
         <Controls position="bottom-right" showInteractive={false}>
           <ZoomIn size={12} />
         </Controls>
-        <MiniMap pannable zoomable position="top-right" maskColor="rgba(0,0,0,0.05)" />
+        <MiniMap pannable zoomable position="top-right" maskColor="rgba(83,98,83,0.07)" />
       </ReactFlow>
     </div>
   );

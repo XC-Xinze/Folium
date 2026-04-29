@@ -20,6 +20,7 @@ import { randomUUID } from '../lib/uuid';
 import { CardNode } from './CardNode';
 import { CrossEdge, PotentialEdge } from './CanvasEdges';
 import { applyAnchorPositions, buildGraph, computeBackbone, MASTER_BOX_ID, resolveCollisions, type CardNodeData } from '../lib/cardGraph';
+import { MAX_EXPLORATION_DEPTH, nextExplorationTrail } from '../lib/explorationTrail';
 import { DEFAULT_CARD_FLAGS, usePaneStore as usePaneStoreImported, type CardDisplayFlags } from '../store/paneStore';
 
 const nodeTypes = { card: CardNode };
@@ -53,19 +54,7 @@ interface Props {
   focusDepth?: number;
 }
 
-const MAX_FOCUS_DEPTH = 3;
-
-function deriveParentId(luhmannId: string): string | null {
-  if (luhmannId.length <= 1) return null;
-  const lastChar = luhmannId.at(-1)!;
-  const isLastDigit = /\d/.test(lastChar);
-  for (let i = luhmannId.length - 2; i >= 0; i--) {
-    const ch = luhmannId[i]!;
-    const isDigit = /\d/.test(ch);
-    if (isDigit !== isLastDigit) return luhmannId.slice(0, i + 1);
-  }
-  return null;
-}
+const MAX_FOCUS_DEPTH = MAX_EXPLORATION_DEPTH;
 
 function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDepth = 0 }: Props) {
   const merged = { ...DEFAULT_CARD_FLAGS, ...(flags ?? {}) };
@@ -119,27 +108,6 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
     return [...bb.ids];
   }, [cardsQ.data, boxQ.data, fullCards, focusedBoxId, isMaster]);
 
-  const cardsAreStructurallyLinked = useCallback(
-    (a: string, b: string) => {
-      if (a === b) return true;
-      const cardA = cardsQ.data?.cards.find((c) => c.luhmannId === a);
-      const cardB = cardsQ.data?.cards.find((c) => c.luhmannId === b);
-      if (!cardA || !cardB) return false;
-      if (deriveParentId(cardA.luhmannId) === b || deriveParentId(cardB.luhmannId) === a) return true;
-      if (cardA.crossLinks.includes(b) || cardB.crossLinks.includes(a)) return true;
-      return false;
-    },
-    [cardsQ.data],
-  );
-  const appendTrail = useCallback(
-    (prev: string[], id: string) => {
-      const withoutCurrent = prev.filter((existing) => existing !== id && existing !== focusedBoxId);
-      const next = id === focusedBoxId ? withoutCurrent : [...withoutCurrent, id];
-      return [focusedBoxId, ...next.slice(-MAX_FOCUS_DEPTH)];
-    },
-    [focusedBoxId],
-  );
-
   // Exploration trail：记录用户连续点过的关系锚点，而不是无限累加所有曾经拉进来的邻居。
   // Box toggle 负责是否铺开当前盒子的结构卡；trail 负责在 link-only/tag-only 探索时保留路径上下文。
   const [tagTrailIds, setTagTrailIds] = useState<string[]>(() => [focusedBoxId]);
@@ -154,21 +122,20 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
     const focusCard = cardsQ.data?.cards.find((c) => c.luhmannId === focusedCardId);
     const prevFocus = prevTrailFocusRef.current;
     prevTrailFocusRef.current = focusedCardId;
-    if (!focusCard) {
-      setTagTrailIds([focusedBoxId]);
-      return;
+    if (!focusCard) setTagTrailIds([focusedBoxId]);
+    else {
+      setTagTrailIds((prev) =>
+        nextExplorationTrail({
+          prevTrail: prev,
+          focusedBoxId,
+          previousFocusId: prevFocus,
+          nextFocusId: focusedCardId,
+          focusDepth,
+          cards: cardsQ.data?.cards ?? [],
+        }),
+      );
     }
-    if (focusDepth === 0) {
-      setTagTrailIds((prev) => {
-        const continuingPath =
-          prev.includes(prevFocus) && cardsAreStructurallyLinked(prevFocus, focusedCardId);
-        if (continuingPath) return appendTrail(prev, focusedCardId);
-        return focusedCardId === focusedBoxId ? [focusedBoxId] : [focusedBoxId, focusedCardId];
-      });
-      return;
-    }
-    setTagTrailIds((prev) => appendTrail(prev, focusedCardId));
-  }, [appendTrail, cardsAreStructurallyLinked, focusedBoxId, focusedCardId, focusDepth, cardsQ.data]);
+  }, [focusedBoxId, focusedCardId, focusDepth, cardsQ.data]);
 
   // 焦点卡若是从外部 tag-related 拉进来的（不在 backbone 里），单独把它加进 relatedBatch
   // 否则它的 tagRelated 拿不到 → buildGraph 退化成"所有 backbone 卡两两连"

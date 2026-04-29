@@ -4,6 +4,7 @@ import type { CardSummary } from './api';
 import {
   NODE_WIDTH,
   applyAnchorPositions,
+  buildGraph,
   computeBackbone,
   resolveCollisions,
 } from './cardGraph';
@@ -49,6 +50,63 @@ describe('computeBackbone', () => {
     expect(bb.ids.has('1a')).toBe(true); // Folgezettel 子
     expect(bb.ids.has('2')).toBe(false); // crossLink 但不是 Folgezettel 子
     expect(bb.ids.has('3')).toBe(false);
+  });
+});
+
+describe('buildGraph exploration anchors', () => {
+  it('keeps link-walk anchors visible when the Box layer is hidden', () => {
+    const cards = [
+      summary('1', { status: 'INDEX', crossLinks: ['4'] }),
+      summary('1a'),
+      summary('1b'),
+      summary('4', { status: 'INDEX' }),
+      summary('4a'),
+    ];
+    const graph = buildGraph({
+      allCards: cards,
+      fullCards: new Map(),
+      focusedBoxId: '1',
+      focusedCardId: '4',
+      tagAnchorIds: ['1', '1a', '4'],
+      relatedBatch: {},
+      showPotential: false,
+      showTagRelated: false,
+      showCrossLinks: true,
+      showBoxCards: false,
+      workspaceLinks: [],
+    });
+
+    expect(graph.nodes.map((n) => n.id).sort()).toEqual(['1', '1a', '4']);
+    expect(graph.nodes.some((n) => n.id === '1b')).toBe(false);
+    expect(graph.nodes.some((n) => n.id === '4a')).toBe(false);
+    expect(graph.edges.some((e) => e.id === 'cross:1->4')).toBe(true);
+  });
+
+  it('does not let hidden Box members drive cross-link expansion', () => {
+    const cards = [
+      summary('1', { status: 'INDEX' }),
+      summary('1a', { crossLinks: ['5'] }),
+      summary('1b', { crossLinks: ['6'] }),
+      summary('5'),
+      summary('6'),
+    ];
+    const graph = buildGraph({
+      allCards: cards,
+      fullCards: new Map(),
+      focusedBoxId: '1',
+      focusedCardId: '1a',
+      tagAnchorIds: ['1', '1a'],
+      relatedBatch: {},
+      showPotential: false,
+      showTagRelated: false,
+      showCrossLinks: true,
+      showBoxCards: false,
+      workspaceLinks: [],
+    });
+
+    expect(graph.nodes.some((n) => n.id === '5')).toBe(true);
+    expect(graph.nodes.some((n) => n.id === '1b')).toBe(false);
+    expect(graph.nodes.some((n) => n.id === '6')).toBe(false);
   });
 });
 

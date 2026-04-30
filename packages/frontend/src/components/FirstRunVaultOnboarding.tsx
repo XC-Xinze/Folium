@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FolderOpen, Plus, Sparkles } from 'lucide-react';
+import { FolderOpen, Plus } from 'lucide-react';
 import { api } from '../lib/api';
 import { isDesktopApp, selectVaultDirectory } from '../lib/desktop';
 import { dialog } from '../lib/dialog';
@@ -18,7 +18,7 @@ export function shouldShowFirstRunVaultOnboarding(input: {
   vaultCount: number;
   dismissed: boolean;
 }): boolean {
-  return input.isDesktop && !input.dismissed && (input.vaultCount === 0 || isBundledExampleVault(input.activePath));
+  return input.isDesktop && (input.vaultCount === 0 || (!input.dismissed && isBundledExampleVault(input.activePath)));
 }
 
 export function FirstRunVaultOnboarding() {
@@ -65,11 +65,6 @@ export function FirstRunVaultOnboarding() {
     await openVaultMut.mutateAsync(path);
   };
 
-  const continueExample = () => {
-    window.localStorage.setItem(DISMISS_KEY, '1');
-    void qc.invalidateQueries({ queryKey: ['vaults'] });
-  };
-
   return (
     <div className="absolute inset-0 z-[2000] bg-surface dark:bg-[#24273a] flex items-center justify-center p-8">
       <div className="max-w-3xl w-full">
@@ -86,7 +81,7 @@ export function FirstRunVaultOnboarding() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <button
             disabled={openVaultMut.isPending}
             onClick={() => void chooseDirectory(true)}
@@ -111,17 +106,6 @@ export function FirstRunVaultOnboarding() {
             </div>
           </button>
 
-          <button
-            disabled={openVaultMut.isPending}
-            onClick={continueExample}
-            className="text-left p-5 rounded-lg border border-paperEdge bg-paper/70 hover:border-accent/40 hover:bg-accentSoft/50 transition-colors disabled:opacity-50"
-          >
-            <Sparkles size={20} className="text-accent mb-4" />
-            <div className="text-sm font-bold text-ink dark:text-[#cad3f5]">Continue example vault</div>
-            <div className="mt-2 text-xs leading-6 text-gray-500 dark:text-[#a5adcb]">
-              Keep the bundled sample vault open for testing and exploration.
-            </div>
-          </button>
         </div>
 
         {active?.path && (

@@ -35,7 +35,7 @@ import { config } from '../config.js';
 export interface VaultRoutesCtx {
   repo: CardRepository;
   /** main() 持有 watcher 的引用槽。switch 会 close 旧的 + 写入新的。 */
-  getWatcher: () => FSWatcher;
+  getWatcher: () => FSWatcher | null;
   setWatcher: (w: FSWatcher) => void;
 }
 
@@ -144,13 +144,13 @@ export async function vaultRoutes(app: FastifyInstance, opts: VaultRoutesCtx) {
 async function performSwitch(
   id: string,
   repo: CardRepository,
-  getWatcher: () => FSWatcher,
+  getWatcher: () => FSWatcher | null,
   setWatcher: (w: FSWatcher) => void,
   app: FastifyInstance,
 ): Promise<{ active: ReturnType<typeof getActiveVault>; cards: number; durationMs: number }> {
   const t0 = Date.now();
   // 1. 停旧 watcher（防止扫描时被 watcher 触发覆盖）
-  await getWatcher().close();
+  await getWatcher()?.close();
   // 2. 清所有 in-memory cache
   resetWorkspacesCache();
   resetPositionsCache();

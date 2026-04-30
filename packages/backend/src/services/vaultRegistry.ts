@@ -8,8 +8,8 @@
  *     "activeVaultId": "v_abc123"
  *   }
  *
- * 启动时若 config 不存在或为空，用当前 VAULT_PATH（env 或默认 example-vault）
- * 自动 seed 一条作为唯一 vault。
+ * 启动时若 config 不存在或为空，开发模式会用 example-vault seed；
+ * 打包版不 seed example，让用户先选择自己的 vault。
  */
 import { mkdir, readFile, writeFile, stat } from 'node:fs/promises';
 import { dirname, basename, resolve, join } from 'node:path';
@@ -28,7 +28,11 @@ interface RegistryFile {
   activeVaultId: string | null;
 }
 
-const CONFIG_PATH = join(homedir(), '.zettelkasten', 'config.json');
+const CONFIG_PATH = process.env.FOLIUM_CONFIG_DIR
+  ? join(resolve(process.env.FOLIUM_CONFIG_DIR.replace(/^~/, homedir())), 'config.json')
+  : join(homedir(), '.folium', 'config.json');
+const LEGACY_CONFIG_PATH = join(homedir(), '.zettelkasten', 'config.json');
+const disableExampleVault = process.env.FOLIUM_DISABLE_EXAMPLE_VAULT === '1';
 
 let cache: RegistryFile | null = null;
 
@@ -51,7 +55,17 @@ async function loadFromDisk(): Promise<RegistryFile> {
     if (!parsed.vaults || !Array.isArray(parsed.vaults)) return emptyRegistry();
     return parsed;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return emptyRegistry();
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      try {
+        const raw = await readFile(LEGACY_CONFIG_PATH, 'utf8');
+        const parsed = JSON.parse(raw) as RegistryFile;
+        if (!parsed.vaults || !Array.isArray(parsed.vaults)) return emptyRegistry();
+        return parsed;
+      } catch (legacyErr) {
+        if ((legacyErr as NodeJS.ErrnoException).code === 'ENOENT') return emptyRegistry();
+        throw legacyErr;
+      }
+    }
     throw err;
   }
 }
@@ -67,10 +81,22 @@ async function saveToDisk(reg: RegistryFile): Promise<void> {
  */
 export async function initVaultRegistry(): Promise<void> {
   const reg = await loadFromDisk();
+  if (disableExampleVault) {
+    const before = reg.vaults.length;
+    reg.vaults = reg.vaults.filter((v) => !/(?:^|[/\\])example-vault[/\\]?$/.test(v.path));
+    if (before !== reg.vaults.length && !reg.vaults.find((v) => v.id === reg.activeVaultId)) {
+      reg.activeVaultId = reg.vaults[0]?.id ?? null;
+    }
+  }
 
   // seed: 没有任何 vault → 把当前 active path 注册成第一个
   if (reg.vaults.length === 0) {
     const path = getActiveVaultPath();
+    if (!path) {
+      reg.activeVaultId = null;
+      cache = reg;
+      return;
+    }
     const id = newId();
     reg.vaults.push({ id, path, name: basename(path) || 'Vault' });
     reg.activeVaultId = id;

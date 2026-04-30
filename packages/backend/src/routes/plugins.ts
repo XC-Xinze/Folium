@@ -11,10 +11,14 @@ const PLUGINS_DIR_REL = '.zettel/plugins';
  * 不是真隔离——和 Obsidian 一个套路。
  */
 export const pluginRoutes: FastifyPluginAsync = async (app) => {
-  const dir = join(config.vaultPath, PLUGINS_DIR_REL);
-  await mkdir(dir, { recursive: true });
-
   app.get('/plugins', async () => {
+    let dir: string;
+    try {
+      dir = join(config.vaultPath, PLUGINS_DIR_REL);
+    } catch {
+      return { plugins: [] };
+    }
+    await mkdir(dir, { recursive: true });
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
     const plugins: { name: string; size: number; mtime: number }[] = [];
     for (const e of entries) {
@@ -34,6 +38,12 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
     // 防路径穿越：只允许文件名（不含 / .. 等）
     if (!/^[\w.-]+\.js$/.test(name)) {
       return reply.code(400).send({ error: 'bad_name' });
+    }
+    let dir: string;
+    try {
+      dir = join(config.vaultPath, PLUGINS_DIR_REL);
+    } catch {
+      return reply.code(404).send({ error: 'no_active_vault' });
     }
     const full = join(dir, name);
     try {

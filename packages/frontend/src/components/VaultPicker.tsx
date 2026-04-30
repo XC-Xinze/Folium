@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronUp, FolderOpen, Plus, X } from 'lucide-react';
 import { api, type VaultEntry } from '../lib/api';
 import { dialog } from '../lib/dialog';
+import { isDesktopApp, selectVaultDirectory } from '../lib/desktop';
 import { usePaneStore } from '../store/paneStore';
 
 export function VaultPicker() {
@@ -57,14 +58,17 @@ export function VaultPicker() {
   const vaults = vaultsQ.data?.vaults ?? [];
 
   const handleAddVault = async () => {
-    const path = await dialog.prompt(
-      'Vault path（绝对路径或 ~/...，目录必须存在）',
-      {
-        title: 'Open another vault',
-        defaultValue: '',
-        confirmLabel: 'Open',
-      },
-    );
+    const path = isDesktopApp()
+      ? await selectVaultDirectory({
+          title: 'Open another vault folder',
+          buttonLabel: 'Open Vault',
+          createDirectory: true,
+        })
+      : await dialog.prompt('Vault path（绝对路径或 ~/...，目录必须存在）', {
+          title: 'Open another vault',
+          defaultValue: '',
+          confirmLabel: 'Open',
+        });
     if (!path?.trim()) return;
     try {
       await registerAndSwitchMut.mutateAsync({ path: path.trim() });

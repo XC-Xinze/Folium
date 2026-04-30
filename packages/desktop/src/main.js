@@ -24,7 +24,9 @@ function startBackend() {
     HOST: '127.0.0.1',
     PORT: backendPort,
     DB_PATH: process.env.DB_PATH ?? join(app.getPath('userData'), 'index.db'),
+    FOLIUM_CONFIG_DIR: process.env.FOLIUM_CONFIG_DIR ?? app.getPath('userData'),
     CORS_ORIGINS: rendererUrl ?? 'http://localhost:5173,http://127.0.0.1:5173',
+    FOLIUM_DISABLE_EXAMPLE_VAULT: app.isPackaged ? '1' : (process.env.FOLIUM_DISABLE_EXAMPLE_VAULT ?? ''),
   };
 
   if (app.isPackaged) {

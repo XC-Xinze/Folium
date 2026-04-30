@@ -4,7 +4,7 @@ import multipart from '@fastify/multipart';
 import staticPlugin from '@fastify/static';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { config } from './config.js';
+import { config, getActiveVaultPath } from './config.js';
 import { getDb, closeDb } from './db/client.js';
 import { CardRepository } from './vault/repository.js';
 import { scanVault } from './vault/scanner.js';
@@ -19,7 +19,7 @@ import { pluginRoutes } from './routes/plugins.js';
 import { exportRoutes } from './routes/export.js';
 import { vaultRoutes } from './routes/vaults.js';
 import { hooks } from './hooks.js';
-import { initVaultRegistry } from './services/vaultRegistry.js';
+import { getActiveVault, initVaultRegistry } from './services/vaultRegistry.js';
 import { startBackupScheduler, stopBackupScheduler } from './services/backup.js';
 
 function isAllowedCorsOrigin(origin: string | undefined): boolean {
@@ -58,38 +58,50 @@ async function main() {
   // 静态服务 vault 目录（图片、附件通过 /vault/attachments/xxx.png 访问）
   // 注意：用 serve:false + 手动 sendFile，是因为 @fastify/static 的 root 在 register 时
   // 被 capture，没法跟随 vault switch 变化。这样每次请求都用当前 active vault path。
-  await mkdir(join(config.vaultPath, 'attachments'), { recursive: true });
+  const initialVault = getActiveVault();
+  const initialVaultPath = initialVault?.path ?? null;
+
+  if (initialVaultPath) {
+    await mkdir(join(initialVaultPath, 'attachments'), { recursive: true });
+  }
   await app.register(staticPlugin, {
-    root: config.vaultPath,
+    root: initialVaultPath ?? process.cwd(),
     serve: false,
     decorateReply: true, // 提供 reply.sendFile
   });
   app.get<{ Params: { '*': string } }>('/vault/*', async (req, reply) => {
     const rel = req.params['*'];
     if (!rel || rel.includes('..')) return reply.code(400).send({ error: 'bad path' });
-    return reply.sendFile(rel, config.vaultPath);
+    const activePath = getActiveVaultPath();
+    if (!activePath) return reply.code(404).send({ error: 'no active vault' });
+    return reply.sendFile(rel, activePath);
   });
 
   // 启动时扫描 vault
   const db = getDb();
   const repo = new CardRepository(db);
+  if (!initialVaultPath) {
+    repo.truncateAll();
+  }
 
   hooks.on('vault:scanned', ({ count, durationMs }) => {
     app.log.info(`vault scan: ${count} cards in ${durationMs}ms`);
   });
 
-  app.log.info(`scanning vault: ${config.vaultPath}`);
-  try {
-    await scanVault(config.vaultPath, repo);
-  } catch (err) {
-    app.log.warn({ err }, 'vault scan failed (path may not exist yet)');
+  if (initialVaultPath) {
+    app.log.info(`scanning vault: ${initialVaultPath}`);
+    try {
+      await scanVault(initialVaultPath, repo);
+    } catch (err) {
+      app.log.warn({ err }, 'vault scan failed (path may not exist yet)');
+    }
   }
 
   // 监听文件变更。watcher 用 let 绑定，便于 vault switch 时 close 后重建。
-  let watcher = watchVault(config.vaultPath, repo);
+  let watcher = initialVaultPath ? watchVault(initialVaultPath, repo) : null;
 
   // 起自动备份调度（settings.backupEnabled 默认 true）
-  startBackupScheduler();
+  if (initialVaultPath) startBackupScheduler();
 
   await app.register(cardRoutes, { prefix: '/api' });
   await app.register(attachmentRoutes, { prefix: '/api' });
@@ -117,13 +129,13 @@ async function main() {
   app.get('/api/health', async () => ({
     ok: true,
     cards: repo.count(),
-    vaultPath: config.vaultPath,
+    vaultPath: getActiveVaultPath(),
   }));
 
   const closeGracefully = async () => {
     app.log.info('shutting down');
     stopBackupScheduler();
-    await watcher.close();
+    await watcher?.close();
     await app.close();
     closeDb();
     process.exit(0);

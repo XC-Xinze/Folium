@@ -173,9 +173,9 @@
 
       .orbit {
         position: relative;
-        min-height: 590px;
+        min-height: 430px;
       }
-      .paper-card, .node, .graph-card {
+      .preview-card, .graph-card {
         border: 1px solid rgba(216, 211, 202, 0.86);
         background:
           linear-gradient(180deg, rgba(255, 255, 255, 0.70), rgba(255, 255, 255, 0) 46%),
@@ -234,61 +234,39 @@
         stroke: rgba(186, 99, 92, 0.76);
         animation-delay: 1820ms;
       }
-      .node {
+      .preview-card {
         position: absolute;
-        width: 54px;
-        height: 54px;
-        border-radius: 999px;
-        display: grid;
-        place-items: center;
-        color: var(--accent);
-        font-size: 12px;
-        font-weight: 800;
+        width: 128px;
+        padding: 13px;
+        border-radius: 10px;
         animation: float 6s ease-in-out infinite;
+        z-index: 3;
       }
-      .node.focus {
-        width: 76px;
-        height: 76px;
-        color: #fff;
-        background: var(--accent);
-        border-color: var(--accent);
-        box-shadow: 0 18px 50px rgba(83, 98, 83, 0.22);
+      .preview-card strong {
+        display: block;
+        margin-bottom: 7px;
+        color: var(--accent);
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      .preview-card span {
+        display: block;
+        color: var(--text);
+        font-family: Newsreader, Georgia, serif;
+        font-size: 19px;
+        line-height: 1.12;
+      }
+      .preview-card.focus {
+        width: 158px;
+        border-color: rgba(83, 98, 83, 0.56);
+        box-shadow: 0 18px 52px rgba(83, 98, 83, 0.16);
       }
       .n1 { left: 54px; top: 70px; }
       .n2 { right: 52px; top: 78px; animation-delay: -1s; }
       .n3 { left: 76px; bottom: 78px; animation-delay: -2s; }
       .n4 { right: 72px; bottom: 88px; animation-delay: -3s; }
-      .nf { left: 142px; top: 140px; animation-delay: -1.6s; }
-
-      .paper-card {
-        position: absolute;
-        left: 0;
-        right: 34px;
-        top: 408px;
-        padding: 24px;
-        border-radius: 12px;
-        z-index: 2;
-      }
-      .paper-card .meta {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        color: var(--accent);
-        font-size: 11px;
-        font-weight: 800;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-      }
-      .paper-card h2 {
-        margin: 18px 0 10px;
-        font-size: 30px;
-        line-height: 1.16;
-      }
-      .paper-card p {
-        margin: 0;
-        color: #444748;
-        line-height: 1.72;
-      }
+      .nf { left: 116px; top: 146px; animation-delay: -1.6s; }
 
       .section {
         max-width: 1180px;
@@ -303,12 +281,12 @@
       }
       .grid {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 14px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
       }
       .feature {
-        min-height: 196px;
-        padding: 24px;
+        min-height: 132px;
+        padding: 18px;
         border: 1px solid rgba(216, 211, 202, 0.82);
         border-radius: 10px;
         background: rgba(255, 253, 248, 0.64);
@@ -321,15 +299,15 @@
       }
       .feature strong {
         display: block;
-        margin-bottom: 12px;
+        margin-bottom: 9px;
         color: var(--ink);
-        font-size: 15px;
+        font-size: 14px;
       }
       .feature p {
         margin: 0;
         color: var(--muted);
-        font-size: 14px;
-        line-height: 1.72;
+        font-size: 13px;
+        line-height: 1.62;
       }
       .release {
         display: grid;
@@ -358,6 +336,32 @@
       }
       .copy ul {
         margin-top: 0;
+        padding-left: 20px;
+      }
+      .timeline {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+      .version-block {
+        padding: 24px;
+        border: 1px solid rgba(216, 211, 202, 0.84);
+        border-radius: 12px;
+        background: rgba(255, 253, 248, 0.64);
+        box-shadow: 0 14px 40px rgba(45, 45, 45, 0.06);
+      }
+      .version-block strong {
+        color: var(--rust);
+        font-family: Newsreader, Georgia, serif;
+        font-size: 38px;
+        line-height: 1;
+      }
+      .version-block p,
+      .version-block li {
+        color: var(--text);
+        line-height: 1.72;
+      }
+      .version-block ul {
         padding-left: 20px;
       }
       .footer {
@@ -397,15 +401,18 @@
       }
       @media (max-width: 940px) {
         .hero, .release { grid-template-columns: 1fr; }
-        .orbit { min-height: 590px; }
-        .grid { grid-template-columns: 1fr; }
+        .orbit { min-height: 430px; }
+        .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .timeline { grid-template-columns: 1fr; }
       }
       @media (max-width: 640px) {
         .nav { align-items: flex-start; flex-direction: column; }
         .nav-links { flex-wrap: wrap; }
         .hero { padding-top: 56px; }
         .graph-card { width: 100%; right: 0; }
-        .paper-card { right: 0; top: 408px; }
+        .grid { grid-template-columns: 1fr; }
+        .preview-card { width: 112px; }
+        .preview-card.focus { width: 138px; left: 108px; }
       }
     </style>
   </head>
@@ -451,65 +458,27 @@
               <path class="signal" d="M180 180 C250 176 258 100 278 104" />
               <path class="signal link" d="M180 180 C130 230 118 276 96 278" />
             </svg>
-            <div class="node n1">1</div>
-            <div class="node n2">1a</div>
-            <div class="node n3">3c</div>
-            <div class="node n4">tmp</div>
-            <div class="node focus nf">1b</div>
+            <article class="preview-card n1">
+              <strong>Box 1</strong>
+              <span>Local field</span>
+            </article>
+            <article class="preview-card n2">
+              <strong>1a</strong>
+              <span>Branch note</span>
+            </article>
+            <article class="preview-card n3">
+              <strong>3c</strong>
+              <span>Real link</span>
+            </article>
+            <article class="preview-card n4">
+              <strong>Temp</strong>
+              <span>Draft card</span>
+            </article>
+            <article class="preview-card focus nf">
+              <strong>1b</strong>
+              <span>A focused thought finds its next card.</span>
+            </article>
           </div>
-          <article class="paper-card">
-            <div class="meta">
-              <span>Workspace</span>
-              <span>4 cards · 3 links</span>
-            </div>
-            <h2>Draft first. Commit later.</h2>
-            <p>
-              Pull cards into a workspace, annotate the relationship, then write a real double-link back
-              only when the connection earns its place in the vault.
-            </p>
-          </article>
-        </div>
-      </section>
-
-      <section id="features" class="section" data-reveal>
-        <h2>A quieter tool for serious linked thinking.</h2>
-        <div class="grid">
-          <article class="feature">
-            <strong>Plain Markdown vaults</strong>
-            <p>Your source of truth is ordinary Markdown. SQLite is only a fast local index.</p>
-          </article>
-          <article class="feature">
-            <strong>Box-based structure</strong>
-            <p>Top-level numbered cards act as boxes. Their Folgezettel descendants form local contexts.</p>
-          </article>
-          <article class="feature">
-            <strong>Real double-links</strong>
-            <p>Explicit <code>[[link]]</code> relations are shown clearly without recursively flooding the canvas.</p>
-          </article>
-          <article class="feature">
-            <strong>Potential links</strong>
-            <p>Unlinked references and high-confidence local similarity appear as optional suggestions.</p>
-          </article>
-          <article class="feature">
-            <strong>Workspace canvases</strong>
-            <p>Use temporary cards, notes, relation labels, and apply-to-vault links when ready.</p>
-          </article>
-          <article class="feature">
-            <strong>Graph focus</strong>
-            <p>Explore global structure through Box, Link, and Tag relations with first-degree highlighting.</p>
-          </article>
-          <article class="feature">
-            <strong>Saved layouts</strong>
-            <p>Manual placement is preserved per box and workspace, with reset layout when you need it.</p>
-          </article>
-          <article class="feature">
-            <strong>Canvas image export</strong>
-            <p>Export the visible box or workspace as a PNG with clean solid links and safe margins.</p>
-          </article>
-          <article class="feature">
-            <strong>Local plugin path</strong>
-            <p>Trusted local plugins can extend commands, UI, and export workflows through the early SDK.</p>
-          </article>
         </div>
       </section>
 
@@ -533,6 +502,74 @@
             <li>GraphView was reduced to the concepts users actually think with: Box, Link, and Tag.</li>
             <li>Workspaces now better separate temporary reasoning from durable vault links.</li>
           </ul>
+        </div>
+      </section>
+
+      <section class="section" data-reveal>
+        <h2>Version history as product direction.</h2>
+        <div class="timeline">
+          <article class="version-block">
+            <strong>1.0</strong>
+            <p>
+              The first public build established the foundation: local Markdown vaults, Electron desktop packaging,
+              card editing, workspaces, graph view, attachments, backups, and the initial plugin path.
+            </p>
+            <ul>
+              <li>Local-first vault with SQLite indexing.</li>
+              <li>Workspace canvases for temporary visual thinking.</li>
+              <li>Basic graph, tag, attachment, and export groundwork.</li>
+            </ul>
+          </article>
+          <article class="version-block">
+            <strong>1.5</strong>
+            <p>
+              The 1.5 release simplifies the interaction model. It keeps Folium's exploratory spirit while removing
+              recursive card flooding, unclear filters, and visual noise from the main canvas.
+            </p>
+            <ul>
+              <li>Cleaner box view with focused potential links.</li>
+              <li>Graph view grouped by top-level boxes with calmer focus behavior.</li>
+              <li>Workspace link labels, image export, first-run vault setup, and refined documentation.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section id="features" class="section" data-reveal>
+        <h2>Core features, kept compact.</h2>
+        <div class="grid">
+          <article class="feature">
+            <strong>Markdown vaults</strong>
+            <p>Your source of truth is ordinary Markdown.</p>
+          </article>
+          <article class="feature">
+            <strong>Box structure</strong>
+            <p>Top-level cards create local thinking fields.</p>
+          </article>
+          <article class="feature">
+            <strong>Double-links</strong>
+            <p>Explicit <code>[[link]]</code> relations stay durable.</p>
+          </article>
+          <article class="feature">
+            <strong>Potential</strong>
+            <p>Focused suggestions for unlinked references.</p>
+          </article>
+          <article class="feature">
+            <strong>Workspace</strong>
+            <p>Draft relations before committing to the vault.</p>
+          </article>
+          <article class="feature">
+            <strong>Graph focus</strong>
+            <p>Box, Link, and Tag relations at vault scale.</p>
+          </article>
+          <article class="feature">
+            <strong>Saved layouts</strong>
+            <p>Manual placement persists per box and workspace.</p>
+          </article>
+          <article class="feature">
+            <strong>Image export</strong>
+            <p>Export a box or workspace as a clean PNG.</p>
+          </article>
         </div>
       </section>
     </main>

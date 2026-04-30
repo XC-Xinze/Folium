@@ -20,7 +20,7 @@ interface DeleteResult {
  *   1. 删 .md 文件
  *   2. 其他文件 frontmatter.crossLinks 移除此 id
  *   3. 所有 scope 的 positions 移除此 id
- *   4. 所有 workspace 中引用此 cardId 的 card 节点和涉及的 edges 移除
+ *   4. 所有 workspace 中引用此 cardId 的 card 节点降级为 temp 节点，保留位置和边
  *   5. SQLite 删该行
  *
  *   注意：正文里的 [[id]] 文本保留（变成"断链"），不强制改用户的写作内容。
@@ -89,20 +89,40 @@ export async function deleteVaultCard(
     await fsWrite(join(dir, POSITIONS_FILE), JSON.stringify(positions, null, 2), 'utf8');
   }
 
-  // 4. 清理 workspaces：移除引用此 cardId 的 card 节点 + 相关 edges
+  // 4. 清理 workspaces：引用此 cardId 的实体卡节点降级为 temp。
+  //    Workspace 是思考现场；删除 vault 文件不应该让用户在 workspace 里摆好的节点和边消失。
   const { loadAll: loadAllWs, updateWorkspace } = await import('./workspaces.js');
   const workspaces: Record<string, import('./workspaces.js').Workspace> = await loadAllWs();
   let workspacesUpdated = 0;
   for (const ws of Object.values(workspaces)) {
-    const refNodeIds = ws.nodes
-      .filter((n) => n.kind === 'card' && (n as { cardId: string }).cardId === cardId)
-      .map((n) => n.id);
-    if (refNodeIds.length === 0) continue;
-    const newNodes = ws.nodes.filter((n) => !refNodeIds.includes(n.id));
-    const newEdges = ws.edges.filter(
-      (e: { source: string; target: string }) =>
-        !refNodeIds.includes(e.source) && !refNodeIds.includes(e.target),
-    );
+    const refNodeIds = new Set<string>();
+    const newNodes = ws.nodes.map((n) => {
+      if (n.kind !== 'card' || (n as { cardId: string }).cardId !== cardId) return n;
+      refNodeIds.add(n.id);
+      return {
+        kind: 'temp' as const,
+        id: n.id,
+        title: card.title || cardId,
+        content: card.contentMd || `Deleted vault card ${cardId}`,
+        x: n.x,
+        y: n.y,
+        w: n.w,
+        h: n.h,
+      };
+    });
+    if (refNodeIds.size === 0) continue;
+    const newEdges = ws.edges.map((edge) => {
+      if (!refNodeIds.has(edge.source) && !refNodeIds.has(edge.target)) return edge;
+      const next = { ...edge };
+      delete next.applied;
+      delete next.vaultLink;
+      delete next.vaultStructure;
+      delete next.appliedToFile;
+      delete next.appliedMarker;
+      delete next.pendingTempIds;
+      if (next.label === 'tree') delete next.label;
+      return next;
+    });
     await updateWorkspace(ws.id, { nodes: newNodes, edges: newEdges });
     workspacesUpdated += 1;
   }

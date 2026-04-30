@@ -6,10 +6,10 @@ export const NODE_WIDTH = 340;
 export const NODE_HEIGHT = 380;
 
 // 布局常量
-const X_GAP = 80; // 同层兄弟节点间距
-const Y_GAP = 130; // 父子层级间距
-const FLANK_OFFSET_X = 120; // cross-flank 离行边界的横向距离
-const POTENTIAL_OFFSET_X = 40; // potential 与 cross-flank 列之间的间隙（小一点更贴近被链接的卡）
+const X_GAP = 56; // 同层兄弟节点间距
+const Y_GAP = 96; // 父子层级间距
+const FLANK_OFFSET_X = 56; // cross-flank 离行边界的横向距离
+const POTENTIAL_OFFSET_X = 24; // potential 与 cross-flank 列之间的间隙（小一点更贴近被链接的卡）
 
 export type CardNodeData = {
   card: Card | CardSummary;
@@ -33,7 +33,11 @@ export type CardNodeData = {
   /** 在 workspace 里时隐藏 WS 拖拽手柄（卡片已经在工作区里了） */
   isInWorkspace?: boolean;
   /** Workspace 上下文专用：拖一张卡 drop 到本卡 → 创建 workspace edge（不动 vault） */
-  onCardLinkDrop?: (sourceLuhmannId: string) => void;
+  onCardLinkDrop?: (sourceLuhmannId: string) => void | Promise<void>;
+  /** Workspace 上下文专用：用 workspace node id 连接，支持 temp/card 互相作为 source。 */
+  onWorkspaceNodeLinkDrop?: (sourceNodeId: string) => void | Promise<void>;
+  /** 视图接管 focus 行为，例如 TagView 只做本地高亮，不打开/切换 card tab。 */
+  onFocusOverride?: () => void;
   /** Workspace 上下文专用：尺寸保存在 workspace node 本身，而不是全局 positions scope。 */
   onResizeOverride?: (width: number, height: number) => void;
   /** 来自工作区的"幽灵 temp 节点"——只读、不发请求、只显示标题/正文 */
@@ -247,16 +251,16 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     addNode(id, id === focusedCardId ? 'focus' : 'tree');
   }
   // 焦点卡可能不在 backbone（用户在某个 box 里点了外部 tag-related/cross/potential 卡）。
-  // 仅当用户至少开着一类外部边（tag/cross/potential）时才补 focus 节点 —— 否则用户已经
-  // 明确"我不想看外部"，把外部 focus 也藏掉，跟 toggle 语义一致。
-  // 后续的 cross / tag / potential 边以此 focus 为端点也都被对应 toggle 控住。
+  // 无论过滤器怎么开关，焦点卡都保留；过滤器只控制从它展开哪些关系层。
   const anyExternalToggle = showTagRelated || showCrossLinks || showPotential;
-  if (
-    !backbone.ids.has(focusedCardId) &&
-    cardMap.has(focusedCardId) &&
-    anyExternalToggle
-  ) {
+  if (!backbone.ids.has(focusedCardId) && cardMap.has(focusedCardId)) {
     addNode(focusedCardId, 'focus');
+  }
+  // Minimal-context fallback: when every relation layer is off and there is no
+  // valid focus card, keep the current box entry visible instead of returning
+  // a blank canvas.
+  if (rawNodes.size === 0 && cardMap.has(focusedBoxId)) {
+    addNode(focusedBoxId, 'focus');
   }
   // Exploration trail anchors stay visible even when the Box layer is hidden.
   // This keeps link-only walks such as 1a -> 1 -> 4 understandable without
@@ -273,24 +277,20 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     rawEdges.push({ id: `tree:${e.source}->${e.target}`, source: e.source, target: e.target, kind: 'tree' });
   }
 
-  // 焦点卡若在 backbone 外（被 tag-related/cross-flank 拉进来后用户点选了它）→
-  // 把它也纳入 cross/potential 的迭代集合，让"以焦点为中心的所有边"都画出来
+  // Cross-link expansion anchors are the current box members only.
+  // Imported cross-flank cards can be focused, but focusing them must not expand
+  // another ring of links.
   const radialIds = new Set<string>(visibleBoxIds);
   for (const id of tagAnchorIds) {
     if (rawNodes.has(id)) radialIds.add(id);
   }
-  if (!radialIds.has(focusedCardId) && cardMap.has(focusedCardId)) {
-    radialIds.add(focusedCardId);
-  }
+  // 不把外部焦点卡加入 radialIds：点击外部双链卡只改变焦点高亮，
+  // 不再继续从它展开下一层关系、引入新卡。
 
-  // Cross-link 边：双向都画
-  //   出边（outbound）：骨干卡的 crossLinks 指向哪些卡 —— 从 fullCards 抽取
-  //   入边（inbound / backlinks）：哪些卡的 crossLinks 指向骨干 —— 用 summary 反向扫描
+  // Cross-link edges: current-box cards may pull their directly linked external
+  // cards into view. External cards imported this way do not become expansion
+  // anchors, so clicking one does not continue the chain.
   if (showCrossLinks) {
-    // 出边
-    // 用 summary.crossLinks（cardsQ 全量）而不是 fullCards.get(id).crossLinks
-    // —— fullCards 只含 focused box/focus/linked，非焦点的 backbone 卡 full 没拉，
-    // 用 full 会漏掉它们的 [[link]]。summary 已含 crossLinks，全 backbone 都能用。
     for (const id of radialIds) {
       const summary = cardMap.get(id);
       if (!summary) continue;
@@ -313,10 +313,9 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
         }
       }
     }
-    // 入边（backlinks）：扫所有卡的 summary.crossLinks，找指向骨干（或外部焦点）的
+    // Backlinks into current-box anchors also count as direct box relations.
     for (const c of allCards) {
-      if (radialIds.has(c.luhmannId)) continue; // 已在出边里处理
-      // 同上：INDEX 卡的 crossLinks 现在也是普通引用，要画 backlink 边
+      if (radialIds.has(c.luhmannId)) continue;
       for (const target of c.crossLinks) {
         if (!radialIds.has(target)) continue;
         const existsTree = backbone.treeEdges.some(
@@ -407,11 +406,12 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
 
   }
 
-  // Potential：unlinked references。骨干外的内容卡作为 potential 节点拉进来；
+  // Potential：unlinked references。只从当前焦点卡展开，避免一个 box 的所有弱关系同时涌入。
   // 骨干内部之间的 potential 关系也要画一条灰虚线。
   // 优先级：tree > cross > tag > potential。如果这对节点已经有更"硬"的边，就别叠加 potential。
   if (showPotential) {
-    for (const id of radialIds) {
+    const potentialAnchors = cardMap.has(focusedCardId) ? [focusedCardId] : [];
+    for (const id of potentialAnchors) {
       const rel = relatedBatch[id];
       if (!rel) continue;
       for (const p of rel.potential) {
@@ -443,14 +443,19 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     }
   }
 
-  // 工作区链接：作为 potential 风格的节点/边叠加到画布上
-  //   - card↔card 工作区边：另一端的 vault 卡用 'potential' 变体加入（如果尚未在图中）
+  // 工作区链接：只把 card↔temp 的轻量关系叠加到主画布上。
+  // card↔card 的 workspace draft link 不再投射回 box；实体卡之间的真实关系只看 vault [[link]]。
   //   - card↔temp 工作区边：合成一个 ghost 节点（带 temp 内容）作为 'potential' 加入
-  //   只渲染至少有一端在当前 backbone 视野内的链接，否则与当前焦点无关
+  //   - temp↔temp / card↔card：跳过
+  //   只渲染真实卡端在当前 backbone 视野内的链接，否则与当前焦点无关
   if (workspaceLinks && workspaceLinks.length > 0) {
     const seenWsEdges = new Set<string>();
     for (const link of workspaceLinks) {
       if (seenWsEdges.has(link.edgeId)) continue;
+
+      const sourceIsCard = link.source.kind === 'card';
+      const targetIsCard = link.target.kind === 'card';
+      if (sourceIsCard === targetIsCard) continue;
 
       // 可见 box 卡或外部焦点都算"视野内"
       const inView = (cardId: string) =>
@@ -459,10 +464,6 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
       const targetInView = link.target.kind === 'card' && inView(link.target.id);
       if (!sourceInView && !targetInView) continue;
       seenWsEdges.add(link.edgeId);
-
-      // 找到本 link 中的 vault 卡端 + 另一端
-      const sourceIsCard = link.source.kind === 'card';
-      const targetIsCard = link.target.kind === 'card';
 
       // 解析两端在画布中的 node id（vault 卡用 luhmannId；temp 用 ghostId）
       const sourceNodeId = sourceIsCard
@@ -595,8 +596,8 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     const col = i % 3;
     const row = Math.floor(i / 3);
     return {
-      x: 1500 + col * (NODE_WIDTH + X_GAP),
-      y: -500 + row * (NODE_HEIGHT + 40),
+      x: 720 + col * (NODE_WIDTH + X_GAP),
+      y: -120 + row * (NODE_HEIGHT + 40),
     };
   };
 
@@ -691,7 +692,7 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     // 有右侧 cross-flank → potential 退到 cross-flank 之后
     const xOffset =
       rightCrossCount > 0
-        ? 2 * (NODE_WIDTH + FLANK_OFFSET_X) + POTENTIAL_OFFSET_X
+        ? NODE_WIDTH + FLANK_OFFSET_X + POTENTIAL_OFFSET_X + 72
         : NODE_WIDTH + FLANK_OFFSET_X + POTENTIAL_OFFSET_X;
     positions.set(id, {
       x: row.maxX + xOffset,
@@ -707,8 +708,8 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
 
   /* ----- 4. 边：智能 handle 选择 ----- */
   const edgeStyles: Record<RawEdgeKind, { stroke: string; strokeWidth: number; strokeDasharray?: string }> = {
-    tree: { stroke: '#9ca3af', strokeWidth: 1.5 },
-    cross: { stroke: '#385f73', strokeWidth: 1.3 },
+    tree: { stroke: 'var(--zk-tree-edge)', strokeWidth: 1.45 },
+    cross: { stroke: 'var(--zk-link-edge)', strokeWidth: 1.65 },
     tag: { stroke: '#10b981', strokeWidth: 1.4 }, // 绿色实线，first-class
     potential: { stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '6 4' },
   };
@@ -777,17 +778,21 @@ export function buildGraph(input: BuildGraphInput): { nodes: Node[]; edges: Edge
     }
 
     // 焦点卡的连线加粗 + 不透明度满，让用户切焦点时一眼看到关联。
-    // 不触焦点的边大幅淡化（0.18） + 比基础再细一档 —— 用户反馈 0.6 还是太抢戏。
-    // tree 边稍特殊：哪怕不触焦点也保留较高 opacity（0.5），不然结构感会断。
-    const touchesFocus = e.source === focusedCardId || e.target === focusedCardId;
+    // tree 边是结构背景，保持更淡；cross 边是真实双链，颜色/粗细更明确。
+    const hasVisualFocus =
+      !!focusedCardId &&
+      rawNodes.has(focusedCardId);
+    const touchesFocus = hasVisualFocus && (e.source === focusedCardId || e.target === focusedCardId);
     const baseStyle = edgeStyles[e.kind];
     let style: { stroke: string; strokeWidth: number; strokeDasharray?: string; opacity: number };
     if (touchesFocus) {
-      style = { ...baseStyle, strokeWidth: baseStyle.strokeWidth + 1.5, opacity: 1 };
+      style = { ...baseStyle, strokeWidth: baseStyle.strokeWidth + 0.8, opacity: 1 };
     } else if (e.kind === 'tree') {
-      style = { ...baseStyle, opacity: 0.5 };
+      style = { ...baseStyle, opacity: 0.32 };
+    } else if (e.kind === 'cross') {
+      style = { ...baseStyle, strokeWidth: baseStyle.strokeWidth, opacity: 0.32 };
     } else {
-      style = { ...baseStyle, strokeWidth: Math.max(0.8, baseStyle.strokeWidth - 0.3), opacity: 0.18 };
+      style = { ...baseStyle, strokeWidth: Math.max(0.8, baseStyle.strokeWidth - 0.3), opacity: 0.12 };
     }
     // potential / cross 用自定义 edge type（带中点 link/unlink 按钮），其余 bezier
     const type =
@@ -970,7 +975,7 @@ export function resolveCollisions(
 
 export const TAG_ROOT_PREFIX = '__tag::';
 
-export function buildTagGraph(tag: string, cards: Card[]): { nodes: Node[]; edges: Edge[] } {
+export function buildTagGraph(tag: string, cards: Card[], focusedCardId?: string | null): { nodes: Node[]; edges: Edge[] } {
   const tagRootId = `${TAG_ROOT_PREFIX}${tag}`;
   const sorted = [...cards].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
   const inSet = new Set(sorted.map((c) => c.luhmannId));
@@ -1011,9 +1016,13 @@ export function buildTagGraph(tag: string, cards: Card[]): { nodes: Node[]; edge
   }
 
   // cross edges：手动 [[link]] 在集合内的（不参与布局，但显示）
+  const seenCrossPairs = new Set<string>();
   for (const c of sorted) {
     for (const target of c.crossLinks) {
       if (inSet.has(target) && target !== c.luhmannId) {
+        const pairKey = [c.luhmannId, target].sort().join('::');
+        if (seenCrossPairs.has(pairKey)) continue;
+        seenCrossPairs.add(pairKey);
         rawEdges.push({ source: c.luhmannId, target, kind: 'cross' });
       }
     }
@@ -1039,7 +1048,10 @@ export function buildTagGraph(tag: string, cards: Card[]): { nodes: Node[]; edge
       return {
         id: c.luhmannId,
         type: 'card' as const,
-        data: { card: c, variant: 'tree' as const } as unknown as Record<string, unknown>,
+        data: {
+          card: c,
+          variant: c.luhmannId === focusedCardId ? 'focus' as const : 'tree' as const,
+        } as unknown as Record<string, unknown>,
         position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
         width: NODE_WIDTH,
       };
@@ -1048,6 +1060,7 @@ export function buildTagGraph(tag: string, cards: Card[]): { nodes: Node[]; edge
 
   // 边
   const edges: Edge[] = rawEdges.map((e, i) => {
+    const touchesFocus = !!focusedCardId && (e.source === focusedCardId || e.target === focusedCardId);
     if (e.kind === 'tree') {
       return {
         id: `tree:${e.source}->${e.target}-${i}`,
@@ -1056,8 +1069,12 @@ export function buildTagGraph(tag: string, cards: Card[]): { nodes: Node[]; edge
         sourceHandle: 'bottom',
         targetHandle: 'top',
         type: 'default',
-        style: { stroke: '#9ca3af', strokeWidth: 1.5 },
-        data: { kind: 'tree' },
+        style: {
+          stroke: 'var(--zk-tree-edge)',
+          strokeWidth: touchesFocus ? 2.25 : 1.45,
+          opacity: touchesFocus ? 1 : 0.32,
+        },
+        data: { kind: 'tree', touchesFocus },
       };
     }
     // cross：智能选 handle 避免圆圈
@@ -1084,8 +1101,12 @@ export function buildTagGraph(tag: string, cards: Card[]): { nodes: Node[]; edge
       sourceHandle,
       targetHandle,
       type: 'default',
-      style: { stroke: '#385f73', strokeWidth: 1.3 },
-      data: { kind: 'cross' },
+      style: {
+        stroke: 'var(--zk-link-edge)',
+        strokeWidth: touchesFocus ? 2.45 : 1.65,
+        opacity: touchesFocus ? 1 : 0.32,
+      },
+      data: { kind: 'cross', touchesFocus },
     };
   });
 

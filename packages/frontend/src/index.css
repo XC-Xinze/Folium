@@ -16,6 +16,8 @@ html, body, #root { height: 100%; }
   --zk-muted: #747878;
   --zk-accent: #536253;
   --zk-link: #385f73;
+  --zk-tree-edge: #9aa49a;
+  --zk-link-edge: #c44f43;
   --zk-rust: #ba635c;
   --zk-shadow-paper: 0 1px 2px rgba(45, 45, 45, 0.04), 0 14px 36px rgba(45, 45, 45, 0.10);
   --zk-shadow-paper-hover: 0 2px 4px rgba(45, 45, 45, 0.06), 0 18px 46px rgba(45, 45, 45, 0.13);
@@ -43,6 +45,8 @@ html.dark body {
   --zk-muted: #a5adcb;
   --zk-accent: #a7c7a1;
   --zk-link: #9bc2cf;
+  --zk-tree-edge: #8f9a8f;
+  --zk-link-edge: #f28b82;
   --zk-rust: #ee99a0;
   --zk-shadow-paper: 0 1px 2px rgba(0, 0, 0, 0.18), 0 14px 38px rgba(0, 0, 0, 0.28);
   --zk-shadow-paper-hover: 0 2px 4px rgba(0, 0, 0, 0.24), 0 18px 48px rgba(0, 0, 0, 0.34);
@@ -125,6 +129,18 @@ html.dark .zk-toolbar-surface {
   fill: var(--zk-ink);
 }
 
+html.folium-exporting .react-flow__edge-path {
+  stroke-opacity: 1 !important;
+  stroke-width: 2.4px !important;
+  stroke-dasharray: none !important;
+}
+
+html.folium-exporting .react-flow__edgelabel-renderer,
+html.folium-exporting .react-flow__handle,
+html.folium-exporting .react-flow__resize-control {
+  display: none !important;
+}
+
 .react-flow__minimap {
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--zk-paper-edge) 76%, transparent);
@@ -181,10 +197,59 @@ html.dark .bg-accentSoft { background-color: rgba(167,199,161,0.18) !important; 
 html.dark .text-accent { color: #a7c7a1 !important; }
 html.dark .bg-accentSoft.text-accent { color: #cad3f5 !important; }
 html.dark .text-link { color: #9bc2cf !important; }
+html.dark .text-muted { color: #a5adcb !important; }
 html.dark .border-accent\/40 { border-color: rgba(167,199,161,0.4) !important; }
+
+.zk-focus-card::before {
+  content: "";
+  position: absolute;
+  inset: -14px;
+  z-index: -1;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 22% 18%, rgba(186, 99, 92, 0.20), transparent 42%),
+    linear-gradient(135deg, rgba(211, 228, 209, 0.72), rgba(210, 229, 243, 0.42));
+  border: 1px solid rgba(186, 99, 92, 0.20);
+  box-shadow: 0 18px 48px rgba(83, 98, 83, 0.16);
+  pointer-events: none;
+}
+
+.zk-focus-card::after {
+  content: "FOCUS";
+  position: absolute;
+  top: -28px;
+  left: 12px;
+  z-index: 2;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(253, 248, 248, 0.92);
+  border: 1px solid rgba(186, 99, 92, 0.22);
+  color: #536253;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+
+html.dark .zk-focus-card::before {
+  background:
+    radial-gradient(circle at 22% 18%, rgba(238, 153, 160, 0.18), transparent 44%),
+    linear-gradient(135deg, rgba(167, 199, 161, 0.18), rgba(139, 213, 202, 0.12));
+  border-color: rgba(238, 153, 160, 0.24);
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.28);
+}
+
+html.dark .zk-focus-card::after {
+  background: rgba(30, 32, 48, 0.94);
+  border-color: rgba(238, 153, 160, 0.24);
+  color: #a7c7a1;
+}
 
 /* paper（NewCardBar 写作区） */
 html.dark .bg-paper { background-color: #1e2030 !important; } /* mantle */
+html.dark .bg-paper\/90 { background-color: rgba(30, 32, 48, 0.9) !important; }
+html.dark .bg-paperWarm { background-color: #24273a !important; }
+html.dark .bg-paperWarm\/70 { background-color: rgba(36, 39, 58, 0.7) !important; }
 html.dark .bg-surface { background-color: #24273a !important; }
 html.dark .bg-surfaceAlt { background-color: #363a4f !important; }
 html.dark .border-paperEdge { border-color: #363a4f !important; }

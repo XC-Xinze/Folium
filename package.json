@@ -1,6 +1,6 @@
 {
   "name": "folium",
-  "version": "1.0.0",
+  "version": "1.5.0",
   "private": true,
   "main": "packages/desktop/src/main.js",
   "description": "Linked cards for thinking, with local-first Markdown storage",

@@ -6,12 +6,12 @@
     <title>Folium Documentation</title>
     <meta
       name="description"
-      content="A bilingual guide to using Folium and Luhmann-style linked card notes."
+      content="A bilingual guide to Folium, Luhmann-style linked card notes, boxes, potential links, workspaces, and graph view."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,500;0,6..72,600;1,6..72,500&display=swap"
       rel="stylesheet"
     />
     <style>
@@ -20,26 +20,47 @@
         --paper: #fffdf8;
         --paper-warm: #fbf8f0;
         --edge: #d8d3ca;
+        --edge-soft: rgba(216, 211, 202, 0.62);
         --ink: #1c1b1b;
+        --text: #444748;
         --muted: #747878;
         --accent: #536253;
         --accent-soft: #d3e4d1;
-        --link: #385f73;
+        --blue: #385f73;
         --rust: #ba635c;
+        --shadow: 0 18px 56px rgba(45, 45, 45, 0.09);
       }
 
       * {
         box-sizing: border-box;
       }
 
+      html {
+        scroll-behavior: smooth;
+      }
+
       body {
         margin: 0;
-        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         color: var(--ink);
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         background:
-          radial-gradient(circle at 18% 0%, rgba(211, 228, 209, 0.34), transparent 34%),
-          linear-gradient(135deg, #fffdf8 0%, #f8f6f1 58%, #efebe4 100%);
+          radial-gradient(circle at 16% 0%, rgba(211, 228, 209, 0.34), transparent 34%),
+          radial-gradient(circle at 88% 10%, rgba(186, 99, 92, 0.08), transparent 27%),
+          linear-gradient(135deg, #fffdf8 0%, #f8f6f1 56%, #efebe4 100%);
         -webkit-font-smoothing: antialiased;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.34;
+        background-image:
+          linear-gradient(rgba(28, 27, 27, 0.025) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(28, 27, 27, 0.018) 1px, transparent 1px);
+        background-size: 28px 28px, 28px 28px;
+        mask-image: linear-gradient(to bottom, black, transparent 70%);
       }
 
       a {
@@ -49,17 +70,17 @@
       .nav {
         position: sticky;
         top: 0;
-        z-index: 20;
+        z-index: 30;
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 18px 28px;
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 18px;
-        max-width: 1180px;
-        margin: 0 auto;
-        padding: 18px 28px;
-        background: rgba(248, 246, 241, 0.82);
-        backdrop-filter: blur(16px);
         border-bottom: 1px solid rgba(216, 211, 202, 0.72);
+        background: rgba(248, 246, 241, 0.82);
+        backdrop-filter: blur(18px);
       }
 
       .brand {
@@ -72,14 +93,16 @@
       }
 
       .brand img {
-        width: 36px;
-        height: 36px;
+        width: 38px;
+        height: 38px;
         border-radius: 10px;
       }
 
       .nav-actions {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
+        justify-content: flex-end;
         gap: 10px;
       }
 
@@ -87,15 +110,22 @@
       .lang button {
         min-height: 34px;
         padding: 0 13px;
-        border-radius: 999px;
         border: 1px solid var(--edge);
-        background: rgba(255, 253, 248, 0.72);
+        border-radius: 999px;
+        background: rgba(255, 253, 248, 0.74);
         color: var(--muted);
         font: inherit;
         font-size: 12px;
         font-weight: 800;
         text-decoration: none;
         cursor: pointer;
+        transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+      }
+
+      .nav-actions a:hover,
+      .lang button:hover {
+        color: var(--ink);
+        border-color: rgba(83, 98, 83, 0.34);
       }
 
       .lang {
@@ -109,10 +139,21 @@
         background: var(--accent);
       }
 
+      h1,
+      h2,
+      h3 {
+        font-family: Newsreader, Georgia, serif;
+        letter-spacing: 0;
+      }
+
       .hero {
         max-width: 1180px;
         margin: 0 auto;
-        padding: 72px 28px 46px;
+        padding: 78px 28px 50px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(320px, 430px);
+        gap: 56px;
+        align-items: center;
       }
 
       .eyebrow {
@@ -124,33 +165,108 @@
         text-transform: uppercase;
       }
 
-      h1,
-      h2,
-      h3 {
-        font-family: Newsreader, Georgia, serif;
-        letter-spacing: 0;
-      }
-
       h1 {
-        max-width: 820px;
+        max-width: 760px;
         margin: 0;
-        font-size: clamp(48px, 8vw, 86px);
-        line-height: 0.98;
+        font-size: clamp(48px, 8vw, 90px);
+        line-height: 0.96;
         font-weight: 600;
       }
 
       .lead {
-        max-width: 760px;
+        max-width: 720px;
         margin: 28px 0 0;
-        color: #444748;
+        color: var(--text);
         font-size: 18px;
         line-height: 1.78;
+      }
+
+      .diagram {
+        position: relative;
+        min-height: 390px;
+      }
+
+      .diagram svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        filter: drop-shadow(0 10px 28px rgba(45, 45, 45, 0.05));
+      }
+
+      .diagram path {
+        fill: none;
+        stroke: rgba(83, 98, 83, 0.32);
+        stroke-width: 1.3;
+        stroke-dasharray: 340;
+        stroke-dashoffset: 340;
+        animation: draw 1800ms ease forwards;
+      }
+
+      .diagram path.real {
+        stroke: rgba(186, 99, 92, 0.62);
+        animation-delay: 260ms;
+      }
+
+      .mini-card {
+        position: absolute;
+        width: 150px;
+        padding: 14px;
+        border: 1px solid rgba(216, 211, 202, 0.88);
+        border-radius: 10px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0) 48%),
+          linear-gradient(135deg, rgba(255, 253, 248, 0.96), rgba(251, 248, 240, 0.94));
+        box-shadow: var(--shadow);
+        animation: float 7s ease-in-out infinite;
+      }
+
+      .mini-card strong {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--accent);
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .mini-card span {
+        display: block;
+        color: var(--text);
+        font-family: Newsreader, Georgia, serif;
+        font-size: 20px;
+        line-height: 1.14;
+      }
+
+      .c1 {
+        left: 4px;
+        top: 28px;
+      }
+
+      .c2 {
+        right: 10px;
+        top: 58px;
+        animation-delay: -1.5s;
+      }
+
+      .c3 {
+        left: 72px;
+        bottom: 26px;
+        animation-delay: -3s;
+      }
+
+      .focus-card {
+        left: 128px;
+        top: 148px;
+        width: 178px;
+        border-color: rgba(83, 98, 83, 0.55);
+        box-shadow: 0 18px 56px rgba(83, 98, 83, 0.16);
       }
 
       .layout {
         max-width: 1180px;
         margin: 0 auto;
-        padding: 24px 28px 88px;
+        padding: 24px 28px 90px;
         display: grid;
         grid-template-columns: 260px minmax(0, 1fr);
         gap: 34px;
@@ -161,7 +277,7 @@
         position: sticky;
         top: 88px;
         padding: 18px;
-        border: 1px solid rgba(216, 211, 202, 0.82);
+        border: 1px solid rgba(216, 211, 202, 0.84);
         border-radius: 10px;
         background: rgba(255, 253, 248, 0.68);
         box-shadow: 0 12px 34px rgba(45, 45, 45, 0.06);
@@ -170,10 +286,11 @@
       .toc strong {
         display: block;
         margin-bottom: 12px;
+        color: var(--accent);
         font-size: 12px;
+        font-weight: 800;
         letter-spacing: 0.1em;
         text-transform: uppercase;
-        color: var(--accent);
       }
 
       .toc a {
@@ -196,12 +313,12 @@
 
       .doc-card {
         padding: clamp(24px, 4vw, 42px);
-        border: 1px solid rgba(216, 211, 202, 0.86);
+        border: 1px solid rgba(216, 211, 202, 0.88);
         border-radius: 12px;
         background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0) 42%),
-          linear-gradient(135deg, rgba(255, 253, 248, 0.92), rgba(251, 248, 240, 0.9));
-        box-shadow: 0 16px 48px rgba(45, 45, 45, 0.08);
+          linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0) 44%),
+          linear-gradient(135deg, rgba(255, 253, 248, 0.94), rgba(251, 248, 240, 0.92));
+        box-shadow: 0 16px 48px rgba(45, 45, 45, 0.075);
       }
 
       .doc-card h2 {
@@ -211,20 +328,52 @@
       }
 
       .doc-card h3 {
-        margin: 26px 0 10px;
-        font-size: 24px;
+        margin: 28px 0 10px;
+        font-size: 25px;
       }
 
       .doc-card p,
       .doc-card li {
-        color: #444748;
+        color: var(--text);
         font-size: 15px;
         line-height: 1.82;
+      }
+
+      .doc-card p {
+        margin: 12px 0;
       }
 
       .doc-card ul,
       .doc-card ol {
         padding-left: 22px;
+      }
+
+      .principle-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 22px;
+      }
+
+      .principle {
+        padding: 16px;
+        border: 1px solid var(--edge-soft);
+        border-radius: 8px;
+        background: rgba(255, 253, 248, 0.56);
+      }
+
+      .principle strong {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--ink);
+        font-size: 14px;
+      }
+
+      .principle p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.68;
       }
 
       .note {
@@ -236,17 +385,14 @@
         color: #3c4a3c;
       }
 
-      code {
-        padding: 2px 5px;
-        border-radius: 4px;
-        background: #f1edec;
-        color: var(--link);
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        font-size: 0.9em;
+      .warning {
+        border-left-color: var(--rust);
+        background: rgba(186, 99, 92, 0.08);
+        color: #6f3935;
       }
 
       .example {
-        margin: 18px 0 0;
+        margin: 20px 0 0;
         padding: 18px;
         border: 1px solid rgba(216, 211, 202, 0.84);
         border-radius: 8px;
@@ -265,6 +411,15 @@
         margin-top: 10px;
       }
 
+      code {
+        padding: 2px 5px;
+        border-radius: 4px;
+        background: #f1edec;
+        color: var(--blue);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.9em;
+      }
+
       [data-lang-panel] {
         display: none;
       }
@@ -273,18 +428,83 @@
         display: contents;
       }
 
-      @media (max-width: 880px) {
+      [data-reveal] {
+        opacity: 0;
+        transform: translateY(14px);
+        transition: opacity 620ms ease, transform 620ms ease;
+      }
+
+      [data-reveal].visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      @keyframes draw {
+        to {
+          stroke-dashoffset: 0;
+        }
+      }
+
+      @keyframes float {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-7px);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 1ms !important;
+          transition-duration: 1ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
+
+      @media (max-width: 940px) {
+        .hero,
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .diagram {
+          min-height: 360px;
+        }
+
+        .toc {
+          position: static;
+        }
+      }
+
+      @media (max-width: 640px) {
         .nav {
           align-items: flex-start;
           flex-direction: column;
         }
 
-        .layout {
+        .nav-actions {
+          justify-content: flex-start;
+        }
+
+        .hero {
+          padding-top: 56px;
+        }
+
+        .principle-grid {
           grid-template-columns: 1fr;
         }
 
-        .toc {
-          position: static;
+        .mini-card {
+          width: 132px;
+        }
+
+        .focus-card {
+          width: 152px;
+          left: 98px;
         }
       }
     </style>
@@ -308,19 +528,50 @@
     <main>
       <section class="hero">
         <div data-lang-panel="en" class="active">
-          <p class="eyebrow">Method guide</p>
-          <h1>Using Luhmann-style cards in Folium.</h1>
-          <p class="lead">
-            Folium treats notes as small, linkable cards. The goal is not to collect everything,
-            but to create a system where each card can point to the next useful thought.
-          </p>
+          <div data-reveal>
+            <p class="eyebrow">Method guide · Folium 1.5</p>
+            <h1>Use cards as a thinking chain.</h1>
+            <p class="lead">
+              Folium is built around Luhmann-style cards, but it keeps the workflow practical:
+              boxes give local context, real links hold durable thought relations, potential links
+              suggest missing references, and workspaces let you reason visually before committing.
+            </p>
+          </div>
         </div>
         <div data-lang-panel="zh">
-          <p class="eyebrow">使用方法</p>
-          <h1>在 Folium 中使用鲁曼式卡片笔记。</h1>
-          <p class="lead">
-            Folium 把笔记看作可以互相连接的小卡片。目标不是收集更多内容，而是让每张卡都能引向下一段真正有用的思考。
-          </p>
+          <div data-reveal>
+            <p class="eyebrow">使用指南 · Folium 1.5</p>
+            <h1>用卡片形成思考链。</h1>
+            <p class="lead">
+              Folium 借鉴鲁曼式卡片，但把流程做得更适合实际使用：box 提供局部语境，真实双链承载稳定关系，
+              potential 提醒可能遗漏的引用，workspace 则让你在提交到仓库前先进行视觉化推演。
+            </p>
+          </div>
+        </div>
+
+        <div class="diagram" aria-hidden="true" data-reveal>
+          <svg viewBox="0 0 430 390">
+            <path d="M210 202 C126 186 120 82 78 78" />
+            <path d="M210 202 C292 186 308 100 354 110" />
+            <path class="real" d="M210 202 C144 246 138 316 104 326" />
+            <path d="M210 202 C274 258 302 310 340 318" />
+          </svg>
+          <article class="mini-card c1">
+            <strong>Box 1</strong>
+            <span>Local context</span>
+          </article>
+          <article class="mini-card c2">
+            <strong>Potential</strong>
+            <span>Weak signal</span>
+          </article>
+          <article class="mini-card c3">
+            <strong>Workspace</strong>
+            <span>Draft relation</span>
+          </article>
+          <article class="mini-card focus-card">
+            <strong>1a2</strong>
+            <span>A thought earns its next link.</span>
+          </article>
         </div>
       </section>
 
@@ -328,172 +579,302 @@
         <aside class="toc">
           <div data-lang-panel="en" class="active">
             <strong>Guide</strong>
-            <a href="#principles">Core principles</a>
+            <a href="#principles">Mental model</a>
             <a href="#workflow">Daily workflow</a>
-            <a href="#numbering">Numbering</a>
-            <a href="#workspace">Workspace use</a>
+            <a href="#numbering">Numbering and boxes</a>
+            <a href="#links">Links and potential</a>
+            <a href="#workspace">Workspace</a>
+            <a href="#graph">Graph and tags</a>
+            <a href="#vault">Vault, files, plugins</a>
             <a href="#copyright">Copyright note</a>
           </div>
           <div data-lang-panel="zh">
             <strong>指南</strong>
-            <a href="#principles-zh">核心原则</a>
+            <a href="#principles-zh">心智模型</a>
             <a href="#workflow-zh">日常流程</a>
-            <a href="#numbering-zh">编号方式</a>
-            <a href="#workspace-zh">Workspace 用法</a>
+            <a href="#numbering-zh">编号与 Box</a>
+            <a href="#links-zh">双链与 Potential</a>
+            <a href="#workspace-zh">Workspace</a>
+            <a href="#graph-zh">Graph 与 Tag</a>
+            <a href="#vault-zh">仓库、文件、插件</a>
             <a href="#copyright-zh">版权说明</a>
           </div>
         </aside>
 
         <div class="content">
           <div data-lang-panel="en" class="active">
-            <article id="principles" class="doc-card">
-              <h2>Core principles</h2>
+            <article id="principles" class="doc-card" data-reveal>
+              <h2>Mental model</h2>
               <p>
-                A Luhmann-style card system is built from atomic notes, stable identifiers, and explicit links.
-                A card should usually hold one idea, written in your own words, with enough context to make sense
-                when it appears outside the source you read.
+                A Luhmann-style card system is not a folder tree. It is a growing network of small notes.
+                Each card should be understandable on its own, but useful because it knows which card comes next.
               </p>
-              <ul>
-                <li><strong>One card, one useful thought.</strong> Keep it small enough to link precisely.</li>
-                <li><strong>Write in your own words.</strong> A card is not a highlight. It is a processed idea.</li>
-                <li><strong>Link for a reason.</strong> Explain why two cards belong near each other.</li>
-                <li><strong>Prefer growth over categories.</strong> Structure should emerge from use.</li>
-              </ul>
+              <div class="principle-grid">
+                <div class="principle">
+                  <strong>Card</strong>
+                  <p>One compact thought, written in your own words, with enough context to survive outside the source.</p>
+                </div>
+                <div class="principle">
+                  <strong>Box</strong>
+                  <p>A top-level numbered index and its descendants. It is a local thinking field, not a folder.</p>
+                </div>
+                <div class="principle">
+                  <strong>Real link</strong>
+                  <p>A durable <code>[[link]]</code> that says two cards should remain mentally adjacent.</p>
+                </div>
+                <div class="principle">
+                  <strong>Potential</strong>
+                  <p>A weak assistant layer for unlinked references and high-confidence similarity.</p>
+                </div>
+              </div>
               <div class="note">
-                Folium keeps the source as Markdown. The database is an index, not the owner of your notes.
+                Folium keeps Markdown as the source of truth. SQLite is a local index for speed, not a replacement for your vault.
               </div>
             </article>
 
-            <article id="workflow" class="doc-card">
+            <article id="workflow" class="doc-card" data-reveal>
               <h2>Daily workflow</h2>
               <ol>
-                <li>Capture an idea as a short card. Do not over-organize it at the moment of capture.</li>
-                <li>Give the card a stable ID and a plain title.</li>
-                <li>Add links to cards that help explain, challenge, extend, or contextualize the idea.</li>
-                <li>Use chain view to read along the thought path.</li>
-                <li>Use workspaces when the relationships are still provisional.</li>
+                <li>Capture one idea as a short card. Do not force a category before the thought is clear.</li>
+                <li>Rewrite it in your own words. A Folium card should be processed thinking, not a highlight dump.</li>
+                <li>Place it near a useful neighbor with a stable Luhmann ID.</li>
+                <li>Add a real link when the relation is durable: continuation, contrast, evidence, consequence, or useful tension.</li>
+                <li>Use a workspace when the relation is still uncertain. Sketch first, commit later.</li>
+                <li>When a chain becomes too deep or too important, promote it into an index card or a new top-level box.</li>
               </ol>
               <div class="example">
                 <div class="id">1a2</div>
                 <h3>Feature selection as a pressure valve</h3>
                 <p>
-                  Dimensionality is not only a computation problem. It changes the shape of what the model can
-                  learn. This card links to <code>1a</code> for feature selection and <code>3b</code> for model capacity.
+                  Dimensionality is not only a computation problem. It changes the shape of what a model can learn.
+                  This card links to <code>1a</code> for feature selection and <code>3b</code> for model capacity.
                 </p>
               </div>
             </article>
 
-            <article id="numbering" class="doc-card">
-              <h2>Numbering</h2>
+            <article id="numbering" class="doc-card" data-reveal>
+              <h2>Numbering and boxes</h2>
               <p>
-                Folium uses Luhmann-style IDs such as <code>1</code>, <code>1a</code>, <code>1a1</code>, and
-                <code>1a1b</code>. The number is not a folder path. It is a position in a growing sequence.
+                Folium uses IDs such as <code>1</code>, <code>1a</code>, <code>1a1</code>, and <code>1a1b</code>.
+                The ID is a position in a thought sequence, not a filesystem path.
               </p>
               <ul>
-                <li><code>1</code> can be a broad index card.</li>
+                <li><code>1</code>, <code>2</code>, <code>3</code> are top-level index boxes.</li>
                 <li><code>1a</code> continues or branches from <code>1</code>.</li>
                 <li><code>1a1</code> develops <code>1a</code> further.</li>
-                <li>Top-level numbered cards are treated as index boxes in Folium.</li>
+                <li>If an ID becomes painfully long, the idea probably deserves promotion into an index.</li>
               </ul>
-            </article>
-
-            <article id="workspace" class="doc-card">
-              <h2>Workspace use</h2>
               <p>
-                A workspace is the place for thinking before commitment. Bring cards together, draw relations,
-                add notes, and create temporary cards. When a relation becomes durable, apply it back to the vault
-                as a real double-link.
-              </p>
-              <p>
-                This separation keeps the vault clean while still allowing messy visual reasoning.
+                This is why Folium treats every top-level numbered card as an index category even when it has no
+                visible children yet. The empty box is still a real place for future structure.
               </p>
             </article>
 
-            <article id="copyright" class="doc-card">
+            <article id="links" class="doc-card" data-reveal>
+              <h2>Links and potential</h2>
+              <p>
+                A real link is explicit. Write it as <code>[[1a2]]</code> or create it through Folium's link controls.
+                In the main box view, cards directly linked to the current box can appear as context, but imported
+                linked cards do not recursively pull in another ring of cards.
+              </p>
+              <p>
+                Potential links are different. They are suggestions based on unlinked mentions and high-confidence
+                local similarity. Potential is intentionally scoped to the focused card so it can help without
+                turning the canvas into noise.
+              </p>
+              <div class="warning note">
+                Treat potential as a question, not a fact. Promote it only when the relation is meaningful enough to become a real link.
+              </div>
+            </article>
+
+            <article id="workspace" class="doc-card" data-reveal>
+              <h2>Workspace</h2>
+              <p>
+                A workspace is a visual thinking surface. It can contain real vault cards, temporary cards,
+                relation labels, relation notes, and workspace-only colors. It is the place for provisional structure.
+              </p>
+              <ul>
+                <li>Real vault card to real vault card: applying writes a normal vault double-link.</li>
+                <li>Temporary card: useful for ideas that are not ready to become Markdown files.</li>
+                <li>Workspace labels and notes: remain as workspace annotations even when the real link is applied.</li>
+                <li>Workspace colors: visual only; they do not change the canonical vault link.</li>
+              </ul>
+              <p>
+                If a vault card is deleted while it is still used in a workspace, Folium can preserve the workspace
+                thought by degrading that node into an unlinked temporary card.
+              </p>
+            </article>
+
+            <article id="graph" class="doc-card" data-reveal>
+              <h2>Graph and tags</h2>
+              <p>
+                Graph view is for the whole vault. It groups cards by top-level boxes, shows real links in a warmer
+                color, keeps box relations quieter, and highlights the first-degree neighborhood around the hovered node.
+              </p>
+              <p>
+                Tags are best used as temporary gatherings. When you want to connect several cards that share a tag,
+                use the tag view to inspect them together and create deliberate links from there.
+              </p>
+            </article>
+
+            <article id="vault" class="doc-card" data-reveal>
+              <h2>Vault, files, plugins</h2>
+              <p>
+                A Folium vault is a folder of Markdown cards plus local app metadata. Attachments should live inside
+                the selected vault, so the vault remains portable. The app can be packaged as a desktop app, while the
+                data model stays plain enough for export and future migration.
+              </p>
+              <p>
+                The plugin SDK is intentionally local and trusted. Plugins can extend workflows such as export,
+                cleanup, and bridge formats, but they should not need private network access for ordinary vault work.
+              </p>
+            </article>
+
+            <article id="copyright" class="doc-card" data-reveal>
               <h2>Copyright note</h2>
               <p>
                 The general idea of a note-taking method, system, or workflow is not protected by copyright in
-                U.S. copyright doctrine. What can be protected is a particular expression of that method, such as
-                a book's wording, diagrams, course material, screenshots, translations, or illustrations.
+                U.S. copyright doctrine. What can be protected is a specific expression of that method: book wording,
+                diagrams, course material, screenshots, translations, illustrations, and similar authored material.
               </p>
               <p>
                 Folium can describe and implement Luhmann-style card principles. It should not copy protected text
                 or diagrams from books, articles, courses, or other apps without permission.
               </p>
               <p>
-                Source: U.S. Copyright Office FAQ and Circular 33 explain that copyright does not protect ideas,
+                Reference: U.S. Copyright Office FAQ and Circular 33 explain that copyright does not protect ideas,
                 procedures, systems, or methods of operation, though it can protect the expression of those things.
               </p>
             </article>
           </div>
 
           <div data-lang-panel="zh">
-            <article id="principles-zh" class="doc-card">
-              <h2>核心原则</h2>
+            <article id="principles-zh" class="doc-card" data-reveal>
+              <h2>心智模型</h2>
               <p>
-                鲁曼式卡片系统由原子化卡片、稳定编号和明确链接组成。一张卡通常只承载一个想法，并且要用自己的语言写出来，
-                让它脱离原始材料之后仍然能够被理解。
+                鲁曼式卡片系统不是文件夹树，而是一张不断生长的小笔记网络。每张卡要能独立理解，
+                但它真正有价值的地方在于它知道下一张有用的卡在哪里。
               </p>
-              <ul>
-                <li><strong>一张卡，一个有用想法。</strong> 卡片越小，链接越精确。</li>
-                <li><strong>用自己的话写。</strong> 卡片不是摘抄，而是被你处理过的思想。</li>
-                <li><strong>带着理由链接。</strong> 不只是连起来，还要知道为什么它们应该靠近。</li>
-                <li><strong>让结构自然生长。</strong> 不要一开始就用分类把思想锁死。</li>
-              </ul>
+              <div class="principle-grid">
+                <div class="principle">
+                  <strong>Card</strong>
+                  <p>一个紧凑的想法，用自己的语言写成，并且脱离原始材料之后仍然能读懂。</p>
+                </div>
+                <div class="principle">
+                  <strong>Box</strong>
+                  <p>顶层数字索引和它的后代。它是一个局部思考场，不是普通文件夹。</p>
+                </div>
+                <div class="principle">
+                  <strong>真实双链</strong>
+                  <p>稳定的 <code>[[link]]</code>，表示两张卡应该长期保持思维上的相邻。</p>
+                </div>
+                <div class="principle">
+                  <strong>Potential</strong>
+                  <p>弱辅助层，用来提示未链接引用和高置信度的内容相似。</p>
+                </div>
+              </div>
               <div class="note">
-                Folium 的源文件是 Markdown。SQLite 只是索引，不是你的笔记本体。
+                Folium 以 Markdown 作为你的笔记本体。SQLite 只是为了速度存在的本地索引，不替代仓库。
               </div>
             </article>
 
-            <article id="workflow-zh" class="doc-card">
+            <article id="workflow-zh" class="doc-card" data-reveal>
               <h2>日常流程</h2>
               <ol>
-                <li>先把想法写成一张短卡，不要在捕捉阶段过度整理。</li>
-                <li>给卡片一个稳定编号和清晰标题。</li>
-                <li>把它链接到能够解释、反驳、延伸或补充语境的卡片。</li>
-                <li>用链式视图沿着思路阅读。</li>
-                <li>关系还不确定时，先放进 workspace 里实验。</li>
+                <li>把一个想法写成一张短卡，不要在想法还没清楚时强行分类。</li>
+                <li>用自己的话重写。Folium 的卡片应该是处理过的思考，而不是摘抄堆积。</li>
+                <li>给它一个稳定编号，把它放到一个有意义的邻居旁边。</li>
+                <li>当关系足够稳定时创建真实双链：延续、对照、证据、结果，或有价值的张力。</li>
+                <li>关系还不确定时先用 workspace。先画草稿，再提交到仓库。</li>
+                <li>当一条链变得太深或太重要，就把它提权成索引卡，或者升级成新的顶层 box。</li>
               </ol>
               <div class="example">
                 <div class="id">1a2</div>
                 <h3>特征选择作为压力阀</h3>
                 <p>
-                  维度问题不只是计算问题，它会改变模型能够学习的形状。这张卡可以链接到 <code>1a</code> 的特征选择，
-                  也可以链接到 <code>3b</code> 的模型容量。
+                  维度问题不只是计算问题，它会改变模型能够学习的形状。这张卡可以链接到 <code>1a</code>
+                  的特征选择，也可以链接到 <code>3b</code> 的模型容量。
                 </p>
               </div>
             </article>
 
-            <article id="numbering-zh" class="doc-card">
-              <h2>编号方式</h2>
+            <article id="numbering-zh" class="doc-card" data-reveal>
+              <h2>编号与 Box</h2>
               <p>
                 Folium 使用类似 <code>1</code>、<code>1a</code>、<code>1a1</code>、<code>1a1b</code> 的编号。
-                编号不是文件夹路径，而是思想序列里继续生长的位置。
+                编号不是文件系统路径，而是思想序列里继续生长的位置。
               </p>
               <ul>
-                <li><code>1</code> 可以是一张大的索引卡。</li>
+                <li><code>1</code>、<code>2</code>、<code>3</code> 是顶层 index box。</li>
                 <li><code>1a</code> 从 <code>1</code> 继续或分叉。</li>
-                <li><code>1a1</code> 进一步展开 <code>1a</code>。</li>
-                <li>Folium 会把顶层数字卡默认看成 index box。</li>
+                <li><code>1a1</code> 继续展开 <code>1a</code>。</li>
+                <li>如果编号长到难受，说明它可能应该被提权成索引。</li>
               </ul>
-            </article>
-
-            <article id="workspace-zh" class="doc-card">
-              <h2>Workspace 用法</h2>
               <p>
-                Workspace 是思想还没有定型之前的地方。你可以把卡片拖进来，画关系，加备注，创建临时卡。
-                当某条关系真的值得保留时，再 apply 回 vault，变成真正的双链。
-              </p>
-              <p>
-                这样可以让主仓库保持干净，同时保留视觉化、临时化、实验性的思考过程。
+                所以 Folium 会把每张顶层数字卡都视为索引类别。哪怕暂时没有内容，这个空 box 也是真实存在的位置。
               </p>
             </article>
 
-            <article id="copyright-zh" class="doc-card">
+            <article id="links-zh" class="doc-card" data-reveal>
+              <h2>双链与 Potential</h2>
+              <p>
+                真实双链是明确的关系。你可以写 <code>[[1a2]]</code>，也可以用 Folium 的 link 控件创建。
+                在主 box 视图中，和当前 box 有直接关系的外部双链卡可以作为语境出现，但这些被引入的外部卡不会继续引入下一圈卡。
+              </p>
+              <p>
+                Potential 是另一回事。它是基于未链接引用和高置信度本地相似度的建议。Potential 只围绕当前焦点卡显示，
+                这样它可以辅助思考，而不会把画布变成噪音。
+              </p>
+              <div class="warning note">
+                把 potential 当成问题，而不是事实。只有当这条关系真的值得保留时，再把它提升成真实双链。
+              </div>
+            </article>
+
+            <article id="workspace-zh" class="doc-card" data-reveal>
+              <h2>Workspace</h2>
+              <p>
+                Workspace 是视觉化思考面板。它可以容纳真实仓库卡、临时卡、关系标签、关系备注，以及只在 workspace 生效的颜色。
+                它适合承载还没有定型的结构。
+              </p>
+              <ul>
+                <li>真实卡到真实卡：apply 后写入普通仓库双链。</li>
+                <li>临时卡：用于还不值得变成 Markdown 文件的想法。</li>
+                <li>Workspace 的 label 和 note：即使真实双链被 apply，也作为 workspace 注释保留。</li>
+                <li>Workspace 的颜色：只负责视觉表达，不改变仓库里的标准双链。</li>
+              </ul>
+              <p>
+                如果一张真实仓库卡被删除，但它还在 workspace 中承担思考位置，Folium 可以把它降级成无链接临时卡，
+                尽量保留这段视觉推理。
+              </p>
+            </article>
+
+            <article id="graph-zh" class="doc-card" data-reveal>
+              <h2>Graph 与 Tag</h2>
+              <p>
+                Graph view 面向整个仓库。它按顶层 box 聚合卡片，用更暖的颜色显示真实双链，让 box 关系保持更安静，
+                并在鼠标悬停时突出一层邻居关系。
+              </p>
+              <p>
+                Tag 更适合做临时聚合。当你想把拥有同一个 tag 的卡连起来时，可以在 tag 视图里集中检查，再创建真正有意义的双链。
+              </p>
+            </article>
+
+            <article id="vault-zh" class="doc-card" data-reveal>
+              <h2>仓库、文件、插件</h2>
+              <p>
+                Folium 仓库是一组 Markdown 卡片，加上一些本地应用元数据。附件应该放在被选择的仓库内部，
+                这样整个仓库才能保持可迁移。应用可以打包成桌面端，但数据模型仍然应该足够朴素，方便导出和迁移。
+              </p>
+              <p>
+                插件 SDK 目前定位为本地可信插件。插件可以扩展导出、清理、格式桥接等流程，但普通仓库操作不应该依赖私有网络权限。
+              </p>
+            </article>
+
+            <article id="copyright-zh" class="doc-card" data-reveal>
               <h2>版权说明</h2>
               <p>
                 一般意义上的笔记方法、系统、流程，在美国版权法语境下不受版权保护。受保护的是这种方法的具体表达，
-                例如某本书的原文、图示、课程材料、截图、翻译或插画。
+                比如某本书的原文、图示、课程材料、截图、翻译、插画等。
               </p>
               <p>
                 因此 Folium 可以介绍并实现鲁曼式卡片原则，但不应该未经许可复制书籍、文章、课程或其他软件中的受保护文本和图示。
@@ -521,6 +902,16 @@
         button.addEventListener("click", () => setLanguage(button.dataset.lang));
       });
       setLanguage(localStorage.getItem("folium-doc-language") || "en");
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) entry.target.classList.add("visible");
+          }
+        },
+        { threshold: 0.12 }
+      );
+      document.querySelectorAll("[data-reveal]").forEach((el) => observer.observe(el));
     </script>
   </body>
 </html>

@@ -26,13 +26,6 @@ interface UIState {
   /** 左 sidebar 当前显示哪个 tab（受 ribbon 图标控制） */
   sidebarTab: SidebarTab;
   viewMode: ViewMode;
-  showPotential: boolean;
-  /** 是否显示绿色的 tag 共现边/节点 */
-  showTagRelated: boolean;
-  /** 是否显示紫色的手动 [[link]] cross-flank 边/节点 */
-  showCrossLinks: boolean;
-  /** 是否显示工作区临时卡（temp ghost）作为 potential 叠加 */
-  showWorkspaceLinks: boolean;
   /** Cmd+K 快速跳转面板开/关 */
   quickSwitcherOpen: boolean;
   /** 设置弹窗开/关（Obsidian 风：模态而非 tab） */
@@ -58,10 +51,6 @@ interface UIState {
   toggleLeftSidebar: () => void;
   setSidebarTab: (t: SidebarTab) => void;
   setViewMode: (m: ViewMode) => void;
-  setShowPotential: (b: boolean) => void;
-  setShowTagRelated: (b: boolean) => void;
-  setShowCrossLinks: (b: boolean) => void;
-  setShowWorkspaceLinks: (b: boolean) => void;
   setQuickSwitcherOpen: (b: boolean) => void;
   setSettingsOpen: (b: boolean) => void;
   setNewCardOpen: (b: boolean) => void;
@@ -85,10 +74,6 @@ export const useUIStore = create<UIState>()(
       leftSidebarCollapsed: false,
       sidebarTab: 'vault',
       viewMode: 'chain',
-      showPotential: true,
-      showTagRelated: true,
-      showCrossLinks: true,
-      showWorkspaceLinks: true,
       quickSwitcherOpen: false,
       settingsOpen: false,
       newCardOpen: false,
@@ -115,10 +100,6 @@ export const useUIStore = create<UIState>()(
       toggleLeftSidebar: () => set((s) => ({ leftSidebarCollapsed: !s.leftSidebarCollapsed })),
       setSidebarTab: (t) => set({ sidebarTab: t, leftSidebarCollapsed: false }),
       setViewMode: (m) => set({ viewMode: m }),
-      setShowPotential: (b) => set({ showPotential: b }),
-      setShowTagRelated: (b) => set({ showTagRelated: b }),
-      setShowCrossLinks: (b) => set({ showCrossLinks: b }),
-      setShowWorkspaceLinks: (b) => set({ showWorkspaceLinks: b }),
       setQuickSwitcherOpen: (b) => set({ quickSwitcherOpen: b }),
       setSettingsOpen: (b) => set({ settingsOpen: b }),
       setNewCardOpen: (b) => set({ newCardOpen: b }),
@@ -149,10 +130,6 @@ export const useUIStore = create<UIState>()(
         workspacePanelPosition: state.workspacePanelPosition,
         workspacePanelSize: state.workspacePanelSize,
         workspacePanelPinned: state.workspacePanelPinned,
-        showPotential: state.showPotential,
-        showTagRelated: state.showTagRelated,
-        showCrossLinks: state.showCrossLinks,
-        showWorkspaceLinks: state.showWorkspaceLinks,
         theme: state.theme,
         shortcutOverrides: state.shortcutOverrides,
         workspaceRelationFilters: state.workspaceRelationFilters,

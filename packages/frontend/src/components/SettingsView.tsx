@@ -66,7 +66,7 @@ export function SettingsView() {
       </Section>
 
       <Section title="General">
-        <Field label="Vault path" hint="Configured via the VAULT_PATH env var when the backend starts">
+        <Field label="Vault structure" hint="The selected folder is the vault root. Cards live as Markdown files in it; attachments live in attachments/; app data lives in .zettel/.">
           <code className="text-[12px] bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded">{`(env: VAULT_PATH)`}</code>
         </Field>
       </Section>

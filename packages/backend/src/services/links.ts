@@ -134,7 +134,7 @@ export function getPotentialLinks(
     .all(card.luhmannId) as { luhmann_id: string; content_md: string }[];
   for (const row of allCardsWithContent) {
     if (excluded.has(row.luhmann_id)) continue;
-    const stripped = stripWikilinks(row.content_md);
+    const stripped = stripPotentialNoise(row.content_md);
     let total = 0;
     for (const kw of myKeywords) total += countUnlinkedHits(stripped, kw);
     total += countUnlinkedHits(stripped, card.luhmannId);
@@ -144,7 +144,7 @@ export function getPotentialLinks(
   }
 
   // ── 信号 2: outgoing —— "我"的正文里以纯文本形式提到了别人？ ──
-  const myStripped = stripWikilinks(card.contentMd);
+  const myStripped = stripPotentialNoise(card.contentMd);
   const allOthers = db
     .prepare(`SELECT luhmann_id, title FROM cards WHERE luhmann_id != ?`)
     .all(card.luhmannId) as { luhmann_id: string; title: string }[];
@@ -206,6 +206,17 @@ export function stripWikilinks(s: string): string {
   return s.replace(/\[\[[^\]]*\]\]/g, '');
 }
 
+/** Remove markup that should not count as semantic prose for potential links. */
+export function stripPotentialNoise(s: string): string {
+  return stripWikilinks(s)
+    // Image alt text and attachment paths are often timestamps / generated filenames.
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    // Regular markdown links: keep neither label nor URL for potential matching.
+    .replace(/\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\battachments\/\S+/gi, ' ')
+    .replace(/\b\S+\.(?:png|jpe?g|gif|webp|svg|pdf|zip|md|txt)\b/gi, ' ');
+}
+
 /**
  * 把一个标题切成几个可独立引用的关键词。
  *   "主动学习与查询策略" → ["主动学习与查询策略", "主动学习", "查询策略"]
@@ -227,8 +238,17 @@ export function titleKeywords(title: string): string[] {
     // 分隔符：替身 + CJK 标点 + 英文标点 + CJK 单字连接词（不切空白）
     .split(new RegExp(`[${SEP}、，。：；！？,;:!?\\/\\\\|·→\\-—与和及或跟同]+`))
     .map((p) => p.trim())
-    .filter((p) => p.length >= 2);
-  return [...new Set([title, ...parts])].filter((p) => p.length >= 2);
+    .filter(isUsefulPotentialKeyword);
+  return [...new Set([title, ...parts])].filter(isUsefulPotentialKeyword);
+}
+
+function isUsefulPotentialKeyword(s: string): boolean {
+  const t = s.trim();
+  if (t.length < 2) return false;
+  if (/^\d+$/.test(t)) return false;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return false;
+  if (/^(daily|journal|note|card|image|attachment)$/i.test(t)) return false;
+  return true;
 }
 
 /**
@@ -262,6 +282,6 @@ function sanitizeFtsQuery(s: string): string {
   const tokens = s
     .replace(/["()*:^]/g, ' ')
     .split(/\s+/)
-    .filter((t) => t.length >= 2);
+    .filter(isUsefulPotentialKeyword);
   return tokens.map((t) => `"${t}"`).join(' OR ');
 }

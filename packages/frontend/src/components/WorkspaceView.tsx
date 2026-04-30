@@ -24,12 +24,13 @@ import { RenamableName } from './RenamableName';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronDown,
+  Download,
   FilePlus,
   Layers,
+  Link2,
   StickyNote,
   Undo2,
   X,
-  ZoomIn,
 } from 'lucide-react';
 import { randomUUID } from '../lib/uuid';
 import { api, type Workspace, type WorkspaceEdge, type WorkspaceNode } from '../lib/api';
@@ -38,6 +39,7 @@ import { CardNode } from './CardNode';
 import { WorkspaceNoteNode } from './WorkspaceNoteNode';
 import { WorkspaceTempNode } from './WorkspaceTempNode';
 import { useUIStore, type WorkspaceRelationFilter } from '../store/uiStore';
+import { exportReactFlowCanvasAsPng } from '../lib/exportCanvasImage';
 
 interface Props {
   workspaceId: string;
@@ -220,6 +222,10 @@ function WorkspaceInner({ workspaceId }: Props) {
               savedH: n.h,
               onDeleteOverride: () => handlers.deleteNode(n.id),
               onResizeOverride: (w: number, h: number) => handlers.updateNode(n.id, { w, h } as Partial<WorkspaceNode>),
+              onWorkspaceNodeLinkDrop: (sourceNodeId: string) => {
+                if (sourceNodeId === n.id) return;
+                handlers.addEdgeBetween(sourceNodeId, n.id);
+              },
               // 拖卡到本卡 → 创建 workspace edge（不写 vault）
               // dragged 是 luhmann id，需要查找 ws 里对应的 node id
               onCardLinkDrop: (sourceLuhmannId: string) => {
@@ -260,12 +266,17 @@ function WorkspaceInner({ workspaceId }: Props) {
           data: {
             title: n.title,
             content: n.content,
+            workspaceNodeId: n.id,
             onChange: (patch: { title?: string; content?: string }) => handlers.updateNode(n.id, patch),
             onDelete: () => handlers.deleteNode(n.id),
             onPromoteToVault: () => handlers.promoteTempToVault(n.id),
             savedW: n.w,
             savedH: n.h,
             onResize: (w: number, h: number) => handlers.updateNode(n.id, { w, h } as Partial<WorkspaceNode>),
+            onWorkspaceNodeLinkDrop: (sourceNodeId: string) => {
+              if (sourceNodeId === n.id) return;
+              handlers.addEdgeBetween(sourceNodeId, n.id);
+            },
             // 拖一张实体卡 drop 到本 temp → workspace edge
             onCardLinkDrop: (sourceLuhmannId: string) => {
               const sourceNode = ws.nodes.find(
@@ -310,9 +321,9 @@ function WorkspaceInner({ workspaceId }: Props) {
             bothCards,
             sourceKind,
             targetKind,
-            label: vaultLikeEdge ? undefined : e.label,
+            label: e.label,
             color: vaultLikeEdge ? undefined : e.color,
-            note: vaultLikeEdge ? undefined : e.note,
+            note: e.note,
           } as unknown as Record<string, unknown>,
           style: styleBase,
         };
@@ -573,6 +584,18 @@ function WorkspaceInner({ workspaceId }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const reactFlow = useReactFlow();
 
+  const exportImage = useCallback(async () => {
+    try {
+      await exportReactFlowCanvasAsPng({
+        flowRoot: containerRef.current,
+        nodes,
+        fileName: `folium-workspace-${wsQ.data?.name ?? workspaceId}`,
+      });
+    } catch (err) {
+      dialog.alert((err as Error).message, { title: 'Export image failed' });
+    }
+  }, [nodes, workspaceId, wsQ.data?.name]);
+
   // —— 拖卡入工作区
   const [dragHover, setDragHover] = useState(false);
   const onDragOver = useCallback((e: React.DragEvent) => {
@@ -721,7 +744,7 @@ function WorkspaceInner({ workspaceId }: Props) {
       {/* Empty-state hint */}
       {wsQ.data.nodes.length === 0 && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 text-center text-gray-400 text-sm pointer-events-none">
-          Click "Note" to add a sticky · drop a vault card here · connect freely<br/>
+          Click "Note" to add a sticky · drop a vault card here · link cards freely<br/>
           <span className="text-[11px]">Then "Apply" an edge to write it back to the vault as a real [[link]]</span>
         </div>
       )}
@@ -753,11 +776,18 @@ function WorkspaceInner({ workspaceId }: Props) {
         proOptions={{ hideAttribution: true }}
       >
         <Background id={`ws-bg-${workspaceId}`} gap={24} size={1.2} color="rgba(116,120,120,0.20)" />
-        <Controls position="bottom-right" showInteractive={false}>
-          <ZoomIn size={12} />
-        </Controls>
+        <Controls position="bottom-right" showInteractive={false} />
         <MiniMap pannable zoomable position="top-right" maskColor="rgba(83,98,83,0.07)" />
       </ReactFlow>
+      <button
+        type="button"
+        className="absolute bottom-[116px] right-4 z-20 flex h-[31px] w-[31px] items-center justify-center rounded-full border border-paperEdge bg-paper/85 text-muted shadow-paper backdrop-blur transition-colors hover:bg-accentSoft hover:text-ink hover:border-accent/35"
+        title="Export workspace as PNG"
+        aria-label="Export workspace as PNG"
+        onClick={() => void exportImage()}
+      >
+        <Download size={13} strokeWidth={2.4} />
+      </button>
     </div>
   );
 }
@@ -936,7 +966,7 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
       cls: 'border-gray-300 bg-white text-gray-600 hover:border-gray-400',
     },
   }[relationKind];
-  const metadataEditable = !(d?.applied || d?.vaultLink || d?.vaultStructure);
+  const metadataEditable = !(d?.vaultLink || d?.vaultStructure);
   const invalidateCardData = () => {
     qc.invalidateQueries({ queryKey: ['workspace', d!.workspaceId] });
     qc.invalidateQueries({ queryKey: ['cards'] });
@@ -1036,9 +1066,9 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
               setMetaOpen((open) => !open);
             }}
             className={`max-w-36 truncate text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-sm transition-colors ${relationBadge.cls}`}
-            title={metadataEditable ? d?.note || 'Edit workspace link' : 'Vault link'}
+            title={d?.note || (metadataEditable ? 'Edit workspace link' : 'Vault link')}
           >
-            {metadataEditable && d?.label ? d.label : relationBadge.label}
+            {d?.label || relationBadge.label}
           </button>
           {metaOpen && d && (
             <div
@@ -1099,7 +1129,13 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
                 </div>
               ) : (
                 <div className="p-3 text-xs text-gray-500 dark:text-[#a5adcb]">
-                  This relation is already represented by the vault. Workspace-only label, note, and color are not applied to real vault links.
+                  This relation is already represented by the vault. Workspace label and note are shown here, but color is not applied to real vault links.
+                  {(d.label || d.note) && (
+                    <div className="mt-2 rounded border border-paperEdge bg-surfaceAlt/70 p-2">
+                      {d.label && <div className="font-bold text-ink dark:text-[#cad3f5]">{d.label}</div>}
+                      {d.note && <div className="mt-1 whitespace-pre-wrap">{d.note}</div>}
+                    </div>
+                  )}
                 </div>
               )}
               <div className="flex items-center gap-2 border-t border-gray-100 px-3 py-2 dark:border-[#363a4f]">
@@ -1112,9 +1148,10 @@ function ApplyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, tar
                       });
                       if (ok) applyMut.mutate();
                     }}
-                    className="rounded bg-accent px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-accent/90"
+                    className="flex items-center gap-1 rounded-full border zk-subtle-button px-2.5 py-1.5 text-[11px] font-bold shadow-sm hover:text-accent"
                   >
-                    Apply
+                    <Link2 size={11} />
+                    Link
                   </button>
                 )}
                 {bothRealCards && d.applied && !d.vaultLink && !d.vaultStructure && (

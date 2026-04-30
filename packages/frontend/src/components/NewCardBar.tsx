@@ -38,6 +38,45 @@ function deriveTitle(content: string): string {
     .slice(0, 80);
 }
 
+function deriveParentId(luhmannId: string): string | null {
+  if (luhmannId.length <= 1) return null;
+  const lastChar = luhmannId.at(-1)!;
+  const isLastDigit = /\d/.test(lastChar);
+  for (let i = luhmannId.length - 2; i >= 0; i--) {
+    const ch = luhmannId[i]!;
+    const isDigit = /\d/.test(ch);
+    if (isDigit !== isLastDigit) return luhmannId.slice(0, i + 1);
+  }
+  return null;
+}
+
+function rootId(luhmannId: string): string {
+  let cur = luhmannId;
+  for (;;) {
+    const parent = deriveParentId(cur);
+    if (!parent) return cur;
+    cur = parent;
+  }
+}
+
+function isInBox(luhmannId: string, boxId: string): boolean {
+  let cur: string | null = luhmannId;
+  while (cur) {
+    if (cur === boxId) return true;
+    cur = deriveParentId(cur);
+  }
+  return false;
+}
+
+function nearestExistingAncestorOrSelf(luhmannId: string, existing: Set<string>): string {
+  let cur: string | null = luhmannId;
+  while (cur) {
+    if (cur === luhmannId || existing.has(cur)) return cur;
+    cur = deriveParentId(cur);
+  }
+  return luhmannId;
+}
+
 /**
  * 推算"父卡片下一个未占用的子卡 id"。
  *   1a (末尾 alpha) → 1a1, 1a2, 1a3...
@@ -86,9 +125,10 @@ function nextTopLevelId(existing: Set<string>): string {
 interface NewCardBarProps {
   /** 创建成功后回调（一般用于关闭包它的 modal） */
   onCreated?: () => void;
+  variant?: 'inline' | 'modal';
 }
 
-export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
+export function NewCardBar({ onCreated, variant = 'inline' }: NewCardBarProps = {}) {
   const focusedId = useUIStore((s) => s.focusedCardId);
   const focusedBoxId = useUIStore((s) => s.focusedBoxId);
   const qc = useQueryClient();
@@ -171,19 +211,26 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
   const mutation = useMutation({
     mutationFn: createCard,
     onSuccess: ({ luhmannId: newId }) => {
+      // 新卡只有确实属于当前 box 的 Folgezettel 子树时才留在当前 box。
+      // 例如：在 2 里手动创建 3 或 3a，都要先切到 3/3a 的上下文，
+      // 再刷新 cards，避免新卡在旧 box 里闪现一帧。
+      const tabTitle = title.trim() || newId;
+      const existing = new Set((cardsQ.data?.cards ?? []).map((c) => c.luhmannId));
+      existing.add(newId);
+      const nextBoxId =
+        focusedBoxId && isInBox(newId, focusedBoxId)
+          ? focusedBoxId
+          : nearestExistingAncestorOrSelf(newId, existing);
+      usePaneStore.getState().openTab({
+        kind: 'card',
+        title: tabTitle,
+        cardBoxId: nextBoxId,
+        cardFocusId: newId,
+      });
       qc.invalidateQueries({ queryKey: ['cards'] });
       qc.invalidateQueries({ queryKey: ['hubs'] });
       qc.invalidateQueries({ queryKey: ['tags'] });
       qc.invalidateQueries({ queryKey: ['indexes'] });
-      // 新卡总是 ATOMIC（无子卡），所以保留当前 box，只换 focus。
-      // 等用户在它下面再建子卡时，它自动升级成 INDEX（derived）。
-      const tabTitle = title.trim() || newId;
-      usePaneStore.getState().openTab({
-        kind: 'card',
-        title: tabTitle,
-        cardBoxId: focusedBoxId ?? newId,
-        cardFocusId: newId,
-      });
       setLuhmannId('');
       setTitle('');
       setContent('');
@@ -289,6 +336,7 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
   };
 
   const canSave = luhmannId.trim() && content.trim() && !mutation.isPending;
+  const isModal = variant === 'modal';
   // 推算依据的人话提示，给底部 id 标签当 tooltip
   const idHint = focusedId
     ? `Auto-suggested as a child of ${focusedId}. Click to override.`
@@ -315,12 +363,12 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
   );
 
   return (
-    <div className="px-2 pt-2 pb-2 shrink-0">
+    <div className={`${isModal ? 'px-5 pt-4 pb-5' : 'px-2 pt-2 pb-2'} shrink-0`}>
       <div
-        className={`relative w-full bg-paper rounded-2xl transition-all duration-200
+        className={`relative w-full zk-paper-surface rounded-lg transition-all duration-200 overflow-hidden
           ${focused
-            ? 'shadow-paper ring-1 ring-accent/25 border border-accent/30'
-            : 'shadow-sm border border-paperEdge hover:border-accent/20 hover:shadow-paper'}
+            ? 'ring-1 ring-accent/25 border border-accent/35'
+            : 'border border-paperEdge hover:border-accent/25'}
           ${dragOver ? 'ring-2 ring-accent border-accent bg-accentSoft/40' : ''}`}
         onDragOver={(e) => {
           e.preventDefault();
@@ -331,24 +379,32 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
       >
         {/* Left accent bar */}
         <div className="absolute left-0 top-4 bottom-4 w-[3px] bg-accent rounded-full" />
+        <div className="absolute inset-x-0 top-0 h-px bg-white/70 dark:bg-white/10 pointer-events-none" />
 
         {/* Header label */}
-        <div className="flex items-center justify-between pl-7 pr-3 pt-3.5 pb-1">
-          <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-accent/80">
+        <div className={`flex items-center justify-between pl-7 pr-4 ${isModal ? 'pt-4 pb-2' : 'pt-3.5 pb-1'}`}>
+          <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-accent">
             <PenLine size={11} />
-            <span>New card</span>
+            <span>{isModal ? 'Draft card' : 'New card'}</span>
+          </div>
+          <div className="hidden sm:flex items-center gap-2 text-[10px] text-muted">
+            <span className="font-mono">{luhmannId || suggestedId}</span>
+            <span className="h-1 w-1 rounded-full bg-paperEdge" />
+            <span>{focusedId ? `child of ${focusedId}` : 'top level'}</span>
           </div>
         </div>
 
         {/* Main editor */}
-        <div className="pl-7 pr-5 pb-3 relative">
+        <div className={`pl-7 pr-5 ${isModal ? 'pb-5' : 'pb-3'} relative`}>
           {/* 显式标题输入；空时 submit 会自动从正文首行推 */}
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onFocus={() => setFocused(true)}
             placeholder="Title (optional — derived from first line if blank)"
-            className="w-full bg-transparent border-0 outline-none text-[16px] font-bold text-ink placeholder:text-gray-300 placeholder:font-normal py-1"
+            className={`w-full bg-transparent border-0 outline-none font-display font-semibold text-ink placeholder:text-gray-300 dark:placeholder:text-[#6e738d] placeholder:font-normal py-1 ${
+              isModal ? 'text-[24px] leading-tight' : 'text-[17px] leading-tight'
+            }`}
           />
           <textarea
             ref={taRef}
@@ -359,15 +415,17 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
             onFocus={() => setFocused(true)}
             onBlur={() => setTimeout(() => setFocused(false), 150)}
             placeholder="What's on your mind?"
-            rows={3}
-            className="w-full bg-transparent border-0 outline-none resize-none text-[14px] text-ink placeholder:text-gray-300 leading-[1.8]"
+            rows={isModal ? 7 : 3}
+            className={`w-full bg-transparent border-0 outline-none resize-none text-ink placeholder:text-gray-300 dark:placeholder:text-[#6e738d] leading-[1.75] ${
+              isModal ? 'text-[15px] mt-2' : 'text-[14px]'
+            }`}
             style={{ fontFamily: 'var(--font-body), Inter, system-ui, sans-serif' }}
           />
 
           {/* Tag autocomplete popover */}
           {tagSuggest && tagCandidates.length > 0 && (
-            <div className="absolute left-7 right-5 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-10">
-              <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 px-3 py-1.5 bg-gray-50 border-b border-gray-100">
+            <div className="absolute left-7 right-5 mt-1 zk-paper-surface border border-paperEdge rounded-lg shadow-paper overflow-hidden z-10">
+              <div className="text-[9px] font-black uppercase tracking-widest text-muted px-3 py-1.5 bg-paperWarm/70 border-b border-paperEdge">
                 Tag · {tagCandidates.length}
               </div>
               {tagCandidates.map((t, i) => (
@@ -378,14 +436,14 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
                     acceptTagSuggestion(t.name);
                   }}
                   className={`w-full text-left px-3 py-1.5 text-[12px] flex items-center justify-between transition-colors ${
-                    i === tagSuggestIndex ? 'bg-accentSoft text-accent' : 'hover:bg-gray-50'
+                    i === tagSuggestIndex ? 'bg-accentSoft text-accent' : 'hover:bg-surfaceAlt text-ink'
                   }`}
                 >
                   <span className="font-bold">#{t.name}</span>
-                  <span className="text-[10px] text-gray-400">{t.count} cards</span>
+                  <span className="text-[10px] text-muted">{t.count} cards</span>
                 </button>
               ))}
-              <div className="text-[9px] text-gray-400 px-3 py-1 bg-gray-50 border-t border-gray-100">
+              <div className="text-[9px] text-muted px-3 py-1 bg-paperWarm/70 border-t border-paperEdge">
                 ↑↓ navigate · Tab/Enter accept · Esc dismiss
               </div>
             </div>
@@ -393,7 +451,7 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
         </div>
 
         {/* Bottom toolbar */}
-        <div className="border-t border-paperEdge px-4 py-2 flex items-center gap-1 bg-gradient-to-b from-transparent to-paperEdge/10 rounded-b-2xl">
+        <div className="border-t border-paperEdge px-4 py-2 flex items-center gap-1 bg-gradient-to-b from-transparent to-paperEdge/10">
           {/* "Save as: 1aa" 标签——明示自动推算的 id，点击可手改 */}
           {editingId ? (
             <input
@@ -420,7 +478,7 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
                 }
               }}
               autoFocus
-              className="w-24 ml-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-white border border-accent/40 text-ink outline-none"
+              className="w-24 ml-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-paper border border-accent/40 text-ink outline-none"
               title={idHint}
             />
           ) : (
@@ -431,30 +489,30 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
                   idInputRef.current?.select();
                 });
               }}
-              className="ml-1 flex items-center gap-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 hover:bg-accentSoft hover:text-accent transition-colors"
+              className="ml-1 flex items-center gap-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-paperWarm border border-paperEdge/70 text-muted hover:bg-accentSoft hover:text-accent hover:border-accent/30 transition-colors"
               title={idHint}
             >
-              <span className="text-gray-400 font-sans uppercase tracking-widest text-[8px]">id</span>
+              <span className="text-muted font-sans uppercase tracking-widest text-[8px]">id</span>
               <span>{luhmannId || suggestedId}</span>
               <Pencil size={9} className="opacity-50" />
             </button>
           )}
 
           {ancestorChain.length > 1 && (
-            <span className="text-[10px] text-gray-400 ml-2 flex items-center gap-1 truncate">
+            <span className="text-[10px] text-muted ml-2 flex items-center gap-1 truncate">
               <span className="font-bold uppercase tracking-widest text-[8px]">path</span>
               {ancestorChain.map((id, i) => {
                 const isLast = i === ancestorChain.length - 1;
                 const exists = existingIds.has(id);
                 return (
                   <span key={id} className="flex items-center gap-1">
-                    {i > 0 && <span className="text-gray-300">›</span>}
+                    {i > 0 && <span className="text-paperEdge">›</span>}
                     <span
                       className={`font-mono ${
                         isLast
-                          ? 'font-bold text-accent'
-                          : exists
-                            ? 'text-gray-600'
+                            ? 'font-bold text-accent'
+                            : exists
+                            ? 'text-muted'
                             : 'text-red-400 line-through'
                       }`}
                       title={exists ? `${id} exists` : `${id} doesn't exist yet`}
@@ -466,7 +524,7 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
               })}
             </span>
           )}
-          <span className="text-[10px] text-gray-400 ml-2 hidden md:inline">
+          <span className="text-[10px] text-muted ml-2 hidden md:inline">
             #tag · [[1a]] · drop image
           </span>
 
@@ -488,20 +546,20 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="p-1.5 rounded-md text-gray-400 hover:text-accent hover:bg-accentSoft transition-colors"
+            className="p-1.5 rounded-md text-muted hover:text-accent hover:bg-accentSoft transition-colors"
             title="Insert image"
           >
             <Image size={14} />
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="p-1.5 rounded-md text-gray-400 hover:text-accent hover:bg-accentSoft transition-colors"
+            className="p-1.5 rounded-md text-muted hover:text-accent hover:bg-accentSoft transition-colors"
             title="Insert attachment"
           >
             <Paperclip size={14} />
           </button>
 
-          {uploading && <span className="text-[10px] text-gray-400 italic ml-1">Uploading…</span>}
+          {uploading && <span className="text-[10px] text-muted italic ml-1">Uploading…</span>}
           {mutation.isError && (
             <span className="text-[10px] text-red-500/80 ml-1 max-w-[180px] truncate">
               {(mutation.error as Error).message}
@@ -515,7 +573,7 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
             className={`ml-1 flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[11px] font-bold tracking-wide transition-all ${
               canSave
                 ? 'bg-accent text-white hover:bg-accent/90 shadow-md hover:shadow-lg active:scale-95'
-                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-paperWarm border border-paperEdge text-muted cursor-not-allowed'
             }`}
           >
             {mutation.isPending ? 'Saving…' : 'Save'}
@@ -524,8 +582,8 @@ export function NewCardBar({ onCreated }: NewCardBarProps = {}) {
         </div>
 
         {dragOver && (
-          <div className="absolute inset-0 pointer-events-none flex items-center justify-center rounded-2xl">
-            <div className="text-accent font-bold text-sm bg-white/80 px-4 py-2 rounded-full shadow-lg">
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center rounded-lg bg-accentSoft/25 backdrop-blur-[1px]">
+            <div className="text-accent font-bold text-sm bg-paper/90 border border-accent/25 px-4 py-2 rounded-full shadow-paper">
               Drop to attach
             </div>
           </div>

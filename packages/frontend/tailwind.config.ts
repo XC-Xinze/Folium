@@ -13,8 +13,10 @@ export default {
         link: '#385f73',
         surface: '#f8f6f1',
         surfaceAlt: '#efebe4',
+        muted: '#747878',
         // 输入区专用的纸面色（仅 NewCardBar 使用）
         paper: '#fffdf8',
+        paperWarm: '#fbf8f0',
         paperEdge: '#d8d3ca',
         leaf: '#6b8e23',
       },

@@ -8,6 +8,8 @@ export const CARD_DRAG_MIME = 'application/x-zettel-card';
 export interface CardDragPayload {
   luhmannId: string;
   title?: string;
+  workspaceNodeId?: string;
+  workspaceNodeKind?: 'card' | 'temp';
 }
 
 export function setCardDragData(e: React.DragEvent, payload: CardDragPayload): void {

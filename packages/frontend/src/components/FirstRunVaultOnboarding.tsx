@@ -76,8 +76,8 @@ export function FirstRunVaultOnboarding() {
             Choose where your notes live
           </h1>
           <p className="mt-3 text-sm leading-7 text-gray-500 dark:text-[#a5adcb] max-w-2xl">
-            Folium stores your vault as local Markdown files. Pick an empty folder for a new vault,
-            or open an existing folder that already contains cards.
+            Folium stores your vault as local files. The folder you choose is the vault root:
+            Markdown cards stay there, while attachments live inside its attachments/ folder.
           </p>
         </div>
 
@@ -90,7 +90,7 @@ export function FirstRunVaultOnboarding() {
             <Plus size={20} className="text-accent mb-4" />
             <div className="text-sm font-bold text-ink dark:text-[#cad3f5]">Create new vault</div>
             <div className="mt-2 text-xs leading-6 text-gray-500 dark:text-[#a5adcb]">
-              Choose or create an empty folder, then start with a blank vault.
+              Choose or create the vault root folder. Folium will create attachments/ and .zettel/ inside it.
             </div>
           </button>
 
@@ -102,7 +102,7 @@ export function FirstRunVaultOnboarding() {
             <FolderOpen size={20} className="text-accent mb-4" />
             <div className="text-sm font-bold text-ink dark:text-[#cad3f5]">Open existing folder</div>
             <div className="mt-2 text-xs leading-6 text-gray-500 dark:text-[#a5adcb]">
-              Use a folder with existing Markdown cards or an older vault.
+              Use an existing vault root that contains Markdown cards, attachments/, or .zettel/.
             </div>
           </button>
 

@@ -72,11 +72,7 @@ export function Sidebar() {
       qc.invalidateQueries({ queryKey: ['positions'] });
       qc.invalidateQueries({ queryKey: ['tags'] });
       qc.invalidateQueries({ queryKey: ['workspaces'] });
-      usePaneStore
-        .getState()
-        .removeTabsWhere(
-          (t) => t.kind === 'card' && (t.cardBoxId === id || t.cardFocusId === id),
-        );
+      usePaneStore.getState().retargetDeletedCardRefs(id);
       pushUndo({
         description: `Deleted card ${id}`,
         undo: async () => {

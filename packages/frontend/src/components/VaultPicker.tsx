@@ -60,7 +60,7 @@ export function VaultPicker() {
   const handleAddVault = async () => {
     const path = isDesktopApp()
       ? await selectVaultDirectory({
-          title: 'Open another vault folder',
+          title: 'Choose vault root folder',
           buttonLabel: 'Open Vault',
           createDirectory: true,
         })

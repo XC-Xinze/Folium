@@ -27,25 +27,30 @@ export function CreateCardModal() {
 
   return (
     <div
-      className="fixed inset-0 z-[1100] flex items-start justify-center pt-24 px-6 bg-black/40 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[1100] flex items-start justify-center pt-16 px-6 bg-[#1c1b1b]/35 dark:bg-black/50 backdrop-blur-[3px]"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div className="bg-white dark:bg-[#1e2030] rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-[#363a4f]">
-        <header className="flex items-center justify-between px-4 py-2 border-b border-gray-100 dark:border-[#363a4f] shrink-0">
-          <h1 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-            New card
-          </h1>
+      <div className="zk-paper-surface rounded-xl w-full max-w-3xl flex flex-col overflow-hidden border border-paperEdge">
+        <header className="flex items-center justify-between px-5 py-3 border-b border-paperEdge/80 shrink-0 bg-gradient-to-b from-white/45 to-transparent dark:from-white/5">
+          <div className="min-w-0">
+            <h1 className="font-display text-[22px] leading-tight font-semibold text-ink">
+              New card
+            </h1>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-muted mt-0.5">
+              Folium
+            </div>
+          </div>
           <button
             onClick={() => setOpen(false)}
-            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-[#363a4f] text-gray-500"
+            className="p-1.5 rounded-md hover:bg-surfaceAlt text-muted hover:text-ink transition-colors"
             title="Close (Esc)"
           >
-            <X size={14} />
+            <X size={16} />
           </button>
         </header>
-        <NewCardBar onCreated={() => setOpen(false)} />
+        <NewCardBar variant="modal" onCreated={() => setOpen(false)} />
       </div>
     </div>
   );

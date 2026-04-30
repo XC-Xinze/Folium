@@ -1,8 +1,8 @@
 import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUpCircle, Trash2 } from 'lucide-react';
+import { ArrowUpCircle, Link2, Trash2 } from 'lucide-react';
 import { renderMarkdown } from '../lib/markdown';
-import { isCardDrag, readCardDragData } from '../lib/dragCard';
+import { isCardDrag, readCardDragData, setCardDragData } from '../lib/dragCard';
 
 interface TempNodeData {
   title: string;
@@ -12,6 +12,8 @@ interface TempNodeData {
   onPromoteToVault: () => void;
   /** 跟 CardNode 一致：拖一张实体卡 drop 到本 temp → 创建 workspace edge */
   onCardLinkDrop?: (sourceLuhmannId: string) => void;
+  onWorkspaceNodeLinkDrop?: (sourceNodeId: string) => void;
+  workspaceNodeId: string;
   savedW?: number;
   savedH?: number;
   onResize?: (w: number, h: number) => void;
@@ -58,6 +60,10 @@ export function WorkspaceTempNode({ data, selected }: NodeProps) {
         if (!dragged) return;
         e.preventDefault();
         e.stopPropagation();
+        if (dragged.workspaceNodeId && d.onWorkspaceNodeLinkDrop) {
+          d.onWorkspaceNodeLinkDrop(dragged.workspaceNodeId);
+          return;
+        }
         d.onCardLinkDrop?.(dragged.luhmannId);
       }}
       className={`group relative bg-[#fffdf8] border-2 border-dashed border-accent/40 rounded-lg shadow-md min-h-[140px] ${
@@ -108,6 +114,27 @@ export function WorkspaceTempNode({ data, selected }: NodeProps) {
       >
         <ArrowUpCircle size={12} />
       </button>
+      {!editing && (
+        <div
+          draggable
+          onDragStart={(e) => {
+            e.stopPropagation();
+            setCardDragData(e, {
+              luhmannId: d.workspaceNodeId,
+              title: d.title,
+              workspaceNodeId: d.workspaceNodeId,
+              workspaceNodeKind: 'temp',
+            });
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="nodrag nopan zk-subtle-button absolute bottom-2 right-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 cursor-grab active:cursor-grabbing border shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
+          title="Drag onto another workspace card to link them"
+        >
+          <Link2 size={10} />
+          <span>LINK</span>
+        </div>
+      )}
 
       {editing ? (
         <div

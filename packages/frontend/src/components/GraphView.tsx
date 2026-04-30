@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { renderMarkdown } from '../lib/markdown';
 import {
-  forceCenter,
   forceCollide,
   forceLink,
   forceManyBody,
   forceSimulation,
+  forceX,
+  forceY,
   type Simulation,
   type SimulationLinkDatum,
   type SimulationNodeDatum,
@@ -29,7 +30,7 @@ import { useNavigateToCard } from '../lib/useNavigateToCard';
  *   - drag 用 d3-drag，期间钉死 fx/fy
  */
 
-type LinkKind = 'hierarchy' | 'link' | 'tag' | 'box';
+type LinkKind = 'link' | 'tag' | 'box';
 
 interface SimNode extends SimulationNodeDatum {
   id: string;
@@ -37,16 +38,41 @@ interface SimNode extends SimulationNodeDatum {
   isIndex: boolean;
   tier: number; // INDEX tier（0=master，1+=sub）
   radius: number; // 视觉半径（按 tier 不同）
+  rootBox: string;
+  clusterX: number;
+  clusterY: number;
 }
 interface SimLink extends SimulationLinkDatum<SimNode> {
   kind: LinkKind;
 }
+
+const DAILY_ROOT = '__daily__';
 
 function parentOf(id: string): string | null {
   if (!id || !/^[\da-z]+$/i.test(id)) return null;
   if (/\d$/.test(id)) return id.replace(/\d+$/, '') || null;
   if (/[a-z]$/i.test(id)) return id.replace(/[a-z]+$/i, '') || null;
   return null;
+}
+
+function topBoxOf(id: string, cardSet: Set<string>): string {
+  if (/^daily\d{8}$/i.test(id)) return DAILY_ROOT;
+  if (!/^[\da-z]+$/i.test(id)) return 'other';
+  let cur = id;
+  while (true) {
+    const parent = parentOf(cur);
+    if (!parent || !cardSet.has(parent)) return cur;
+    cur = parent;
+  }
+}
+
+function jitterFor(id: string, axis: 0 | 1): number {
+  let hash = axis === 0 ? 2166136261 : 16777619;
+  for (let i = 0; i < id.length; i++) {
+    hash ^= id.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return ((hash >>> 0) % 1000) / 1000 - 0.5;
 }
 
 function computeIndexTiers(cards: CardSummary[]): Map<string, number> {
@@ -89,46 +115,76 @@ function computeIndexTiers(cards: CardSummary[]): Map<string, number> {
 function buildSimGraph(cards: CardSummary[]): { nodes: SimNode[]; links: SimLink[] } {
   const cardSet = new Set(cards.map((c) => c.luhmannId));
   const tiers = computeIndexTiers(cards);
+  const rootById = new Map(cards.map((c) => [c.luhmannId, topBoxOf(c.luhmannId, cardSet)]));
+  const roots = [...new Set(cards.map((c) => rootById.get(c.luhmannId) ?? 'other'))].sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true }),
+  );
+  const clusterRadius = Math.max(180, Math.min(460, roots.length * 70));
+  const clusterByRoot = new Map<string, { x: number; y: number }>();
+  roots.forEach((root, i) => {
+    if (roots.length === 1) {
+      clusterByRoot.set(root, { x: 0, y: 0 });
+      return;
+    }
+    const angle = -Math.PI / 2 + (i / roots.length) * Math.PI * 2;
+    clusterByRoot.set(root, {
+      x: Math.cos(angle) * clusterRadius,
+      y: Math.sin(angle) * clusterRadius,
+    });
+  });
   const nodes: SimNode[] = cards.map((c) => {
     const tier = c.status === 'INDEX' ? tiers.get(c.luhmannId) ?? 1 : -1;
     // 半径：master 大、sub 中、atomic 小
     const r = c.status === 'INDEX' ? (tier === 0 ? 22 : tier === 1 ? 16 : 12) : 7;
-    return { id: c.luhmannId, card: c, isIndex: c.status === 'INDEX', tier, radius: r };
+    const rootBox = rootById.get(c.luhmannId) ?? 'other';
+    const cluster = clusterByRoot.get(rootBox) ?? { x: 0, y: 0 };
+    return {
+      id: c.luhmannId,
+      card: c,
+      isIndex: c.status === 'INDEX',
+      tier,
+      radius: r,
+      rootBox,
+      clusterX: cluster.x,
+      clusterY: cluster.y,
+      x: cluster.x + jitterFor(c.luhmannId, 0) * 120,
+      y: cluster.y + jitterFor(c.luhmannId, 1) * 120,
+    };
   });
   const links: SimLink[] = [];
   const seen = new Set<string>();
 
-  // hierarchy: Folgezettel 父子 + INDEX→member
+  const addLink = (source: string, target: string, kind: LinkKind) => {
+    if (source === target || !cardSet.has(source) || !cardSet.has(target)) return;
+    const pair = [source, target].sort().join('<>');
+    const k = `${kind}:${pair}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    links.push({ source, target, kind });
+  };
+
+  // daily notes belong to the daily box.
+  const dailyIds = cards
+    .filter((c) => /^daily\d{8}$/i.test(c.luhmannId))
+    .map((c) => c.luhmannId)
+    .sort();
+  for (let i = 1; i < dailyIds.length; i++) {
+    const source = dailyIds[i - 1]!;
+    const target = dailyIds[i]!;
+    addLink(source, target, 'box');
+  }
+  // box: Folgezettel parent-child structure inside each top-level box.
   for (const c of cards) {
     const p = parentOf(c.luhmannId);
     if (p && cardSet.has(p)) {
-      const k = `h:${p}->${c.luhmannId}`;
-      if (!seen.has(k)) {
-        seen.add(k);
-        links.push({ source: p, target: c.luhmannId, kind: 'hierarchy' });
-      }
-    }
-  }
-  for (const c of cards) {
-    if (c.status !== 'INDEX') continue;
-    for (const t of c.crossLinks) {
-      if (!cardSet.has(t)) continue;
-      const k = `h:${c.luhmannId}->${t}`;
-      if (!seen.has(k)) {
-        seen.add(k);
-        links.push({ source: c.luhmannId, target: t, kind: 'hierarchy' });
-      }
+      addLink(p, c.luhmannId, 'box');
     }
   }
   // link: 手动 [[link]] 之间（非 INDEX）
   for (const c of cards) {
     if (c.status === 'INDEX') continue;
     for (const t of c.crossLinks) {
-      if (!cardSet.has(t)) continue;
-      const k = [c.luhmannId, t].sort().join('|link');
-      if (seen.has(k)) continue;
-      seen.add(k);
-      links.push({ source: c.luhmannId, target: t, kind: 'link' });
+      addLink(c.luhmannId, t, 'link');
     }
   }
   // tag: 共享 tag，跳宽泛 tag
@@ -141,23 +197,7 @@ function buildSimGraph(cards: CardSummary[]): { nodes: SimNode[]; links: SimLink
     if (ids.length > 20) continue;
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
-        const k = [ids[i]!, ids[j]!].sort().join('|tag');
-        if (seen.has(k)) continue;
-        seen.add(k);
-        links.push({ source: ids[i]!, target: ids[j]!, kind: 'tag' });
-      }
-    }
-  }
-  // box: 同 INDEX 兄弟
-  for (const c of cards) {
-    if (c.status !== 'INDEX') continue;
-    const members = c.crossLinks.filter((t) => cardSet.has(t));
-    for (let i = 0; i < members.length; i++) {
-      for (let j = i + 1; j < members.length; j++) {
-        const k = [members[i]!, members[j]!].sort().join('|box');
-        if (seen.has(k)) continue;
-        seen.add(k);
-        links.push({ source: members[i]!, target: members[j]!, kind: 'box' });
+        addLink(ids[i]!, ids[j]!, 'tag');
       }
     }
   }
@@ -165,22 +205,36 @@ function buildSimGraph(cards: CardSummary[]): { nodes: SimNode[]; links: SimLink
 }
 
 interface EdgeToggles {
-  hierarchy: boolean;
   link: boolean;
   tag: boolean;
   box: boolean;
 }
 const DEFAULT_TOGGLES: EdgeToggles = {
-  hierarchy: true,
   link: true,
   tag: false,
-  box: false,
+  box: true,
 };
+const GRAPH_TOGGLES_STORAGE_KEY = 'folium.graph.edgeToggles.v2';
+
+function readStoredGraphToggles(): EdgeToggles {
+  if (typeof window === 'undefined') return DEFAULT_TOGGLES;
+  try {
+    const raw = window.localStorage.getItem(GRAPH_TOGGLES_STORAGE_KEY);
+    if (!raw) return DEFAULT_TOGGLES;
+    const parsed = JSON.parse(raw) as Partial<EdgeToggles>;
+    return {
+      link: typeof parsed.link === 'boolean' ? parsed.link : DEFAULT_TOGGLES.link,
+      tag: typeof parsed.tag === 'boolean' ? parsed.tag : DEFAULT_TOGGLES.tag,
+      box: typeof parsed.box === 'boolean' ? parsed.box : DEFAULT_TOGGLES.box,
+    };
+  } catch {
+    return DEFAULT_TOGGLES;
+  }
+}
 
 const EDGE_COLOR: Record<LinkKind, string> = {
-  hierarchy: 'color-mix(in srgb, var(--zk-muted) 72%, var(--zk-paper-edge))',
-  link: 'var(--zk-link)',
-  tag: 'var(--zk-accent)',
+  link: 'var(--zk-link-edge)',
+  tag: '#7a6bb7',
   box: 'var(--zk-rust)',
 };
 
@@ -189,21 +243,23 @@ const GRAPH_PAPER_EDGE = 'var(--zk-paper-edge)';
 const GRAPH_INK = 'var(--zk-ink)';
 const GRAPH_MUTED = 'var(--zk-muted)';
 const GRAPH_MOSS = 'var(--zk-accent)';
-const GRAPH_BLUE = 'var(--zk-link)';
+const GRAPH_BLUE = 'var(--zk-link-edge)';
 const GRAPH_RUST = 'var(--zk-rust)';
+const GRAPH_TAG = '#7a6bb7';
 
 function GraphInner() {
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
   const navigate = useNavigateToCard();
   const qc = useQueryClient();
   const svgRef = useRef<SVGSVGElement>(null);
-  const [toggles, setToggles] = useState<EdgeToggles>(DEFAULT_TOGGLES);
+  const [toggles, setToggles] = useState<EdgeToggles>(() => readStoredGraphToggles());
   const togglesRef = useRef(toggles);
   togglesRef.current = toggles;
   const [zoom, setZoom] = useState(1);
   const zoomBehaviorRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const simRef = useRef<Simulation<SimNode, SimLink> | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
 
@@ -227,9 +283,10 @@ function GraphInner() {
       .enter()
       .append('line')
       .attr('stroke', (d) => EDGE_COLOR[d.kind])
-      .attr('stroke-width', (d) => (d.kind === 'hierarchy' ? 1.4 : 1))
-      .attr('stroke-opacity', (d) => (d.kind === 'hierarchy' ? 0.48 : 0.36))
-      .attr('stroke-dasharray', (d) => (d.kind === 'box' ? '4 3' : null));
+      .attr('stroke-width', (d) => (d.kind === 'box' ? 1.35 : 1))
+      .attr('stroke-opacity', (d) => (d.kind === 'box' ? 0.46 : 0.36))
+      .attr('stroke-dasharray', (d) => (d.kind === 'box' ? '4 3' : null))
+      .style('display', (d) => (togglesRef.current[d.kind] ? '' : 'none'));
 
     // 绘节点 group：含 circle + text
     const nodeG = nodeLayer
@@ -242,13 +299,24 @@ function GraphInner() {
 
     nodeG
       .append('circle')
+      .attr('class', 'focus-ring')
+      .attr('r', (d) => d.radius + 7)
+      .attr('fill', 'none')
+      .attr('stroke', 'var(--zk-rust)')
+      .attr('stroke-width', 1.4)
+      .attr('stroke-opacity', 0)
+      .attr('pointer-events', 'none');
+
+    nodeG
+      .append('circle')
+      .attr('class', 'node-circle')
       .attr('r', (d) => d.radius)
       .attr('fill', (d) => fillFor(d, false))
       .attr('stroke', (d) => strokeFor(d, false))
       .attr('stroke-width', (d) => (d.isIndex ? 1.6 : 1.2))
       .style('filter', (d) =>
         d.isIndex
-          ? 'drop-shadow(0 8px 18px rgba(83,98,83,0.18))'
+          ? 'drop-shadow(0 8px 18px rgba(45,45,45,0.13))'
           : 'drop-shadow(0 4px 12px rgba(45,45,45,0.08))',
       );
 
@@ -283,6 +351,9 @@ function GraphInner() {
       const next = cur === d.id ? null : d.id;
       setSelectedId(next);
     });
+    nodeG
+      .on('mouseenter', (_event, d) => setHoveredId(d.id))
+      .on('mouseleave', () => setHoveredId(null));
     // 双击 = 进 chain 视图
     nodeG.on('dblclick', (event, d) => {
       event.stopPropagation();
@@ -313,27 +384,32 @@ function GraphInner() {
         'link',
         forceLink<SimNode, SimLink>(links)
           .id((d) => d.id)
-          .distance((d) => (d.kind === 'hierarchy' ? 70 : d.kind === 'box' ? 100 : 140))
-          .strength((d) => (d.kind === 'hierarchy' ? 0.7 : d.kind === 'box' ? 0.15 : 0.05)),
+          .distance((d) => (d.kind === 'box' ? 82 : 140))
+          .strength((d) => (d.kind === 'box' ? 0.38 : 0.05)),
       )
       .force(
         'charge',
         forceManyBody<SimNode>().strength((d) => (d.isIndex ? -300 : -120)),
       )
-      .force('center', forceCenter(0, 0).strength(0.05))
+      .force('clusterX', forceX<SimNode>((d) => d.clusterX).strength((d) => (d.isIndex ? 0.045 : 0.014)))
+      .force('clusterY', forceY<SimNode>((d) => d.clusterY).strength((d) => (d.isIndex ? 0.045 : 0.014)))
       .force('collide', forceCollide<SimNode>((d) => d.radius + 4))
       .alphaDecay(0.03);
 
     simRef.current = sim;
 
-    sim.on('tick', () => {
+    const renderTick = () => {
       linkSel
         .attr('x1', (d) => (d.source as SimNode).x ?? 0)
         .attr('y1', (d) => (d.source as SimNode).y ?? 0)
         .attr('x2', (d) => (d.target as SimNode).x ?? 0)
         .attr('y2', (d) => (d.target as SimNode).y ?? 0);
       nodeG.attr('transform', (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
-    });
+    };
+
+    sim.stop();
+    sim.tick(90);
+    renderTick();
 
     // 缩放 + 平移
     const zoomBeh = d3zoom<SVGSVGElement, unknown>()
@@ -343,9 +419,49 @@ function GraphInner() {
         setZoom(event.transform.k);
       });
     svg.call(zoomBeh);
-    // 初始适配 —— 等 sim 跑一会再 fitView，手动设个适中 zoom
-    svg.call(zoomBeh.transform, zoomIdentity.scale(0.8));
+    // 初始居中：图的世界坐标围绕 (0,0) 分群，SVG 视口原点在左上角，
+    // 所以必须把世界原点平移到容器中心。
+    const rect = svgRef.current.getBoundingClientRect();
+    const initialK = 0.78;
+    svg.call(
+      zoomBeh.transform,
+      zoomIdentity.translate(rect.width / 2, rect.height / 2).scale(initialK),
+    );
     zoomBehaviorRef.current = zoomBeh;
+
+    const fitToNodes = () => {
+      if (!svgRef.current || nodes.length === 0) return;
+      const bounds = nodes.reduce(
+        (acc, node) => {
+          const x = node.x ?? 0;
+          const y = node.y ?? 0;
+          return {
+            minX: Math.min(acc.minX, x - node.radius),
+            maxX: Math.max(acc.maxX, x + node.radius),
+            minY: Math.min(acc.minY, y - node.radius),
+            maxY: Math.max(acc.maxY, y + node.radius),
+          };
+        },
+        { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity },
+      );
+      const nextRect = svgRef.current.getBoundingClientRect();
+      const graphW = Math.max(1, bounds.maxX - bounds.minX);
+      const graphH = Math.max(1, bounds.maxY - bounds.minY);
+      const padding = 140;
+      const k = Math.max(
+        0.18,
+        Math.min(1.05, Math.min((nextRect.width - padding) / graphW, (nextRect.height - padding) / graphH)),
+      );
+      const cx = (bounds.minX + bounds.maxX) / 2;
+      const cy = (bounds.minY + bounds.maxY) / 2;
+      svg.call(
+        zoomBeh.transform,
+        zoomIdentity.translate(nextRect.width / 2 - cx * k, nextRect.height / 2 - cy * k).scale(k),
+      );
+    };
+    fitToNodes();
+    sim.alpha(0.28).restart();
+    sim.on('tick', renderTick);
 
     // 点空白取消选中
     svg.on('click', () => setSelectedId(null));
@@ -363,6 +479,7 @@ function GraphInner() {
 
   // toggle 改变 → 边可见性
   useEffect(() => {
+    window.localStorage.setItem(GRAPH_TOGGLES_STORAGE_KEY, JSON.stringify(toggles));
     if (!svgRef.current) return;
     const svg = select(svgRef.current);
     svg
@@ -371,47 +488,63 @@ function GraphInner() {
       .style('display', (d) => (toggles[d.kind] ? '' : 'none'));
   }, [toggles]);
 
-  // selectedId 变 → 节点高亮 + 边过滤
+  // selectedId / hoveredId 变 → 节点高亮 + 一层邻接边强调
   useEffect(() => {
     if (!svgRef.current || !cardsQ.data) return;
     const svg = select(svgRef.current);
     const nodeG = svg.select('.nodes').selectAll<SVGGElement, SimNode>('g.node');
     const linkSel = svg.select('.links').selectAll<SVGLineElement, SimLink>('line');
+    const focusId = selectedId ?? hoveredId;
 
-    nodeG.select('circle').attr('fill', (d) => fillFor(d, d.id === selectedId));
     nodeG
-      .select('circle')
-      .attr('stroke', (d) => strokeFor(d, d.id === selectedId))
-      .attr('stroke-width', (d) => (d.id === selectedId ? 3 : d.isIndex ? 1.6 : 1.2))
+      .select('circle.focus-ring')
+      .attr('r', (d) => (d.id === focusId ? d.radius + 8 : d.radius + 6))
+      .attr('stroke-opacity', (d) => (d.id === focusId ? 0.62 : 0))
+      .attr('stroke-width', (d) => (d.id === focusId ? 1.8 : 1.2));
+
+    nodeG
+      .select('circle.node-circle')
+      .attr('fill', (d) => fillFor(d, d.id === focusId))
+      .attr('stroke', (d) => strokeFor(d, d.id === focusId))
+      .attr('stroke-width', (d) => (d.id === focusId ? 3 : d.isIndex ? 1.6 : 1.2))
       .style('filter', (d) =>
-        d.id === selectedId
-          ? 'drop-shadow(0 10px 26px rgba(83,98,83,0.26))'
+        d.id === focusId
+          ? 'drop-shadow(0 14px 30px rgba(186,99,92,0.18))'
           : d.isIndex
-            ? 'drop-shadow(0 8px 18px rgba(83,98,83,0.18))'
+            ? 'drop-shadow(0 8px 18px rgba(45,45,45,0.13))'
             : 'drop-shadow(0 4px 12px rgba(45,45,45,0.08))',
       );
 
-    if (selectedId) {
-      // 找跟 selected 相连的 ids
-      const neighborIds = new Set<string>([selectedId]);
+    if (focusId) {
+      // 找跟 focus 相连的一层 ids
+      const neighborIds = new Set<string>([focusId]);
       linkSel.each((d) => {
         const sId = (d.source as SimNode).id;
         const tId = (d.target as SimNode).id;
-        if (sId === selectedId) neighborIds.add(tId);
-        if (tId === selectedId) neighborIds.add(sId);
+        if (sId === focusId) neighborIds.add(tId);
+        if (tId === focusId) neighborIds.add(sId);
       });
-      linkSel.attr('stroke-opacity', (d) => {
-        const sId = (d.source as SimNode).id;
-        const tId = (d.target as SimNode).id;
-        if (sId === selectedId || tId === selectedId) return 1;
-        return 0.07;
-      });
-      nodeG.style('opacity', (d) => (neighborIds.has(d.id) ? 1 : 0.25));
+      linkSel
+        .attr('stroke-opacity', (d) => {
+          const sId = (d.source as SimNode).id;
+          const tId = (d.target as SimNode).id;
+          if (sId === focusId || tId === focusId) return 1;
+          return selectedId ? 0.07 : 0.14;
+        })
+        .attr('stroke-width', (d) => {
+          const sId = (d.source as SimNode).id;
+          const tId = (d.target as SimNode).id;
+          const base = d.kind === 'box' ? 1.35 : 1;
+          return sId === focusId || tId === focusId ? base + 1.8 : base;
+        });
+      nodeG.style('opacity', (d) => (neighborIds.has(d.id) ? 1 : selectedId ? 0.25 : 0.55));
     } else {
-      linkSel.attr('stroke-opacity', (d) => (d.kind === 'hierarchy' ? 0.48 : 0.36));
+      linkSel
+        .attr('stroke-opacity', (d) => (d.kind === 'box' ? 0.46 : 0.36))
+        .attr('stroke-width', (d) => (d.kind === 'box' ? 1.35 : 1));
       nodeG.style('opacity', 1);
     }
-  }, [selectedId, cardsQ.data]);
+  }, [selectedId, hoveredId, cardsQ.data]);
 
   // 选中节点的屏幕坐标（带 zoom transform）—— 给 React overlay 卡用
   // 由 sim tick / zoom 更新；避免 d3-html foreignObject 的命名空间坑
@@ -482,10 +615,9 @@ function GraphInner() {
   return (
     <div className="w-full h-full flex flex-col bg-surface dark:bg-[#181926]">
       <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 zk-toolbar-surface border-b overflow-x-auto">
-        <EdgeToggle color="var(--zk-muted)" label="Hierarchy" active={toggles.hierarchy} onClick={() => flip('hierarchy')} />
-        <EdgeToggle color={GRAPH_BLUE} label="Link" active={toggles.link} onClick={() => flip('link')} />
-        <EdgeToggle color={GRAPH_MOSS} label="Tag" active={toggles.tag} onClick={() => flip('tag')} />
-        <EdgeToggle color={GRAPH_RUST} label="Box" active={toggles.box} onClick={() => flip('box')} />
+        <EdgeToggle color={GRAPH_BLUE} label="Link" active={toggles.link} onClick={() => flip('link')} title="Real manual [[link]] relations" />
+        <EdgeToggle color={GRAPH_TAG} label="Tag" active={toggles.tag} onClick={() => flip('tag')} title="Shared-tag relations, excluding very broad tags" />
+        <EdgeToggle color={GRAPH_RUST} label="Box" active={toggles.box} onClick={() => flip('box')} title="Folgezettel parent-child structure inside each top-level box" />
         <div className="flex-1" />
         <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
           {cardsQ.data.cards.length} cards · zoom {zoom.toFixed(2)}x · click select · dbl open · drag move
@@ -581,7 +713,7 @@ function SelectedCardOverlay({
 }
 
 function fillFor(d: SimNode, selected: boolean): string {
-  if (selected) return GRAPH_MOSS;
+  void selected;
   if (d.isIndex) {
     if (d.tier === 0) return GRAPH_RUST;
     if (d.tier === 1) return GRAPH_MOSS;
@@ -591,7 +723,7 @@ function fillFor(d: SimNode, selected: boolean): string {
 }
 
 function strokeFor(d: SimNode, selected: boolean): string {
-  if (selected) return GRAPH_MOSS;
+  if (selected) return 'var(--zk-rust)';
   if (d.isIndex) return d.tier === 0 ? GRAPH_RUST : GRAPH_MOSS;
   return GRAPH_PAPER_EDGE;
 }
@@ -613,15 +745,18 @@ function EdgeToggle({
   label,
   active,
   onClick,
+  title,
 }: {
   color: string;
   label: string;
   active: boolean;
   onClick: () => void;
+  title?: string;
 }) {
   return (
     <button
       onClick={onClick}
+      title={title}
       className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-widest transition-all ${
         active
           ? 'text-ink border-accent/40 bg-accentSoft hover:border-accent/60'

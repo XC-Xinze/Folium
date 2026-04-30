@@ -47,13 +47,10 @@ export function CardNode({ data, id, selected, positionAbsoluteX, positionAbsolu
   const _openTagTab = (name: string) =>
     usePaneStoreImported.getState().openTab({ kind: 'tag', title: `#${name}`, tagName: name });
 
-  // 单击 CardNode → 更新当前 active tab 的 cardFocusId
-  // 深度限制：累计 3 层外部 tag/cross 卡后，下一次点外部卡切到对方的 box（重置链）
-  // 内部 (tree/focus) 卡片不计深度，且重置链
-  // navigateInTab 同时维护 history 给 ⌘[ ⌘] 用
-  const MAX_DEPTH = 3;
+  // 单击 CardNode → 更新当前 active tab 的 cardFocusId。
+  // 只改变焦点，不再累计探索深度，也不把外部卡作为新的展开源。
   const setFocus = (cardId: string) => {
-    const { root, activeLeafId, updateTab, navigateInTab } = usePaneStoreImported.getState();
+    const { root, activeLeafId, navigateInTab } = usePaneStoreImported.getState();
     const findLeaf = (n: typeof root): typeof root | null => {
       if (n.kind === 'leaf') return n.id === activeLeafId ? n : null;
       for (const c of n.children) {
@@ -66,22 +63,7 @@ export function CardNode({ data, id, selected, positionAbsoluteX, positionAbsolu
     if (!leaf || leaf.kind !== 'leaf' || !leaf.activeTabId) return;
     const activeTab = leaf.tabs.find((t) => t.id === leaf.activeTabId);
     if (!activeTab || activeTab.kind !== 'card' || !activeTab.cardBoxId) return;
-
-    const isExternal = variant === 'tag-related' || variant === 'cross-flank' || variant === 'potential';
-    if (!isExternal) {
-      navigateInTab(leaf.id, leaf.activeTabId, { box: activeTab.cardBoxId, focus: cardId });
-      updateTab(leaf.id, leaf.activeTabId, { cardFocusDepth: 0 });
-      return;
-    }
-    const nextDepth = (activeTab.cardFocusDepth ?? 0) + 1;
-    if (nextDepth > MAX_DEPTH) {
-      // 已到最大深度 —— 不再让外部链接继续向更深扩散：
-      // 不切 box（避免画布整片重置），不增 depth，不动 focus。
-      // 用户想继续探索就 ⌘[ 退一步，或在 sidebar 跳到目标 box。
-      return;
-    }
     navigateInTab(leaf.id, leaf.activeTabId, { box: activeTab.cardBoxId, focus: cardId });
-    updateTab(leaf.id, leaf.activeTabId, { cardFocusDepth: nextDepth });
   };
   const qc = useQueryClient();
   const starredQ = useQuery({ queryKey: ['starred'], queryFn: api.listStarred });
@@ -197,9 +179,7 @@ export function CardNode({ data, id, selected, positionAbsoluteX, positionAbsolu
       qc.invalidateQueries({ queryKey: ['positions'] });
       qc.invalidateQueries({ queryKey: ['tags'] });
       qc.invalidateQueries({ queryKey: ['workspaces'] });
-      usePaneStoreImported.getState().removeTabsWhere(
-        (t) => t.kind === 'card' && (t.cardBoxId === cardLuhmannId || t.cardFocusId === cardLuhmannId),
-      );
+      usePaneStoreImported.getState().retargetDeletedCardRefs(cardLuhmannId);
       // 注册 undo：从 trash 找最近一条对应这张卡的，restore 即可
       pushUndo({
         description: `Deleted card ${cardLuhmannId}`,
@@ -447,9 +427,13 @@ export function CardNode({ data, id, selected, positionAbsoluteX, positionAbsolu
         if (!dragged || dragged.luhmannId === cardLuhmannId) return;
         e.preventDefault();
         e.stopPropagation();
-        // Workspace 上下文：通过 onCardLinkDrop 回调创建 workspace edge（不动 vault）
-        if (nodeData.isInWorkspace && nodeData.onCardLinkDrop) {
-          nodeData.onCardLinkDrop(dragged.luhmannId);
+        if (dragged.workspaceNodeId && nodeData.onWorkspaceNodeLinkDrop) {
+          await nodeData.onWorkspaceNodeLinkDrop(dragged.workspaceNodeId);
+          return;
+        }
+        // 特定视图可接管 drop 语义，例如 workspace 创建本地边、tag 页创建真实 [[link]] 并刷新 tag graph。
+        if (nodeData.onCardLinkDrop) {
+          await nodeData.onCardLinkDrop(dragged.luhmannId);
           return;
         }
         // Vault 上下文：写 [[link]] 到本卡 body
@@ -463,7 +447,9 @@ export function CardNode({ data, id, selected, positionAbsoluteX, positionAbsolu
           dialog.alert((err as Error).message, { title: 'Link failed' });
         }
       }}
-      className={`nowheel group relative rounded-lg zk-paper-surface ${styles.border} ${styles.opacity} cursor-default flex flex-col transition-shadow duration-150 ${
+      className={`nowheel group relative isolate rounded-lg zk-paper-surface ${styles.border} ${styles.opacity} cursor-default flex flex-col transition-shadow duration-150 ${
+        variant === 'focus' ? 'zk-focus-card' : ''
+      } ${
         linkDropOver ? 'ring-2 ring-accent ring-offset-2' : ''
       } ${
         superlinkSelection?.active
@@ -480,6 +466,10 @@ export function CardNode({ data, id, selected, positionAbsoluteX, positionAbsolu
         if (superlinkSelection?.active) {
           e.stopPropagation();
           if (!isGhost) superlinkSelection.onToggle(cardLuhmannId);
+          return;
+        }
+        if (nodeData.onFocusOverride) {
+          nodeData.onFocusOverride();
           return;
         }
         if (isGhost) return;
@@ -538,15 +528,20 @@ export function CardNode({ data, id, selected, positionAbsoluteX, positionAbsolu
           draggable
           onDragStart={(e) => {
             e.stopPropagation();
-            setCardDragData(e, { luhmannId: cardLuhmannId, title: display.title });
+            setCardDragData(e, {
+              luhmannId: cardLuhmannId,
+              title: display.title,
+              workspaceNodeId: id,
+              workspaceNodeKind: 'card',
+            });
           }}
           onMouseDown={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          className="nodrag nopan zk-subtle-button absolute bottom-2 left-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 cursor-grab active:cursor-grabbing border shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
-          title="Drag onto another workspace card to connect them"
+          className="nodrag nopan zk-subtle-button absolute bottom-2 right-2 z-20 px-1.5 py-0.5 rounded flex items-center gap-1 cursor-grab active:cursor-grabbing border shadow-sm transition-colors text-[9px] font-bold uppercase tracking-wider"
+          title="Drag onto another workspace card to link them"
         >
           <Link2 size={10} />
-          <span>CONNECT</span>
+          <span>LINK</span>
         </div>
       )}
 

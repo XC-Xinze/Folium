@@ -13,15 +13,15 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Send } from 'lucide-react';
+import { Download, RotateCcw, Send } from 'lucide-react';
 import { api, type Card, type PositionMap, type Workspace, type WorkspaceEdge, type WorkspaceNode } from '../lib/api';
 import { dialog } from '../lib/dialog';
 import { randomUUID } from '../lib/uuid';
 import { CardNode } from './CardNode';
 import { CrossEdge, PotentialEdge } from './CanvasEdges';
 import { applyAnchorPositions, buildGraph, computeBackbone, MASTER_BOX_ID, resolveCollisions, type CardNodeData } from '../lib/cardGraph';
-import { MAX_EXPLORATION_DEPTH, nextExplorationTrail } from '../lib/explorationTrail';
 import { DEFAULT_CARD_FLAGS, usePaneStore as usePaneStoreImported, type CardDisplayFlags } from '../store/paneStore';
+import { exportReactFlowCanvasAsPng } from '../lib/exportCanvasImage';
 
 const nodeTypes = { card: CardNode };
 const edgeTypes = { potential: PotentialEdge, cross: CrossEdge };
@@ -46,36 +46,25 @@ function graphEdgeLabel(edgeId: string): string | undefined {
 interface Props {
   focusedBoxId: string;
   focusedCardId: string;
-  /** 每个 tab 自己持有这四个开关 —— 无值就回退到 DEFAULT_CARD_FLAGS */
+  /** 每个 tab 自己持有 Potential 开关 —— 无值就回退到 DEFAULT_CARD_FLAGS */
   flags?: Partial<CardDisplayFlags>;
   /** 切换某一项时回写到 tab payload（PaneRoot 通过 updateTab 实现） */
   onFlagChange?: (key: keyof CardDisplayFlags, value: boolean) => void;
-  /** 当前 tab 的探索深度（点了几层外部卡）—— 用于 UI 提示 */
-  focusDepth?: number;
 }
 
-const MAX_FOCUS_DEPTH = MAX_EXPLORATION_DEPTH;
-
-function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDepth = 0 }: Props) {
+function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange }: Props) {
   const merged = { ...DEFAULT_CARD_FLAGS, ...(flags ?? {}) };
   const showPotential = merged.potential;
-  const showTagRelated = merged.tag;
-  const showCrossLinks = merged.cross;
-  const showBoxCards = merged.box;
-  const showWorkspaceLinks = merged.workspaceLinks;
   // 没接 onFlagChange 的兜底：原地状态（用于 Canvas 被非 tab 场景用时不挂掉）
   const setFlag = (k: keyof CardDisplayFlags, v: boolean) => onFlagChange?.(k, v);
   const setShowPotential = (v: boolean) => setFlag('potential', v);
-  const setShowTagRelated = (v: boolean) => setFlag('tag', v);
-  const setShowCrossLinks = (v: boolean) => setFlag('cross', v);
-  const setShowBoxCards = (v: boolean) => setFlag('box', v);
-  const setShowWorkspaceLinks = (v: boolean) => setFlag('workspaceLinks', v);
   const qc = useQueryClient();
+  const flowRootRef = useRef<HTMLDivElement>(null);
 
   const isMaster = focusedBoxId === MASTER_BOX_ID;
 
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
-  // 同时拿 box 和 focus 的完整内容（box 用于 INDEX 展开 cross-link）
+  // 拿 box 和 focus 的完整内容用于卡片正文渲染。
   // Master 是虚拟 box，没真卡，跳过。
   const boxQ = useQuery({
     queryKey: ['card', focusedBoxId],
@@ -108,55 +97,16 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
     return [...bb.ids];
   }, [cardsQ.data, boxQ.data, fullCards, focusedBoxId, isMaster]);
 
-  // Exploration trail：记录用户连续点过的关系锚点，而不是无限累加所有曾经拉进来的邻居。
-  // Box toggle 负责是否铺开当前盒子的结构卡；trail 负责在 link-only/tag-only 探索时保留路径上下文。
-  const [tagTrailIds, setTagTrailIds] = useState<string[]>(() => [focusedBoxId]);
-  const prevTrailFocusRef = useRef(focusedCardId);
-  // box 切了 → 重置 trail
-  useEffect(() => {
-    setTagTrailIds([focusedBoxId]);
-    prevTrailFocusRef.current = focusedBoxId;
-  }, [focusedBoxId]);
-  // 焦点切换：沿 tree/link 走就保留路径；跳到无关卡时收束到新的上下文。
-  useEffect(() => {
-    const focusCard = cardsQ.data?.cards.find((c) => c.luhmannId === focusedCardId);
-    const prevFocus = prevTrailFocusRef.current;
-    prevTrailFocusRef.current = focusedCardId;
-    if (!focusCard) setTagTrailIds([focusedBoxId]);
-    else {
-      setTagTrailIds((prev) =>
-        nextExplorationTrail({
-          prevTrail: prev,
-          focusedBoxId,
-          previousFocusId: prevFocus,
-          nextFocusId: focusedCardId,
-          focusDepth,
-          cards: cardsQ.data?.cards ?? [],
-        }),
-      );
-    }
-  }, [focusedBoxId, focusedCardId, focusDepth, cardsQ.data]);
-
-  // 焦点卡若是从外部 tag-related 拉进来的（不在 backbone 里），单独把它加进 relatedBatch
-  // 否则它的 tagRelated 拿不到 → buildGraph 退化成"所有 backbone 卡两两连"
-  // 同时把 tag trail 全部锚也加进来，保证 buildGraph 能拿到每个锚的 batch 数据
   const relatedIds = useMemo(() => {
     const set = new Set<string>();
-    if (focusedCardId) set.add(focusedCardId);
-    for (const id of tagTrailIds) set.add(id);
-    if (showBoxCards) {
-      for (const id of backboneIds) set.add(id);
-    }
+    if (showPotential && focusedCardId) set.add(focusedCardId);
     return [...set];
-  }, [backboneIds, focusedCardId, tagTrailIds, showBoxCards]);
+  }, [focusedCardId, showPotential]);
 
-  // tag-related 是 first-class（默认显示），不受 showPotential 影响——所以总要拉
-  // 不用 keepPreviousData：会让旧焦点的 tagRelated 卡住，新焦点的边永远画不出来
-  // 接受 fetch 期间 < 100ms 的 tag 边短暂消失
   const relatedBatchQ = useQuery({
     queryKey: ['related-batch', relatedIds],
     queryFn: () => api.relatedBatch(relatedIds, 3),
-    enabled: relatedIds.length > 0,
+    enabled: showPotential && relatedIds.length > 0,
   });
 
   // 工作区里涉及 backbone 卡片的边：作为 potential 风格的叠加显示在画布上
@@ -193,14 +143,14 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
       fullCards,
       focusedBoxId,
       focusedCardId,
-      tagAnchorIds: tagTrailIds,
+      tagAnchorIds: [focusedBoxId],
       relatedBatch: relatedBatchQ.data ?? {},
       // Master 视图：只展示顶级卡的纯净网格，关掉所有关联层
       showPotential: isMaster ? false : showPotential,
-      showTagRelated: isMaster ? false : showTagRelated,
-      showCrossLinks: isMaster ? false : showCrossLinks,
-      showBoxCards: isMaster ? true : showBoxCards,
-      workspaceLinks: showWorkspaceLinks && !isMaster ? workspaceLinksQ.data?.links ?? [] : [],
+      showTagRelated: false,
+      showCrossLinks: !isMaster,
+      showBoxCards: true,
+      workspaceLinks: !isMaster ? workspaceLinksQ.data?.links ?? [] : [],
     });
     const anchored = applyAnchorPositions(raw.nodes, raw.edges, positionsQ.data ?? {});
     // 一次性碰撞解算：把自动布局产生的重叠抹掉，但锁定用户手动拖过的位置
@@ -227,13 +177,8 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
     focusedBoxId,
     focusedCardId,
     isMaster,
-    tagTrailIds,
     relatedBatchQ.data,
     showPotential,
-    showTagRelated,
-    showCrossLinks,
-    showBoxCards,
-    showWorkspaceLinks,
     workspaceLinksQ.data,
     positionsQ.data,
     superlinkMode,
@@ -243,21 +188,47 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [layoutResetToken, setLayoutResetToken] = useState(0);
+
+  const resetLayout = useCallback(async () => {
+    const savedIds = Object.keys(positionsQ.data ?? {});
+    if (savedIds.length === 0) return;
+    stickyPosRef.current.clear();
+    qc.setQueryData<PositionMap>(['positions', scope], {});
+    setLayoutResetToken((n) => n + 1);
+    await Promise.all(savedIds.map((id) => api.deletePosition(scope, id).catch(() => undefined)));
+    await qc.invalidateQueries({ queryKey: ['positions', scope] });
+  }, [positionsQ.data, qc, scope]);
+
+  const exportImage = useCallback(async () => {
+    try {
+      await exportReactFlowCanvasAsPng({
+        flowRoot: flowRootRef.current,
+        nodes,
+        fileName: `folium-box-${focusedBoxId}`,
+      });
+    } catch (err) {
+      dialog.alert((err as Error).message, { title: 'Export image failed' });
+    }
+  }, [focusedBoxId, nodes]);
 
   // 切换 box 时清缓存（避免跨 box 的位置串联）；同 box 内切换焦点时保留位置
   const prevBoxRef = useRef(focusedBoxId);
   const prevFocusRef = useRef(focusedCardId);
+  const prevLayoutResetRef = useRef(layoutResetToken);
   // 会话级 sticky 位置缓存：节点已经摆好的位置不被 buildGraph 重排挪动
   const stickyPosRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   useEffect(() => {
     const boxChanged = prevBoxRef.current !== focusedBoxId;
     const focusChanged = prevFocusRef.current !== focusedCardId;
+    const layoutReset = prevLayoutResetRef.current !== layoutResetToken;
     prevBoxRef.current = focusedBoxId;
     prevFocusRef.current = focusedCardId;
-    if (boxChanged) stickyPosRef.current.clear();
+    prevLayoutResetRef.current = layoutResetToken;
+    if (boxChanged || layoutReset) stickyPosRef.current.clear();
 
     setNodes((prev) => {
-      if (boxChanged) {
+      if (boxChanged || layoutReset) {
         for (const n of graph.nodes) stickyPosRef.current.set(n.id, n.position);
         return graph.nodes;
       }
@@ -271,7 +242,7 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
 
       // 焦点切换时 relatedBatch 会 refetch（key 含 focusedCardId），
       // refetch 期间 batch 数据是 undefined → buildGraph 算出的 graph.nodes 临时少了
-      // tag-related / cross-flank / potential。这一段会把"prev 有但本次 graph 没有"
+      // potential 关联数据。这一段会把"prev 有但本次 graph 没有"
       // 的节点暂时保留在画布上，等 batch 回来 graph 重建时再正常 merge。
       // 这样用户连续点外部卡时不会看到 "全部外部卡瞬间消失" 的闪烁。
       if (focusChanged && !boxChanged && relatedBatchQ.isFetching) {
@@ -286,7 +257,7 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
     // 边同理：refetch 期间，把 prev 有但本次 graph 没有的边一并保留，
     // 不然刚才 carry 进来的节点就是孤岛
     setEdges((prev) => {
-      if (boxChanged) return graph.edges;
+      if (boxChanged || layoutReset) return graph.edges;
       if (focusChanged && relatedBatchQ.isFetching) {
         const currentEdgeIds = new Set(graph.edges.map((e) => e.id));
         const carry = prev.filter((e) => !currentEdgeIds.has(e.id));
@@ -294,7 +265,7 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
       }
       return graph.edges;
     });
-  }, [graph, focusedBoxId, focusedCardId, relatedBatchQ.isFetching, setNodes, setEdges]);
+  }, [graph, focusedBoxId, focusedCardId, layoutResetToken, relatedBatchQ.isFetching, setNodes, setEdges]);
 
   // 拖拽结束 → 乐观更新 + 异步写磁盘（scope 限定）
   const onNodeDragStop = useCallback(
@@ -442,7 +413,7 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
     const name = await dialog.prompt(
       `Create a workspace from ${picked.length} picked card${picked.length === 1 ? '' : 's'}?`,
       {
-        title: 'Create picked chain',
+        title: 'Create workspace from picked cards',
         description: 'Only selected cards are copied. Cards are not moved and vault files are not changed.',
         defaultValue: `Superlink · ${focusedCardId}`,
         confirmLabel: 'Create',
@@ -517,14 +488,17 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
         <HistoryButtons />
         <span className="w-px h-4 bg-paperEdge/80 dark:bg-[#494d64]" />
         <div className="flex items-center gap-1.5">
-          <EdgeToggle color="#385f73" label="Link" active={showCrossLinks} onClick={() => setShowCrossLinks(!showCrossLinks)} title="Manual [[link]] edges" />
-          <EdgeToggle color="#536253" label="Tag" active={showTagRelated} onClick={() => setShowTagRelated(!showTagRelated)} title="Tag co-occurrence edges" />
-          <EdgeToggle color="#ba635c" label="Box" active={showBoxCards} onClick={() => setShowBoxCards(!showBoxCards)} title="Cards inside the current index / box" />
           <EdgeToggle color="#cbd5e1" label="Potential" active={showPotential} onClick={() => setShowPotential(!showPotential)} title="Text-similarity potential edges (gray dashed)" />
-          <EdgeToggle color="#536253" label="Temp" active={showWorkspaceLinks} onClick={() => setShowWorkspaceLinks(!showWorkspaceLinks)} title="Workspace temp ghost cards and their links" />
         </div>
         <span className="w-px h-4 bg-paperEdge/80 dark:bg-[#494d64]" />
-        <FocusDepthBadge depth={focusDepth} max={MAX_FOCUS_DEPTH} />
+        <button
+          onClick={() => void resetLayout()}
+          className="shrink-0 text-[10px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full border zk-subtle-button transition-colors"
+          title="Reset saved layout for this box"
+        >
+          <RotateCcw size={12} strokeWidth={2.4} />
+          <span>Reset Layout</span>
+        </button>
         <div className="flex-1" />
         {superlinkMode ? (
           <div className="shrink-0 flex items-center gap-1.5">
@@ -561,13 +535,13 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
             title="Pick cards on the canvas and copy them into a new workspace"
           >
             <Send size={12} strokeWidth={2.4} />
-            <span>Pick Chain</span>
+            <span>Pick Cards</span>
           </button>
         )}
         <AddFocusedToWorkspace focusedCardId={focusedCardId} />
       </div>
 
-      <div className="flex-1 relative min-h-0 zk-canvas-bg">
+      <div ref={flowRootRef} className="flex-1 relative min-h-0 zk-canvas-bg">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -586,6 +560,15 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange, focusDe
           <Controls position="bottom-right" showInteractive={false} />
           <MiniMap pannable zoomable position="top-right" maskColor="rgba(83,98,83,0.07)" />
         </ReactFlow>
+        <button
+          type="button"
+          className="absolute bottom-[116px] right-4 z-20 flex h-[31px] w-[31px] items-center justify-center rounded-full border border-paperEdge bg-paper/85 text-muted shadow-paper backdrop-blur transition-colors hover:bg-accentSoft hover:text-ink hover:border-accent/35"
+          title="Export canvas as PNG"
+          aria-label="Export canvas as PNG"
+          onClick={() => void exportImage()}
+        >
+          <Download size={13} strokeWidth={2.4} />
+        </button>
       </div>
       {superlinkWorkspacePickerOpen && (
         <SuperlinkWorkspacePicker
@@ -847,29 +830,6 @@ function ChevronRightHistory() {
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
       <path d="M9 18l6-6-6-6" />
     </svg>
-  );
-}
-
-function FocusDepthBadge({ depth, max }: { depth: number; max: number }) {
-  const atMax = depth >= max;
-  const color = depth === 0 ? 'text-gray-400' : atMax ? 'text-[#ba635c]' : 'text-accent';
-  const dotColor = depth === 0 ? 'bg-paperEdge dark:bg-[#494d64]' : atMax ? 'bg-[#ba635c]' : 'bg-accent';
-  return (
-    <div className="flex items-center gap-1.5">
-      <div className="flex items-center gap-0.5">
-        {Array.from({ length: max }, (_, i) => (
-          <span
-            key={i}
-            className={`block w-1.5 h-1.5 rounded-full ${
-              i < depth ? dotColor : 'bg-paperEdge/80 dark:bg-[#494d64]'
-            }`}
-          />
-        ))}
-      </div>
-      <span className={`text-[10px] font-bold uppercase tracking-widest ${color}`}>
-        {atMax ? `Depth ${depth}/${max} · max` : `Depth ${depth}/${max}`}
-      </span>
-    </div>
   );
 }
 

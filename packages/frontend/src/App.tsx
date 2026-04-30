@@ -109,10 +109,7 @@ export function App() {
               qc.invalidateQueries({ queryKey: ['positions'] });
               qc.invalidateQueries({ queryKey: ['tags'] });
               qc.invalidateQueries({ queryKey: ['workspaces'] });
-              // 清掉指向已删卡片的 tab —— 不然 active 那张会变 404
-              usePaneStore.getState().removeTabsWhere(
-                (t) => t.kind === 'card' && (t.cardBoxId === focusedId || t.cardFocusId === focusedId),
-              );
+              usePaneStore.getState().retargetDeletedCardRefs(focusedId);
             } catch (err) {
               dialog.alert((err as Error).message, { title: 'Delete failed' });
             }
@@ -454,11 +451,6 @@ function TopBarContext({
       {tab.kind === 'workspace' && workspace && (
         <span className="shrink-0 text-[10px] font-bold text-gray-400">
           {workspace.nodes.length} nodes · {workspace.edges.length} edges
-        </span>
-      )}
-      {tab.kind === 'card' && tab.cardFocusDepth != null && tab.cardFocusDepth > 0 && (
-        <span className="shrink-0 text-[10px] font-bold text-amber-500">
-          Depth {tab.cardFocusDepth}/3
         </span>
       )}
     </div>

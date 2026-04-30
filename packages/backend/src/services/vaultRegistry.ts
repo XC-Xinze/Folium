@@ -75,6 +75,11 @@ async function saveToDisk(reg: RegistryFile): Promise<void> {
   await writeFile(CONFIG_PATH, JSON.stringify(reg, null, 2), 'utf8');
 }
 
+async function ensureVaultStructure(path: string): Promise<void> {
+  await mkdir(join(path, 'attachments'), { recursive: true });
+  await mkdir(join(path, '.zettel'), { recursive: true });
+}
+
 /**
  * 启动时调一次：读 config，若空就用 VAULT_PATH seed，并把 activeVaultPath 同步到那个。
  * 之后所有 read 都走 cache，write 都同步落盘。
@@ -97,6 +102,7 @@ export async function initVaultRegistry(): Promise<void> {
       cache = reg;
       return;
     }
+    await ensureVaultStructure(path);
     const id = newId();
     reg.vaults.push({ id, path, name: basename(path) || 'Vault' });
     reg.activeVaultId = id;
@@ -110,6 +116,7 @@ export async function initVaultRegistry(): Promise<void> {
   // 同步 active path 到 config 单例
   const active = reg.vaults.find((v) => v.id === reg.activeVaultId);
   if (active) setActiveVaultPath(active.path);
+  if (active) await ensureVaultStructure(active.path);
 
   cache = reg;
 }
@@ -133,6 +140,7 @@ export async function registerVault(rawPath: string, name?: string): Promise<Vau
   const path = expandHome(rawPath);
   const st = await stat(path).catch(() => null);
   if (!st || !st.isDirectory()) throw new Error(`Not a directory: ${path}`);
+  await ensureVaultStructure(path);
 
   const existing = cache.vaults.find((v) => v.path === path);
   if (existing) return existing;

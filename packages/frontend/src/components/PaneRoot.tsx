@@ -484,7 +484,6 @@ function TabContent({ tab, paneId }: { tab: Tab; paneId: string }) {
             focusedBoxId={tab.cardBoxId}
             focusedCardId={tab.cardFocusId}
             flags={mergedFlags}
-            focusDepth={tab.cardFocusDepth}
             onFlagChange={(key, value) => {
               // 同时写 tab 和 pane-card —— tab 给当前会话用，pane-card 给重开后用
               updateTab(paneId, tab.id, {
@@ -506,7 +505,7 @@ function TabContent({ tab, paneId }: { tab: Tab; paneId: string }) {
       if (!tab.tagName) return <Hint>Tag tab missing tagName.</Hint>;
       return (
         <Suspense fallback={<Hint>Loading tag…</Hint>}>
-          <TagView tag={tab.tagName} />
+          <TagView tag={tab.tagName} paneId={paneId} tabId={tab.id} />
         </Suspense>
       );
     case 'settings':

@@ -13,18 +13,10 @@ export type TabKind = 'card' | 'graph' | 'tag' | 'settings' | 'workspace';
 /** 卡片 tab 的边类型显示开关 —— 每个 tab 独立 */
 export interface CardDisplayFlags {
   potential: boolean;
-  tag: boolean;
-  cross: boolean;
-  box: boolean;
-  workspaceLinks: boolean;
 }
 
 export const DEFAULT_CARD_FLAGS: CardDisplayFlags = {
   potential: true,
-  tag: true,
-  cross: true,
-  box: true,
-  workspaceLinks: true,
 };
 
 export interface Tab {
@@ -40,9 +32,6 @@ export interface Tab {
   workspaceId?: string;
   /** 仅 kind='card' 用：边类型开关。缺省走 DEFAULT_CARD_FLAGS */
   cardFlags?: Partial<CardDisplayFlags>;
-  /** 仅 kind='card' 用：当前 box 内累计点过几层外部 tag/cross 卡 —— 到 3 后下一次点
-   *  外部卡触发切 box。回到 backbone 内的卡片或 box 切换时重置。 */
-  cardFocusDepth?: number;
   /** 浏览器风的 per-tab 历史（仅 card tab）。每次 focus / box 变化时 push */
   cardHistory?: Array<{ box: string; focus: string }>;
   /** 当前在 history 里的位置（0-based）。允许"回到中间再前进"截断后续 */
@@ -112,6 +101,8 @@ interface PaneActions {
   removeTabsWhere: (pred: (tab: Tab) => boolean) => void;
   /** 卡片重编号后，把已打开 card tab 和 per-pane 卡片显示状态指向新 id */
   renameCardRefs: (renames: Record<string, string>) => void;
+  /** 删除卡片后不要关 tab；把指向该卡的 card tab 重定向到可显示的上下文。 */
+  retargetDeletedCardRefs: (deletedId: string) => void;
   /** 恢复最近关闭的 tab —— 失败（栈空）时无 op */
   reopenLastClosed: () => void;
   /** 选 active leaf 的第 idx (0-based) tab；越界无 op */
@@ -741,6 +732,39 @@ export const usePaneStore = create<PaneStore>()(
         });
       },
 
+      retargetDeletedCardRefs: (deletedId) => {
+        const { root } = get();
+        const masterId = '__MASTER__';
+        set({
+          root: mapTree(root, (n) => {
+            if (n.kind !== 'leaf') return n;
+            return {
+              ...n,
+              tabs: n.tabs.map((tab) => {
+                if (tab.kind !== 'card') return tab;
+                const boxDeleted = tab.cardBoxId === deletedId;
+                const focusDeleted = tab.cardFocusId === deletedId;
+                if (!boxDeleted && !focusDeleted) return tab;
+
+                const nextBox = boxDeleted ? masterId : tab.cardBoxId;
+                const nextFocus = boxDeleted ? masterId : tab.cardBoxId;
+                const nextHistory = tab.cardHistory?.filter(
+                  (entry) => entry.box !== deletedId && entry.focus !== deletedId,
+                );
+                return {
+                  ...tab,
+                  title: nextFocus === masterId ? 'Vault' : nextFocus ?? tab.title,
+                  cardBoxId: nextBox,
+                  cardFocusId: nextFocus,
+                  cardHistory: nextHistory,
+                  cardHistoryIndex: nextHistory && nextHistory.length > 0 ? nextHistory.length - 1 : -1,
+                };
+              }),
+            };
+          }),
+        });
+      },
+
       removeEmptyPane: (paneId) => {
         const { root, activeLeafId } = get();
         // 唯一 leaf —— 不能真删，清空 tabs 即可
@@ -837,7 +861,6 @@ export const usePaneStore = create<PaneStore>()(
                   cardBoxId: entry.box,
                   cardFocusId: entry.focus,
                   cardHistoryIndex: idx - 1,
-                  cardFocusDepth: 0, // 回退算"跳", 重置深度链
                 };
               }),
             };
@@ -863,7 +886,6 @@ export const usePaneStore = create<PaneStore>()(
                   cardBoxId: entry.box,
                   cardFocusId: entry.focus,
                   cardHistoryIndex: idx + 1,
-                  cardFocusDepth: 0,
                 };
               }),
             };

@@ -3,15 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Folium</title>
+    <title>Folium · Linked cards for thinking</title>
     <meta
       name="description"
-      content="Folium is a local-first card workspace for thinking in links, sequences, and living context."
+      content="Folium is a local-first card workspace for thinking through links, boxes, graph views, and temporary canvases."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,500;0,6..72,600;1,6..72,500&display=swap"
       rel="stylesheet"
     />
     <style>
@@ -24,121 +24,118 @@
         --muted: #747878;
         --accent: #536253;
         --accent-soft: #d3e4d1;
-        --link: #385f73;
+        --blue: #385f73;
         --rust: #ba635c;
+        --shadow: 0 18px 56px rgba(45, 45, 45, 0.10);
       }
 
-      * {
-        box-sizing: border-box;
-      }
-
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
       body {
         margin: 0;
         font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         color: var(--ink);
         background:
-          radial-gradient(circle at 20% 0%, rgba(211, 228, 209, 0.32), transparent 32%),
-          linear-gradient(135deg, #fffdf8 0%, #f8f6f1 56%, #efebe4 100%);
+          radial-gradient(circle at 18% 0%, rgba(211, 228, 209, 0.36), transparent 34%),
+          radial-gradient(circle at 86% 18%, rgba(186, 99, 92, 0.10), transparent 26%),
+          linear-gradient(135deg, #fffdf8 0%, #f8f6f1 58%, #efebe4 100%);
         -webkit-font-smoothing: antialiased;
       }
-
-      a {
-        color: inherit;
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.32;
+        background-image:
+          linear-gradient(rgba(28, 27, 27, 0.025) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(28, 27, 27, 0.018) 1px, transparent 1px);
+        background-size: 28px 28px, 28px 28px;
+        mask-image: linear-gradient(to bottom, black, transparent 72%);
       }
-
-      .shell {
-        min-height: 100vh;
-      }
+      a { color: inherit; }
 
       .nav {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        max-width: 1160px;
+        position: sticky;
+        top: 0;
+        z-index: 40;
+        max-width: 1180px;
         margin: 0 auto;
-        padding: 28px 28px 0;
+        padding: 18px 28px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 18px;
+        border-bottom: 1px solid rgba(216, 211, 202, 0.68);
+        background: rgba(248, 246, 241, 0.78);
+        backdrop-filter: blur(18px);
       }
-
       .brand {
         display: inline-flex;
         align-items: center;
         gap: 12px;
         text-decoration: none;
-        font-weight: 700;
+        font-weight: 800;
       }
-
       .brand img {
         width: 38px;
         height: 38px;
         border-radius: 10px;
       }
-
       .nav-links {
         display: flex;
         align-items: center;
-        gap: 18px;
+        gap: 16px;
         color: var(--muted);
         font-size: 13px;
-        font-weight: 600;
+        font-weight: 700;
       }
-
       .nav-links a {
         text-decoration: none;
       }
-
-      .nav-links a:hover {
-        color: var(--ink);
-      }
+      .nav-links a:hover { color: var(--ink); }
 
       .hero {
-        max-width: 1160px;
+        max-width: 1180px;
         margin: 0 auto;
-        padding: 86px 28px 44px;
+        padding: 86px 28px 54px;
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 420px;
-        gap: 56px;
+        grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
+        gap: 64px;
         align-items: center;
       }
-
       .eyebrow {
-        margin: 0 0 20px;
+        margin: 0 0 18px;
         color: var(--accent);
         font-size: 12px;
         font-weight: 800;
         letter-spacing: 0.12em;
         text-transform: uppercase;
       }
-
-      h1,
-      h2,
-      h3 {
+      h1, h2, h3 {
         font-family: Newsreader, Georgia, serif;
         letter-spacing: 0;
       }
-
       h1 {
+        max-width: 740px;
         margin: 0;
-        max-width: 680px;
-        font-size: clamp(52px, 8vw, 94px);
+        font-size: clamp(54px, 8vw, 98px);
         line-height: 0.94;
         font-weight: 600;
       }
-
       .lead {
-        max-width: 640px;
+        max-width: 680px;
         margin: 28px 0 0;
         color: #444748;
         font-size: 18px;
-        line-height: 1.75;
+        line-height: 1.78;
       }
-
       .actions {
         display: flex;
         flex-wrap: wrap;
         gap: 12px;
         margin-top: 34px;
       }
-
       .button {
         display: inline-flex;
         align-items: center;
@@ -148,58 +145,120 @@
         border-radius: 999px;
         border: 1px solid var(--edge);
         color: var(--ink);
-        background: rgba(255, 253, 248, 0.74);
+        background: rgba(255, 253, 248, 0.76);
         text-decoration: none;
         font-size: 13px;
         font-weight: 800;
         box-shadow: 0 8px 26px rgba(45, 45, 45, 0.06);
+        transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
       }
-
+      .button:hover {
+        transform: translateY(-1px);
+        border-color: rgba(83, 98, 83, 0.38);
+      }
       .button.primary {
         color: #fff;
         border-color: var(--accent);
         background: var(--accent);
       }
 
-      .hero-card {
+      .orbit {
         position: relative;
-        min-height: 420px;
+        min-height: 500px;
       }
-
-      .logo-plate {
+      .paper-card, .node, .graph-card {
+        border: 1px solid rgba(216, 211, 202, 0.86);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.70), rgba(255, 255, 255, 0) 46%),
+          linear-gradient(135deg, rgba(255, 253, 248, 0.94), rgba(251, 248, 240, 0.92));
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(12px);
+      }
+      .graph-card {
         position: absolute;
-        inset: 12px 52px auto auto;
-        width: 250px;
-        height: 250px;
+        inset: 26px 12px auto auto;
+        width: 360px;
+        height: 360px;
+        border-radius: 18px;
+        overflow: hidden;
+      }
+      .graph-card::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          linear-gradient(rgba(28, 27, 27, 0.026) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(28, 27, 27, 0.018) 1px, transparent 1px);
+        background-size: 24px 24px;
+        opacity: 0.36;
+      }
+      .graph-card svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .edge {
+        stroke: rgba(116, 120, 120, 0.36);
+        stroke-width: 1.5;
+        fill: none;
+        stroke-dasharray: 320;
+        stroke-dashoffset: 320;
+        animation: draw 1500ms ease forwards;
+      }
+      .edge.link { stroke: rgba(196, 79, 67, 0.64); animation-delay: 260ms; }
+      .edge.box { stroke: rgba(83, 98, 83, 0.42); animation-delay: 120ms; }
+      .signal {
+        stroke: rgba(83, 98, 83, 0.72);
+        stroke-width: 2.4;
+        stroke-linecap: round;
+        stroke-dasharray: 1 28;
+        stroke-dashoffset: 0;
+        fill: none;
+        opacity: 0;
+        animation: signal 2600ms linear infinite;
+        animation-delay: 1600ms;
+      }
+      .signal.link {
+        stroke: rgba(186, 99, 92, 0.76);
+        animation-delay: 1820ms;
+      }
+      .node {
+        position: absolute;
+        width: 54px;
+        height: 54px;
+        border-radius: 999px;
         display: grid;
         place-items: center;
-        border-radius: 22px;
-        border: 1px solid rgba(216, 211, 202, 0.74);
-        background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0)),
-          linear-gradient(135deg, var(--paper), var(--paper-warm));
-        box-shadow: 0 24px 68px rgba(45, 45, 45, 0.12);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 800;
+        animation: float 6s ease-in-out infinite;
       }
-
-      .logo-plate img {
-        width: 168px;
-        height: 168px;
+      .node.focus {
+        width: 76px;
+        height: 76px;
+        color: #fff;
+        background: var(--accent);
+        border-color: var(--accent);
+        box-shadow: 0 18px 50px rgba(83, 98, 83, 0.22);
       }
+      .n1 { left: 54px; top: 70px; }
+      .n2 { right: 52px; top: 78px; animation-delay: -1s; }
+      .n3 { left: 76px; bottom: 78px; animation-delay: -2s; }
+      .n4 { right: 72px; bottom: 88px; animation-delay: -3s; }
+      .nf { left: 142px; top: 140px; animation-delay: -1.6s; }
 
-      .mini-card {
+      .paper-card {
         position: absolute;
         left: 0;
-        right: 0;
-        bottom: 0;
+        right: 34px;
+        bottom: 4px;
         padding: 24px;
-        border: 1px solid var(--edge);
         border-radius: 12px;
-        background: rgba(255, 253, 248, 0.88);
-        box-shadow: 0 18px 50px rgba(45, 45, 45, 0.10);
-        backdrop-filter: blur(14px);
       }
-
-      .mini-card .meta {
+      .paper-card .meta {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -209,230 +268,277 @@
         letter-spacing: 0.1em;
         text-transform: uppercase;
       }
-
-      .mini-card h2 {
+      .paper-card h2 {
         margin: 18px 0 10px;
         font-size: 30px;
-        line-height: 1.2;
+        line-height: 1.16;
       }
-
-      .mini-card p {
+      .paper-card p {
         margin: 0;
         color: #444748;
-        line-height: 1.7;
+        line-height: 1.72;
       }
 
       .section {
-        max-width: 1160px;
+        max-width: 1180px;
         margin: 0 auto;
         padding: 72px 28px;
       }
-
       .section h2 {
+        max-width: 760px;
         margin: 0 0 26px;
-        font-size: clamp(34px, 5vw, 54px);
+        font-size: clamp(34px, 5vw, 56px);
         line-height: 1.05;
       }
-
       .grid {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 14px;
       }
-
       .feature {
-        min-height: 190px;
+        min-height: 196px;
         padding: 24px;
-        border: 1px solid rgba(216, 211, 202, 0.8);
+        border: 1px solid rgba(216, 211, 202, 0.82);
         border-radius: 10px;
-        background: rgba(255, 253, 248, 0.62);
+        background: rgba(255, 253, 248, 0.64);
+        transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
       }
-
+      .feature:hover {
+        transform: translateY(-3px);
+        border-color: rgba(83, 98, 83, 0.28);
+        box-shadow: 0 16px 42px rgba(45, 45, 45, 0.08);
+      }
       .feature strong {
         display: block;
         margin-bottom: 12px;
         color: var(--ink);
         font-size: 15px;
       }
-
       .feature p {
         margin: 0;
         color: var(--muted);
         font-size: 14px;
-        line-height: 1.7;
+        line-height: 1.72;
       }
-
-      .philosophy {
+      .release {
         display: grid;
-        grid-template-columns: 0.9fr 1.1fr;
-        gap: 48px;
+        grid-template-columns: 0.78fr 1.22fr;
+        gap: 28px;
         align-items: start;
-        border-top: 1px solid rgba(216, 211, 202, 0.8);
+        border-top: 1px solid rgba(216, 211, 202, 0.82);
       }
-
-      .quote {
-        margin: 0;
-        color: var(--accent);
+      .release-card {
+        padding: 24px;
+        border: 1px solid rgba(216, 211, 202, 0.86);
+        border-radius: 12px;
+        background: rgba(255, 253, 248, 0.68);
+        box-shadow: 0 14px 40px rgba(45, 45, 45, 0.07);
+      }
+      .release-card .version {
+        color: var(--rust);
         font-family: Newsreader, Georgia, serif;
-        font-size: clamp(28px, 4vw, 44px);
-        line-height: 1.16;
+        font-size: 46px;
+        line-height: 1;
+        font-weight: 600;
       }
-
-      .copy {
+      .release-card p, .copy p, .copy li {
         color: #444748;
-        font-size: 16px;
-        line-height: 1.85;
+        line-height: 1.82;
       }
-
-      .copy p:first-child {
+      .copy ul {
         margin-top: 0;
+        padding-left: 20px;
       }
-
       .footer {
-        max-width: 1160px;
+        max-width: 1180px;
         margin: 0 auto;
-        padding: 34px 28px 56px;
+        padding: 34px 28px 58px;
         color: var(--muted);
-        border-top: 1px solid rgba(216, 211, 202, 0.8);
+        border-top: 1px solid rgba(216, 211, 202, 0.82);
         font-size: 13px;
       }
-
-      @media (max-width: 900px) {
-        .hero,
-        .philosophy {
-          grid-template-columns: 1fr;
-        }
-
-        .hero-card {
-          min-height: 360px;
-        }
-
-        .grid {
-          grid-template-columns: 1fr;
+      [data-reveal] {
+        opacity: 0;
+        transform: translateY(16px);
+        transition: opacity 600ms ease, transform 600ms ease;
+      }
+      [data-reveal].visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      @keyframes draw { to { stroke-dashoffset: 0; } }
+      @keyframes signal {
+        0% { opacity: 0; stroke-dashoffset: 0; }
+        18% { opacity: 1; }
+        82% { opacity: 1; }
+        100% { opacity: 0; stroke-dashoffset: -116; }
+      }
+      @keyframes float {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-8px); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation-duration: 1ms !important;
+          transition-duration: 1ms !important;
+          scroll-behavior: auto !important;
         }
       }
-
+      @media (max-width: 940px) {
+        .hero, .release { grid-template-columns: 1fr; }
+        .orbit { min-height: 460px; }
+        .grid { grid-template-columns: 1fr; }
+      }
       @media (max-width: 640px) {
-        .nav {
-          align-items: flex-start;
-          gap: 18px;
-          flex-direction: column;
-        }
-
-        .nav-links {
-          flex-wrap: wrap;
-        }
-
-        .hero {
-          padding-top: 58px;
-        }
-
-        .logo-plate {
-          right: 0;
-          width: 210px;
-          height: 210px;
-        }
+        .nav { align-items: flex-start; flex-direction: column; }
+        .nav-links { flex-wrap: wrap; }
+        .hero { padding-top: 56px; }
+        .graph-card { width: 100%; right: 0; }
+        .paper-card { right: 0; }
       }
     </style>
   </head>
   <body>
-    <div class="shell">
-      <nav class="nav" aria-label="Primary navigation">
-        <a class="brand" href="#">
-          <img src="assets/folium-logo.png" alt="" />
-          <span>Folium</span>
-        </a>
-        <div class="nav-links">
-          <a href="#features">Features</a>
-          <a href="#philosophy">Philosophy</a>
-          <a href="documentation.html">Documentation</a>
-          <a href="https://github.com/XC-Xinze/Folium">GitHub</a>
+    <nav class="nav" aria-label="Primary navigation">
+      <a class="brand" href="#">
+        <img src="assets/folium-logo.png" alt="" />
+        <span>Folium</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#release">1.5</a>
+        <a href="documentation.html">Documentation</a>
+        <a href="https://github.com/XC-Xinze/Folium">GitHub</a>
+      </div>
+    </nav>
+
+    <main>
+      <section class="hero">
+        <div data-reveal>
+          <p class="eyebrow">Local-first linked cards · Folium 1.5</p>
+          <h1>Think through cards, not folders.</h1>
+          <p class="lead">
+            Folium is a desktop knowledge workspace where boxes, double-links, potential links,
+            graph focus, and temporary canvases help a thought become structure without forcing it too early.
+          </p>
+          <div class="actions">
+            <a class="button primary" href="https://github.com/XC-Xinze/Folium">View on GitHub</a>
+            <a class="button" href="documentation.html">Read the guide</a>
+            <a class="button" href="https://github.com/XC-Xinze/Folium#install">Install locally</a>
+          </div>
         </div>
-      </nav>
 
-      <main>
-        <section class="hero">
-          <div>
-            <p class="eyebrow">Local-first linked cards</p>
-            <h1>Think through cards, not folders.</h1>
-            <p class="lead">
-              Folium is a desktop knowledge workspace where cards, links, graph views, and temporary canvases
-              help a thought stay alive long enough to become structure.
-            </p>
-            <div class="actions">
-              <a class="button primary" href="https://github.com/XC-Xinze/Folium">View on GitHub</a>
-              <a class="button" href="documentation.html">Read documentation</a>
-              <a class="button" href="https://github.com/XC-Xinze/Folium#development">Run locally</a>
+        <div class="orbit" aria-label="Folium visual preview" data-reveal>
+          <div class="graph-card">
+            <svg viewBox="0 0 360 360" role="img" aria-label="Animated knowledge graph">
+              <path class="edge box" d="M180 180 C110 180 100 96 82 96" />
+              <path class="edge box" d="M180 180 C250 176 258 100 278 104" />
+              <path class="edge link" d="M180 180 C130 230 118 276 96 278" />
+              <path class="edge" d="M180 180 C244 234 266 264 282 268" />
+              <path class="signal" d="M180 180 C110 180 100 96 82 96" />
+              <path class="signal" d="M180 180 C250 176 258 100 278 104" />
+              <path class="signal link" d="M180 180 C130 230 118 276 96 278" />
+            </svg>
+            <div class="node n1">1</div>
+            <div class="node n2">1a</div>
+            <div class="node n3">3c</div>
+            <div class="node n4">tmp</div>
+            <div class="node focus nf">1b</div>
+          </div>
+          <article class="paper-card">
+            <div class="meta">
+              <span>Workspace</span>
+              <span>4 cards · 3 links</span>
             </div>
-          </div>
-
-          <div class="hero-card" aria-label="Folium preview">
-            <div class="logo-plate">
-              <img src="assets/folium-logo.png" alt="Folium logo" />
-            </div>
-            <article class="mini-card">
-              <div class="meta">
-                <span>Workspace</span>
-                <span>4 linked cards</span>
-              </div>
-              <h2>Links as a chain of thought</h2>
-              <p>
-                Pull cards into a workspace, annotate the relationships, and write real double-links back
-                only when the connection earns its place in the vault.
-              </p>
-            </article>
-          </div>
-        </section>
-
-        <section id="features" class="section">
-          <h2>A quieter tool for serious thinking.</h2>
-          <div class="grid">
-            <article class="feature">
-              <strong>Plain Markdown vaults</strong>
-              <p>Your source of truth is ordinary Markdown. SQLite is only a fast local index.</p>
-            </article>
-            <article class="feature">
-              <strong>Chain reading</strong>
-              <p>Open a card and walk its relationships without losing the path that brought you there.</p>
-            </article>
-            <article class="feature">
-              <strong>Workspace canvases</strong>
-              <p>Use temporary cards, notes, colored relation labels, and apply-to-vault links when ready.</p>
-            </article>
-            <article class="feature">
-              <strong>Graph focus</strong>
-              <p>Explore structure visually while dimming unrelated links around the selected card.</p>
-            </article>
-            <article class="feature">
-              <strong>Potential links</strong>
-              <p>Surface latent relationships through local text analysis, without sending notes to a model.</p>
-            </article>
-            <article class="feature">
-              <strong>Desktop safety</strong>
-              <p>The packaged app uses a local backend, per-run API token, and guarded vault file routes.</p>
-            </article>
-          </div>
-        </section>
-
-        <section id="philosophy" class="section philosophy">
-          <p class="quote">Structure should emerge from use, not be imposed before the idea is ready.</p>
-          <div class="copy">
+            <h2>Draft first. Commit later.</h2>
             <p>
-              Folium keeps the Obsidian virtues that matter: local files, extensibility, and an interface
-              that can disappear when you are working. But it treats links as active routes through thought,
-              not just metadata around notes.
+              Pull cards into a workspace, annotate the relationship, then write a real double-link back
+              only when the connection earns its place in the vault.
             </p>
-            <p>
-              Workspaces are the temporary layer: messy, provisional, visual. The vault is the durable layer:
-              cleaner, calmer, and written back only when the relation is worth preserving.
-            </p>
-          </div>
-        </section>
-      </main>
+          </article>
+        </div>
+      </section>
 
-      <footer class="footer">
-        Folium 1.0 · macOS Apple Silicon local build · source-available until a license is selected.
-      </footer>
-    </div>
+      <section id="features" class="section" data-reveal>
+        <h2>A quieter tool for serious linked thinking.</h2>
+        <div class="grid">
+          <article class="feature">
+            <strong>Plain Markdown vaults</strong>
+            <p>Your source of truth is ordinary Markdown. SQLite is only a fast local index.</p>
+          </article>
+          <article class="feature">
+            <strong>Box-based structure</strong>
+            <p>Top-level numbered cards act as boxes. Their Folgezettel descendants form local contexts.</p>
+          </article>
+          <article class="feature">
+            <strong>Real double-links</strong>
+            <p>Explicit <code>[[link]]</code> relations are shown clearly without recursively flooding the canvas.</p>
+          </article>
+          <article class="feature">
+            <strong>Potential links</strong>
+            <p>Unlinked references and high-confidence local similarity appear as optional suggestions.</p>
+          </article>
+          <article class="feature">
+            <strong>Workspace canvases</strong>
+            <p>Use temporary cards, notes, relation labels, and apply-to-vault links when ready.</p>
+          </article>
+          <article class="feature">
+            <strong>Graph focus</strong>
+            <p>Explore global structure through Box, Link, and Tag relations with first-degree highlighting.</p>
+          </article>
+          <article class="feature">
+            <strong>Saved layouts</strong>
+            <p>Manual placement is preserved per box and workspace, with reset layout when you need it.</p>
+          </article>
+          <article class="feature">
+            <strong>Canvas image export</strong>
+            <p>Export the visible box or workspace as a PNG with clean solid links and safe margins.</p>
+          </article>
+          <article class="feature">
+            <strong>Local plugin path</strong>
+            <p>Trusted local plugins can extend commands, UI, and export workflows through the early SDK.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="release" class="section release" data-reveal>
+        <article class="release-card">
+          <div class="version">1.5</div>
+          <p>
+            Folium 1.5 is the first version shaped around the final interaction model:
+            lighter main canvas, clearer workspace semantics, stronger visual identity, and fewer confusing filters.
+          </p>
+        </article>
+        <div class="copy">
+          <h2>From feature-heavy 1.0 to usable 1.5.</h2>
+          <p>
+            Folium 1.0 proved the core platform: local vaults, Electron packaging, workspaces, graph view,
+            attachments, backups, and plugin groundwork. It was powerful, but some interactions were too eager.
+          </p>
+          <ul>
+            <li>1.5 keeps box structure visible while stopping imported link cards from expanding endlessly.</li>
+            <li>Potential links are now an optional assistant layer, not a second structure system.</li>
+            <li>GraphView was reduced to the concepts users actually think with: Box, Link, and Tag.</li>
+            <li>Workspaces now better separate temporary reasoning from durable vault links.</li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      Folium 1.5 · macOS Apple Silicon local build · source-available until a license is selected.
+    </footer>
+
+    <script>
+      const observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) entry.target.classList.add("visible");
+          }
+        },
+        { threshold: 0.12 }
+      );
+      document.querySelectorAll("[data-reveal]").forEach((el) => observer.observe(el));
+    </script>
   </body>
 </html>

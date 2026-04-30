@@ -1,4 +1,13 @@
-import { api, type Card, type CardSummary, type Workspace, type WorkspaceEdge, type WorkspaceNode } from './api';
+import {
+  api,
+  type AttachmentEntry,
+  type Card,
+  type CardSummary,
+  type PluginExportFile,
+  type Workspace,
+  type WorkspaceEdge,
+  type WorkspaceNode,
+} from './api';
 import { registerCommand, type Command } from './commands';
 import { dialog } from './dialog';
 import { PluginRegistry } from './pluginRegistry';
@@ -54,6 +63,14 @@ export interface PluginSdk {
   commands: {
     register(command: Command): () => void;
   };
+  export: {
+    listAttachments(): Promise<AttachmentEntry[]>;
+    downloadZip(input: {
+      fileName?: string;
+      files: PluginExportFile[];
+      includeAttachments?: boolean;
+    }): Promise<void>;
+  };
   storage: PluginStorage;
   registry: typeof PluginRegistry;
   log: Pick<Console, 'log' | 'warn' | 'error'>;
@@ -83,6 +100,17 @@ function createStorage(pluginName: string): PluginStorage {
 function uuid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function downloadBlob(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export function createPluginSdk(pluginName: string, disposables: Array<() => void> = []): PluginSdk {
@@ -212,6 +240,13 @@ export function createPluginSdk(pluginName: string, disposables: Array<() => voi
         const cleanup = registerCommand(command);
         disposables.push(cleanup);
         return cleanup;
+      },
+    },
+    export: {
+      listAttachments: async () => (await api.listAttachments()).attachments,
+      async downloadZip(input) {
+        const blob = await api.createPluginExportZip(input);
+        downloadBlob(blob, input.fileName ?? 'folium-export.zip');
       },
     },
     storage: createStorage(pluginName),

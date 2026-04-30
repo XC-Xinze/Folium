@@ -1,10 +1,37 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { readFile, stat } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { basename, join, posix } from 'node:path';
 import archiver from 'archiver';
 import { getDb } from '../db/client.js';
 import { CardRepository } from '../vault/repository.js';
 import { config } from '../config.js';
+import { assertSafeFileName } from '../security/pathGuards.js';
+
+interface PluginExportFile {
+  path: string;
+  content: string;
+}
+
+interface PluginExportZipBody {
+  fileName?: string;
+  files?: PluginExportFile[];
+  includeAttachments?: boolean;
+}
+
+function safeArchivePath(input: string): string {
+  if (!input || input.includes('\0')) throw new Error('bad archive path');
+  const normalized = posix.normalize(input.replace(/\\/g, '/'));
+  if (
+    normalized === '.' ||
+    normalized === '..' ||
+    normalized.startsWith('/') ||
+    normalized.startsWith('../') ||
+    normalized.includes('/../')
+  ) {
+    throw new Error('bad archive path');
+  }
+  return normalized;
+}
 
 /**
  * 导出：
@@ -72,6 +99,56 @@ export const exportRoutes: FastifyPluginAsync = async (app) => {
     if (attStat?.isDirectory()) {
       archive.directory(attDir, 'attachments');
     }
+    await archive.finalize();
+    return reply;
+  });
+
+  app.post<{ Body: PluginExportZipBody }>('/export/plugin-zip', async (req, reply) => {
+    const files = Array.isArray(req.body?.files) ? req.body.files : [];
+    if (files.length === 0) return reply.code(400).send({ error: 'files_required' });
+    if (files.length > 5000) return reply.code(400).send({ error: 'too_many_files' });
+
+    const entries: PluginExportFile[] = [];
+    const seen = new Set<string>();
+    for (const file of files) {
+      if (!file || typeof file.path !== 'string' || typeof file.content !== 'string') {
+        return reply.code(400).send({ error: 'bad_file' });
+      }
+      let entryName: string;
+      try {
+        entryName = safeArchivePath(file.path);
+      } catch (err) {
+        return reply.code(400).send({ error: (err as Error).message });
+      }
+      if (seen.has(entryName)) continue;
+      seen.add(entryName);
+      entries.push({ path: entryName, content: file.content });
+    }
+
+    let fileName = 'folium-export.zip';
+    try {
+      if (req.body?.fileName) fileName = assertSafeFileName(req.body.fileName, '.zip');
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message });
+    }
+
+    reply.header('Content-Type', 'application/zip');
+    reply.header('Content-Disposition', `attachment; filename="${fileName}"`);
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.on('error', (err) => app.log.error({ err }, 'plugin export zip error'));
+    reply.send(archive);
+
+    for (const file of entries) {
+      archive.append(file.content, { name: file.path });
+    }
+
+    if (req.body?.includeAttachments) {
+      const attDir = join(config.vaultPath, 'attachments');
+      const attStat = await stat(attDir).catch(() => null);
+      if (attStat?.isDirectory()) archive.directory(attDir, 'attachments');
+    }
+
     await archive.finalize();
     return reply;
   });

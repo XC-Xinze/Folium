@@ -112,6 +112,27 @@ export default function activate(ctx) {
 
 - `register(command)` returns a cleanup function.
 
+### `ctx.sdk.export`
+
+- `listAttachments()` returns vault attachment metadata.
+- `downloadZip({ fileName, files, includeAttachments })` asks Folium to create and download a zip.
+
+`files` is an array of generated text files:
+
+```js
+await ctx.sdk.export.downloadZip({
+  fileName: 'my-export.zip',
+  files: [
+    { path: 'README.md', content: '# Export\n' },
+    { path: 'Cards/1.md', content: 'Hello [[1a]]\n' },
+  ],
+  includeAttachments: true,
+});
+```
+
+Paths are zip entry paths, not OS paths. Absolute paths and `..` segments are rejected by the backend.
+Use this API for exporter plugins such as Obsidian-compatible Markdown bundles.
+
 ### `ctx.sdk.storage`
 
 Namespaced per plugin in `localStorage`.
@@ -126,5 +147,11 @@ Namespaced per plugin in `localStorage`.
 - Manifest-level capability declarations and install-time warnings.
 - Plugin lifecycle on vault switch and hot reload beyond the current reload cleanup.
 - Stable UI extension points for card menus, card toolbar, canvas nodes, markdown render hooks, ribbon/status bar.
-- Backend plugin hooks for indexing, file transforms, import/export, and search providers.
+- Backend plugin hooks for indexing, file transforms, import pipelines, and search providers.
 - Versioned SDK compatibility tests and example plugins.
+
+## Official Example Plugins
+
+- `plugins/obsidian-export.js`: registers `Export: Obsidian-compatible vault` in the command palette.
+  It exports cards as Markdown, writes card titles as Obsidian aliases, adds missing Folium links to a
+  `Folium Links` section, includes attachments, and converts Folium workspaces to Obsidian `.canvas` files.

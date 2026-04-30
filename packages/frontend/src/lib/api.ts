@@ -168,6 +168,11 @@ export interface AttachmentEntry {
   referencedBy: Array<{ luhmannId: string; title: string }>;
 }
 
+export interface PluginExportFile {
+  path: string;
+  content: string;
+}
+
 import { API_BASE } from './backendUrl';
 
 const BASE = API_BASE;
@@ -514,6 +519,22 @@ export const api = {
   exportCardUrl: (id: string) => `${BASE}/export/card/${encodeURIComponent(id)}`,
   exportSubtreeUrl: (id: string) => `${BASE}/export/subtree/${encodeURIComponent(id)}`,
   exportVaultUrl: () => `${BASE}/export/vault`,
+  createPluginExportZip: async (input: {
+    fileName?: string;
+    files: PluginExportFile[];
+    includeAttachments?: boolean;
+  }): Promise<Blob> => {
+    const res = await fetch(`${BASE}/export/plugin-zip`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? `${res.status} ${res.statusText}`);
+    }
+    return res.blob();
+  },
   searchReplace: async (input: {
     query: string;
     replacement: string;

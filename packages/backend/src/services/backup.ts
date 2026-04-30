@@ -10,12 +10,13 @@
  * 备份兜底，避免还原结果不如预期还能撤回。
  */
 import { mkdir, readdir, stat, unlink, readFile } from 'node:fs/promises';
-import { createWriteStream, createReadStream } from 'node:fs';
-import { join, relative, dirname } from 'node:path';
+import { createWriteStream } from 'node:fs';
+import { join, dirname } from 'node:path';
 import archiver from 'archiver';
 import unzipper from 'unzipper';
 import { config } from '../config.js';
 import { getVaultSettings } from './vaultSettings.js';
+import { assertSafeFileName, resolveInside } from '../security/pathGuards.js';
 
 const BACKUP_DIR = () => join(config.vaultPath, '.zettel', 'backups');
 const ZETTEL_BACKUPS_REL = '.zettel/backups';
@@ -92,7 +93,8 @@ async function pruneOldBackups(): Promise<void> {
 
 /** 还原备份：解压到 vault 根。先把当前 vault 自动 pre-restore 备一份兜底 */
 export async function restoreBackup(fileName: string): Promise<{ ok: true }> {
-  const fp = join(BACKUP_DIR(), fileName);
+  const safeName = assertSafeFileName(fileName, '.zip');
+  const fp = join(BACKUP_DIR(), safeName);
   // 1. 确认存在
   await stat(fp);
   // 2. 当前 vault 先备一份 pre-restore（即使还原失败也能撤回）
@@ -103,7 +105,7 @@ export async function restoreBackup(fileName: string): Promise<{ ok: true }> {
   const directory = await unzipper.Open.buffer(buf);
   for (const entry of directory.files) {
     if (entry.type !== 'File') continue;
-    const dest = join(config.vaultPath, entry.path);
+    const dest = resolveInside(config.vaultPath, entry.path);
     await mkdir(dirname(dest), { recursive: true });
     const data = await entry.buffer();
     const { writeFile } = await import('node:fs/promises');
@@ -113,7 +115,8 @@ export async function restoreBackup(fileName: string): Promise<{ ok: true }> {
 }
 
 export async function purgeBackup(fileName: string): Promise<void> {
-  await unlink(join(BACKUP_DIR(), fileName)).catch(() => undefined);
+  const safeName = assertSafeFileName(fileName, '.zip');
+  await unlink(join(BACKUP_DIR(), safeName)).catch(() => undefined);
 }
 
 /* ============================================================

@@ -4,6 +4,7 @@ import matter from 'gray-matter';
 import { config } from '../config.js';
 import type { CardRepository } from '../vault/repository.js';
 import { parseCardFile } from '../vault/parser.js';
+import { assertSafeFileName } from '../security/pathGuards.js';
 
 const TRASH_DIR = () => join(config.vaultPath, '.zettel', 'trash');
 
@@ -76,12 +77,13 @@ export async function restoreFromTrash(
   fileName: string,
   strategy: RestoreStrategy = 'fail',
 ): Promise<{ luhmannId: string; conflict?: boolean; replacedExisting?: boolean }> {
-  const src = join(TRASH_DIR(), fileName);
+  const safeName = assertSafeFileName(fileName, '.md');
+  const src = join(TRASH_DIR(), safeName);
   const raw = await readFile(src, 'utf8');
   const parsed = matter(raw, {});
   const originalId =
     (typeof parsed.data.luhmannId === 'string' && parsed.data.luhmannId) ||
-    fileName.replace(/^\d{8}T\d{6}-/, '').replace(/\.md$/, '');
+    safeName.replace(/^\d{8}T\d{6}-/, '').replace(/\.md$/, '');
 
   // 探测冲突
   let conflict = false;
@@ -174,7 +176,8 @@ function computeNextAvailableId(parentId: string, allIds: Set<string>): string |
 
 /** 永久删除 trash 里某文件 */
 export async function purgeTrashEntry(fileName: string): Promise<void> {
-  await unlink(join(TRASH_DIR(), fileName));
+  const safeName = assertSafeFileName(fileName, '.md');
+  await unlink(join(TRASH_DIR(), safeName));
 }
 
 /** 清空 trash */

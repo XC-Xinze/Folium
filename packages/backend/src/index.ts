@@ -21,6 +21,7 @@ import { vaultRoutes } from './routes/vaults.js';
 import { hooks } from './hooks.js';
 import { getActiveVault, initVaultRegistry } from './services/vaultRegistry.js';
 import { startBackupScheduler, stopBackupScheduler } from './services/backup.js';
+import { resolveInside } from './security/pathGuards.js';
 
 function isAllowedCorsOrigin(origin: string | undefined): boolean {
   if (!origin) return true;
@@ -51,6 +52,14 @@ async function main() {
     limits: { fileSize: 25 * 1024 * 1024 },
   });
 
+  if (config.apiToken) {
+    app.addHook('onRequest', async (req, reply) => {
+      if (!req.url.startsWith('/api/') || req.method === 'OPTIONS') return;
+      if (req.headers['x-folium-token'] === config.apiToken) return;
+      return reply.code(401).send({ error: 'unauthorized' });
+    });
+  }
+
   // 先 init vault registry：会读 ~/.zettelkasten/config.json 并把 active path 同步到 config，
   // 之后所有 config.vaultPath 才能拿到正确的当前 vault（首次启动会用 VAULT_PATH seed）
   await initVaultRegistry();
@@ -71,9 +80,13 @@ async function main() {
   });
   app.get<{ Params: { '*': string } }>('/vault/*', async (req, reply) => {
     const rel = req.params['*'];
-    if (!rel || rel.includes('..')) return reply.code(400).send({ error: 'bad path' });
     const activePath = getActiveVaultPath();
     if (!activePath) return reply.code(404).send({ error: 'no active vault' });
+    try {
+      resolveInside(activePath, rel);
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message });
+    }
     return reply.sendFile(rel, activePath);
   });
 

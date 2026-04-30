@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import matter from 'gray-matter';
 import { config } from '../config.js';
+import { assertSafeFileName } from '../security/pathGuards.js';
 
 /**
  * 工作区 = 用户自己拼起来的一块画布。
@@ -304,7 +305,8 @@ export async function deleteWorkspace(id: string): Promise<void> {
 
 /** 恢复某个被软删的 workspace（按 trashFileName 还原 + 删 trash 文件） */
 export async function restoreWorkspaceFromTrash(trashFileName: string): Promise<Workspace | null> {
-  const fp = join(WS_TRASH_DIR(), trashFileName);
+  const safeName = assertSafeFileName(trashFileName, '.json');
+  const fp = join(WS_TRASH_DIR(), safeName);
   let raw: string;
   try {
     raw = await readFile(fp, 'utf8');
@@ -360,7 +362,8 @@ export async function listDeletedWorkspaces(): Promise<WorkspaceTrashEntry[]> {
 }
 
 export async function purgeDeletedWorkspace(fileName: string): Promise<void> {
-  await unlink(join(WS_TRASH_DIR(), fileName)).catch(() => undefined);
+  const safeName = assertSafeFileName(fileName, '.json');
+  await unlink(join(WS_TRASH_DIR(), safeName)).catch(() => undefined);
 }
 
 /* ---- temp 卡 trash ---- */
@@ -428,7 +431,8 @@ export async function restoreTempNode(fileName: string): Promise<{
   ok: true;
   workspaceId: string;
 } | { error: string }> {
-  const fp = join(TEMP_TRASH_DIR(), fileName);
+  const safeName = assertSafeFileName(fileName, '.json');
+  const fp = join(TEMP_TRASH_DIR(), safeName);
   let raw: string;
   try {
     raw = await readFile(fp, 'utf8');
@@ -455,7 +459,8 @@ export async function restoreTempNode(fileName: string): Promise<{
 }
 
 export async function purgeDeletedTempNode(fileName: string): Promise<void> {
-  await unlink(join(TEMP_TRASH_DIR(), fileName)).catch(() => undefined);
+  const safeName = assertSafeFileName(fileName, '.json');
+  await unlink(join(TEMP_TRASH_DIR(), safeName)).catch(() => undefined);
 }
 
 /** vault 切换时调，清空 in-memory cache 让下次 loadAll 从新 vault 的 .zettel/ 读 */

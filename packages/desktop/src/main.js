@@ -1,5 +1,6 @@
 import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron';
 import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
@@ -8,6 +9,7 @@ const devProjectRoot = resolve(__dirname, '..', '..', '..');
 const backendPort = process.env.PORT ?? '8000';
 const backendUrl = `http://127.0.0.1:${backendPort}`;
 const rendererUrl = process.env.ELECTRON_RENDERER_URL;
+const apiToken = process.env.FOLIUM_API_TOKEN ?? randomBytes(32).toString('hex');
 
 let backendProcess = null;
 
@@ -25,6 +27,7 @@ function startBackend() {
     PORT: backendPort,
     DB_PATH: process.env.DB_PATH ?? join(app.getPath('userData'), 'index.db'),
     FOLIUM_CONFIG_DIR: process.env.FOLIUM_CONFIG_DIR ?? app.getPath('userData'),
+    FOLIUM_API_TOKEN: apiToken,
     CORS_ORIGINS: rendererUrl ?? 'http://localhost:5173,http://127.0.0.1:5173',
     FOLIUM_DISABLE_EXAMPLE_VAULT: app.isPackaged ? '1' : (process.env.FOLIUM_DISABLE_EXAMPLE_VAULT ?? ''),
   };
@@ -139,6 +142,8 @@ ipcMain.handle('vault:select-directory', async (_event, opts = {}) => {
   if (result.canceled) return null;
   return result.filePaths[0] ?? null;
 });
+
+ipcMain.handle('app:get-api-token', () => apiToken);
 
 app.whenReady().then(() => {
   void createWindow().catch((err) => {

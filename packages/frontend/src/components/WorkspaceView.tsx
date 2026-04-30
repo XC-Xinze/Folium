@@ -644,7 +644,7 @@ function WorkspaceInner({ workspaceId }: Props) {
         <div className="border-l border-paperEdge/80 mx-1 h-4" />
         <button
           onClick={() => addNote(200, 200)}
-          className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded border border-transparent text-[#9a6a2f] hover:text-ink hover:border-[#d6c09b] hover:bg-[#f3e6c8]/70"
+          className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded border border-transparent text-[#9a6a2f] dark:text-[#eed49f] hover:text-ink hover:border-[#d6c09b] dark:hover:border-[#eed49f]/40 hover:bg-[#f3e6c8]/70 dark:hover:bg-[#eed49f]/12"
           title="Add sticky note"
         >
           <StickyNote size={12} /> Note
@@ -664,14 +664,14 @@ function WorkspaceInner({ workspaceId }: Props) {
             title="Filter visible workspace relations"
           >
             Relations
-            <span className="text-gray-400">
+            <span className="text-gray-500 dark:text-[#a5adcb]">
               {RELATION_FILTER_OPTIONS.find((opt) => opt.id === relationFilter)?.label.replace(' relations', '')}
             </span>
-            <span className="text-gray-400">{relationCounts[relationFilter]}</span>
+            <span className="text-gray-500 dark:text-[#a5adcb]">{relationCounts[relationFilter]}</span>
             <ChevronDown size={11} />
           </button>
           {relationMenuOpen && (
-            <div className="absolute left-0 top-8 z-[2300] w-64 overflow-hidden rounded-lg border border-paperEdge bg-paper shadow-2xl">
+            <div className="absolute left-0 top-8 z-[2300] w-64 overflow-hidden rounded-lg border border-paperEdge bg-paper text-ink shadow-2xl">
               {RELATION_FILTER_OPTIONS.map((option) => (
                 <button
                   key={option.id}
@@ -680,14 +680,14 @@ function WorkspaceInner({ workspaceId }: Props) {
                     setRelationMenuOpen(false);
                   }}
                   className={`w-full px-3 py-2 text-left transition-colors ${
-                    relationFilter === option.id ? 'bg-accentSoft text-ink' : 'hover:bg-surfaceAlt text-ink'
+                    relationFilter === option.id ? 'bg-accentSoft text-ink' : 'text-ink hover:bg-surfaceAlt'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-xs font-bold">{option.label}</span>
-                    <span className="font-mono text-[10px] text-gray-400">{relationCounts[option.id]}</span>
+                    <span className="font-mono text-[10px] text-gray-500 dark:text-[#a5adcb]">{relationCounts[option.id]}</span>
                   </div>
-                  <div className="mt-0.5 text-[10px] leading-snug text-gray-500">{option.description}</div>
+                  <div className="mt-0.5 text-[10px] leading-snug text-gray-500 dark:text-[#a5adcb]">{option.description}</div>
                 </button>
               ))}
             </div>

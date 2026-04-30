@@ -178,19 +178,19 @@ const DEFAULT_TOGGLES: EdgeToggles = {
 };
 
 const EDGE_COLOR: Record<LinkKind, string> = {
-  hierarchy: '#9a958b',
-  link: '#385f73',
-  tag: '#536253',
-  box: '#b06a54',
+  hierarchy: 'color-mix(in srgb, var(--zk-muted) 72%, var(--zk-paper-edge))',
+  link: 'var(--zk-link)',
+  tag: 'var(--zk-accent)',
+  box: 'var(--zk-rust)',
 };
 
-const GRAPH_SURFACE = '#fffdf8';
-const GRAPH_PAPER_EDGE = '#d8d3ca';
-const GRAPH_INK = '#1c1b1b';
-const GRAPH_MUTED = '#747878';
-const GRAPH_MOSS = '#536253';
-const GRAPH_BLUE = '#385f73';
-const GRAPH_RUST = '#ba635c';
+const GRAPH_SURFACE = 'var(--zk-paper)';
+const GRAPH_PAPER_EDGE = 'var(--zk-paper-edge)';
+const GRAPH_INK = 'var(--zk-ink)';
+const GRAPH_MUTED = 'var(--zk-muted)';
+const GRAPH_MOSS = 'var(--zk-accent)';
+const GRAPH_BLUE = 'var(--zk-link)';
+const GRAPH_RUST = 'var(--zk-rust)';
 
 function GraphInner() {
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
@@ -260,7 +260,7 @@ function GraphInner() {
       .attr('font-family', 'var(--font-mono), ui-monospace, monospace')
       .attr('font-weight', 700)
       .attr('font-size', 9)
-      .attr('fill', (d) => (d.isIndex ? '#fffdf8' : GRAPH_MUTED))
+      .attr('fill', (d) => (d.isIndex ? 'var(--zk-paper)' : GRAPH_MUTED))
       .attr('pointer-events', 'none')
       .text((d) => d.card.luhmannId);
 
@@ -482,7 +482,7 @@ function GraphInner() {
   return (
     <div className="w-full h-full flex flex-col bg-surface dark:bg-[#181926]">
       <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 zk-toolbar-surface border-b overflow-x-auto">
-        <EdgeToggle color="#475569" label="Hierarchy" active={toggles.hierarchy} onClick={() => flip('hierarchy')} />
+        <EdgeToggle color="var(--zk-muted)" label="Hierarchy" active={toggles.hierarchy} onClick={() => flip('hierarchy')} />
         <EdgeToggle color={GRAPH_BLUE} label="Link" active={toggles.link} onClick={() => flip('link')} />
         <EdgeToggle color={GRAPH_MOSS} label="Tag" active={toggles.tag} onClick={() => flip('tag')} />
         <EdgeToggle color={GRAPH_RUST} label="Box" active={toggles.box} onClick={() => flip('box')} />
@@ -623,14 +623,16 @@ function EdgeToggle({
     <button
       onClick={onClick}
       className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-widest transition-all ${
-        active ? 'text-gray-700 dark:text-[#cad3f5] border-paperEdge bg-paper/70' : 'text-gray-300 dark:text-gray-600 border-transparent'
+        active
+          ? 'text-ink border-accent/40 bg-accentSoft hover:border-accent/60'
+          : 'text-gray-400 dark:text-[#a5adcb] border-transparent hover:text-gray-600 dark:hover:text-[#cad3f5] hover:bg-surfaceAlt'
       }`}
     >
       <span
         className="w-2 h-2 rounded-full transition-all"
         style={{
           backgroundColor: active ? color : 'transparent',
-          border: `1.5px solid ${active ? color : '#d1d5db'}`,
+          border: `1.5px solid ${active ? color : 'var(--zk-paper-edge)'}`,
         }}
       />
       {label}

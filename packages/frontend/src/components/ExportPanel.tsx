@@ -20,17 +20,32 @@ export function ExportPanel() {
     .slice(0, 20)
     .map((x) => x.c);
 
+  const download = async (url: string, fallbackName: string) => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') ?? '';
+    const match = disposition.match(/filename="([^"]+)"/i);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = match?.[1] ?? fallbackName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  };
+
   return (
     <div className="space-y-4">
       <div>
-        <a
-          href={api.exportVaultUrl()}
+        <button
+          type="button"
+          onClick={() => void download(api.exportVaultUrl(), 'vault.zip')}
           className="inline-flex items-center gap-2 text-[12px] font-bold px-3 py-2 rounded bg-accent text-white hover:bg-accent/90"
-          download
         >
           <FolderArchive size={13} />
           Export entire vault (.zip)
-        </a>
+        </button>
         <p className="text-[10px] text-gray-400 mt-1">
           Bundles every .md plus the attachments/ directory.
         </p>
@@ -72,22 +87,22 @@ export function ExportPanel() {
         )}
         {picked && (
           <div className="mt-3 flex items-center gap-2">
-            <a
-              href={api.exportCardUrl(picked)}
-              download
+            <button
+              type="button"
+              onClick={() => void download(api.exportCardUrl(picked), `${picked}.md`)}
               className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
             >
               <FileDown size={11} />
               Card .md
-            </a>
-            <a
-              href={api.exportSubtreeUrl(picked)}
-              download
+            </button>
+            <button
+              type="button"
+              onClick={() => void download(api.exportSubtreeUrl(picked), `vault-subtree-${picked}.zip`)}
               className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
             >
               <Download size={11} />
               Subtree .zip
-            </a>
+            </button>
             <code className="ml-2 text-[10px] text-gray-500">{picked}</code>
           </div>
         )}

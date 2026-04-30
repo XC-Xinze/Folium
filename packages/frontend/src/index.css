@@ -144,12 +144,31 @@ html.dark .hover\:bg-gray-50:hover { background-color: #363a4f !important; }
 html.dark .hover\:bg-gray-100:hover { background-color: #494d64 !important; }
 html.dark .hover\:bg-white\/5:hover { background-color: rgba(202,211,245,0.05) !important; }
 
-html.dark .text-gray-300 { color: #6e738d !important; }   /* overlay0 */
-html.dark .text-gray-400 { color: #8087a2 !important; }   /* overlay1 */
-html.dark .text-gray-500 { color: #939ab7 !important; }   /* overlay2 */
-html.dark .text-gray-600 { color: #a5adcb !important; }   /* subtext0 */
-html.dark .text-gray-700 { color: #b8c0e0 !important; }   /* subtext1 */
+html.dark .text-gray-300 { color: #939ab7 !important; }   /* overlay2 */
+html.dark .text-gray-400 { color: #a5adcb !important; }   /* subtext0 */
+html.dark .text-gray-500 { color: #a5adcb !important; }   /* subtext0 */
+html.dark .text-gray-600 { color: #b8c0e0 !important; }   /* subtext1 */
+html.dark .text-gray-700 { color: #cad3f5 !important; }   /* text */
 html.dark .text-ink { color: #cad3f5 !important; }         /* text */
+
+/* Tailwind 的 dark: 变体会生成 `.dark .dark\:text-gray-*`，不会命中上面的裸类兜底。 */
+html.dark .dark\:text-gray-100 { color: #cad3f5 !important; }
+html.dark .dark\:text-gray-200 { color: #cad3f5 !important; }
+html.dark .dark\:text-gray-300 { color: #b8c0e0 !important; }
+html.dark .dark\:text-gray-400 { color: #a5adcb !important; }
+html.dark .dark\:text-gray-500 { color: #939ab7 !important; }
+html.dark .dark\:text-gray-600 { color: #a5adcb !important; }
+html.dark .dark\:text-gray-700 { color: #b8c0e0 !important; }
+html.dark .dark\:bg-gray-700 { background-color: #494d64 !important; }
+html.dark .dark\:bg-gray-800 { background-color: #363a4f !important; }
+html.dark .dark\:bg-gray-900 { background-color: #1e2030 !important; }
+html.dark .dark\:border-gray-600 { border-color: #6e738d !important; }
+html.dark .dark\:border-gray-700 { border-color: #494d64 !important; }
+html.dark .dark\:border-gray-800 { border-color: #363a4f !important; }
+html.dark .dark\:hover\:text-gray-100:hover { color: #cad3f5 !important; }
+html.dark .dark\:hover\:text-gray-200:hover { color: #cad3f5 !important; }
+html.dark .dark\:hover\:bg-gray-700:hover { background-color: #494d64 !important; }
+html.dark .dark\:hover\:bg-gray-800:hover { background-color: #363a4f !important; }
 
 html.dark .hover\:text-ink:hover { color: #f4dbd6 !important; }    /* rosewater on hover */
 html.dark .hover\:text-accent:hover { color: #a7c7a1 !important; }
@@ -160,6 +179,7 @@ html.dark .border-gray-300 { border-color: #5b6078 !important; }
 
 html.dark .bg-accentSoft { background-color: rgba(167,199,161,0.18) !important; }
 html.dark .text-accent { color: #a7c7a1 !important; }
+html.dark .bg-accentSoft.text-accent { color: #cad3f5 !important; }
 html.dark .text-link { color: #9bc2cf !important; }
 html.dark .border-accent\/40 { border-color: rgba(167,199,161,0.4) !important; }
 

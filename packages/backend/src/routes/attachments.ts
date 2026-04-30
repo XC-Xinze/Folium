@@ -1,12 +1,13 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { mkdir, writeFile, access, readdir, stat, unlink } from 'node:fs/promises';
-import { join, extname, basename, resolve, sep } from 'node:path';
+import { join, extname, basename } from 'node:path';
 import { spawn } from 'node:child_process';
 import { platform } from 'node:os';
 import { config } from '../config.js';
 import { getVaultSettings } from '../services/vaultSettings.js';
 import { getDb } from '../db/client.js';
 import { CardRepository } from '../vault/repository.js';
+import { resolveInside } from '../security/pathGuards.js';
 
 const ATTACHMENTS_DIR = 'attachments';
 
@@ -46,12 +47,7 @@ function assertVaultRelativeAttachmentPath(relativePath: string): string {
   if (!rel.startsWith(`${ATTACHMENTS_DIR}/`) || rel.includes('\0')) {
     throw new Error('attachment path required');
   }
-  const vault = resolve(config.vaultPath);
-  const target = resolve(vault, rel);
-  if (target === vault || !target.startsWith(vault + sep)) {
-    throw new Error('path escapes vault');
-  }
-  return target;
+  return resolveInside(config.vaultPath, rel);
 }
 
 async function walkAttachments(dir: string, base = ATTACHMENTS_DIR): Promise<Array<{ relativePath: string; size: number; mtime: number }>> {
@@ -134,11 +130,11 @@ export const attachmentRoutes: FastifyPluginAsync = async (app) => {
       if (!rel || typeof rel !== 'string') {
         return reply.code(400).send({ error: 'relativePath required' });
       }
-      const vault = resolve(config.vaultPath);
-      const target = resolve(vault, rel);
-      // 必须在 vault 内
-      if (target !== vault && !target.startsWith(vault + sep)) {
-        return reply.code(400).send({ error: 'path escapes vault' });
+      let target: string;
+      try {
+        target = resolveInside(config.vaultPath, rel);
+      } catch (err) {
+        return reply.code(400).send({ error: (err as Error).message });
       }
       try {
         await access(target);

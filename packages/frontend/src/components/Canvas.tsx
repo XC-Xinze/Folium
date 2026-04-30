@@ -892,15 +892,15 @@ function EdgeToggle({
       title={title}
       className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-widest transition-all ${
         active
-          ? 'text-gray-700 dark:text-[#cad3f5] border-paperEdge bg-paper/70 hover:border-accent/40'
-          : 'text-gray-300 dark:text-gray-600 border-transparent hover:text-gray-500 hover:bg-paper/40'
+          ? 'text-ink border-accent/40 bg-accentSoft hover:border-accent/60'
+          : 'text-gray-400 dark:text-[#a5adcb] border-transparent hover:text-gray-500 dark:hover:text-[#cad3f5] hover:bg-surfaceAlt'
       }`}
     >
       <span
         className="w-2 h-2 rounded-full transition-all"
         style={{
           backgroundColor: active ? color : 'transparent',
-          border: `1.5px solid ${active ? color : '#d1d5db'}`,
+          border: `1.5px solid ${active ? color : 'var(--zk-paper-edge)'}`,
         }}
       />
       {label}

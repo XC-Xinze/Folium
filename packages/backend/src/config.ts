@@ -25,6 +25,7 @@ export function setActiveVaultPath(path: string): void {
 export const config = {
   port: Number(process.env.PORT ?? 8000),
   host: process.env.HOST ?? '127.0.0.1',
+  apiToken: process.env.FOLIUM_API_TOKEN ?? '',
   corsOrigins: (process.env.CORS_ORIGINS ?? '')
     .split(',')
     .map((s) => s.trim())

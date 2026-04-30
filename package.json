@@ -1,9 +1,9 @@
 {
-  "name": "zettelkasten-card",
+  "name": "folium",
   "version": "0.0.1",
   "private": true,
   "main": "packages/desktop/src/main.js",
-  "description": "A Zettelkasten card system with chain-reading semantics, Obsidian-compatible MD storage",
+  "description": "Linked cards for thinking, with local-first Markdown storage",
   "workspaces": [
     "packages/*"
   ],
@@ -17,7 +17,7 @@
     "native:electron": "cd node_modules/better-sqlite3 && npx node-gyp rebuild --target=41.3.0 --arch=arm64 --dist-url=https://electronjs.org/headers --runtime=electron",
     "native:node": "npm rebuild better-sqlite3",
     "pack:desktop": "npm run build --workspace=frontend && npm run build --workspace=backend && electron-builder --mac --dir && npm run pack:desktop:fix-native",
-    "pack:desktop:fix-native": "npm run native:electron && mkdir -p /tmp/zk-electron-native && cp node_modules/better-sqlite3/build/Release/better_sqlite3.node /tmp/zk-electron-native/better_sqlite3.node && npm run native:node && mkdir -p \"release/mac-arm64/Zettelkasten Card.app/Contents/Resources/app/node_modules/better-sqlite3/build/Release\" && cp /tmp/zk-electron-native/better_sqlite3.node \"release/mac-arm64/Zettelkasten Card.app/Contents/Resources/app/node_modules/better-sqlite3/build/Release/better_sqlite3.node\"",
+    "pack:desktop:fix-native": "npm run native:electron && mkdir -p /tmp/zk-electron-native && cp node_modules/better-sqlite3/build/Release/better_sqlite3.node /tmp/zk-electron-native/better_sqlite3.node && npm run native:node && mkdir -p \"release/mac-arm64/Folium.app/Contents/Resources/app/node_modules/better-sqlite3/build/Release\" && cp /tmp/zk-electron-native/better_sqlite3.node \"release/mac-arm64/Folium.app/Contents/Resources/app/node_modules/better-sqlite3/build/Release/better_sqlite3.node\"",
     "dist:desktop": "npm run build --workspace=frontend && npm run build --workspace=backend && electron-builder --mac && npm run pack:desktop:fix-native",
     "start:desktop": "npm run build --workspace=frontend && npm run start --workspace=desktop",
     "typecheck": "npm run typecheck --workspaces --if-present",
@@ -47,8 +47,8 @@
     "vitest": "^4.1.5"
   },
   "build": {
-    "appId": "com.zettelkasten.card",
-    "productName": "Zettelkasten Card",
+    "appId": "com.folium.app",
+    "productName": "Folium",
     "asar": false,
     "directories": {
       "output": "release"

@@ -81,7 +81,7 @@ export function FirstRunVaultOnboarding() {
             Choose where your notes live
           </h1>
           <p className="mt-3 text-sm leading-7 text-gray-500 dark:text-[#a5adcb] max-w-2xl">
-            Zettelkasten Card stores your vault as local Markdown files. Pick an empty folder for a new vault,
+            Folium stores your vault as local Markdown files. Pick an empty folder for a new vault,
             or open an existing folder that already contains cards.
           </p>
         </div>

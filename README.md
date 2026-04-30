@@ -1,4 +1,4 @@
-# Zettelkasten Card
+# Folium
 
 一个为深度研究者设计的卢曼卡片盒笔记系统。核心理念：**顺序服务于学习阶段，无序是知识构建的终极阶段**。
 
@@ -45,7 +45,7 @@ VAULT_PATH=~/MyZettelVault npm run dev:backend
 ## 项目结构
 
 ```
-ZettelkastenCard/
+Folium/
 ├── packages/
 │   ├── backend/        # Fastify API + SQLite 索引 + vault 监听
 │   │   └── src/

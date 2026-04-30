@@ -57,7 +57,7 @@ async function openBackendFailureWindow(message) {
   const win = new BrowserWindow({
     width: 720,
     height: 360,
-    title: 'Zettelkasten Card',
+    title: 'Folium',
     webPreferences: {
       sandbox: true,
       contextIsolation: true,
@@ -68,7 +68,7 @@ async function openBackendFailureWindow(message) {
     `data:text/html;charset=utf-8,${encodeURIComponent(`
       <html>
         <body style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 32px; color: #1c1b1b; background: #fdf8f8;">
-          <h2>Backend failed to start</h2>
+          <h2>Folium backend failed to start</h2>
           <p>${message}</p>
           <p style="color: #747878;">Please quit and reopen the app. If this keeps happening, start the development build and check the terminal log.</p>
         </body>
@@ -105,7 +105,7 @@ async function createWindow() {
     height: 860,
     minWidth: 980,
     minHeight: 640,
-    title: 'Zettelkasten Card',
+    title: 'Folium',
     webPreferences: {
       sandbox: true,
       contextIsolation: true,

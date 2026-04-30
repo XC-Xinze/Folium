@@ -38,7 +38,7 @@ export function EmptyVault() {
       }> = [
         {
           luhmannId: '1',
-          title: 'Welcome to your Zettelkasten',
+          title: 'Welcome to Folium',
           tags: ['welcome'],
           content:
             "# Welcome\n\nThis card has children (1a, 1b), so it acts as an INDEX. Status is derived from structure — no need to mark it.\n\nTry these:\n\n- Press ⌘K to quickly jump anywhere\n- Press ⌘B to toggle the sidebar\n- Click the Settings cog to tweak theme & hotkeys\n",

@@ -86,7 +86,9 @@ async function waitForBackend(timeoutMs = 15_000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     try {
-      const res = await fetch(`${backendUrl}/api/health`);
+      const res = await fetch(`${backendUrl}/api/health`, {
+        headers: { 'X-Folium-Token': apiToken },
+      });
       if (res.ok) return;
     } catch {
       // keep polling

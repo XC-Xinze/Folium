@@ -119,13 +119,22 @@
       h1 {
         max-width: 740px;
         margin: 0;
-        font-size: clamp(54px, 8vw, 98px);
-        line-height: 0.94;
+        font-size: clamp(78px, 14vw, 154px);
+        line-height: 0.86;
         font-weight: 600;
+      }
+      .tagline {
+        max-width: 680px;
+        margin: 28px 0 0;
+        color: var(--ink);
+        font-family: Newsreader, Georgia, serif;
+        font-size: clamp(28px, 4.6vw, 52px);
+        line-height: 1.08;
+        font-weight: 500;
       }
       .lead {
         max-width: 680px;
-        margin: 28px 0 0;
+        margin: 18px 0 0;
         color: #444748;
         font-size: 18px;
         line-height: 1.78;
@@ -164,7 +173,7 @@
 
       .orbit {
         position: relative;
-        min-height: 500px;
+        min-height: 590px;
       }
       .paper-card, .node, .graph-card {
         border: 1px solid rgba(216, 211, 202, 0.86);
@@ -176,11 +185,12 @@
       }
       .graph-card {
         position: absolute;
-        inset: 26px 12px auto auto;
+        inset: 12px 12px auto auto;
         width: 360px;
         height: 360px;
         border-radius: 18px;
         overflow: hidden;
+        z-index: 1;
       }
       .graph-card::after {
         content: "";
@@ -254,9 +264,10 @@
         position: absolute;
         left: 0;
         right: 34px;
-        bottom: 4px;
+        top: 408px;
         padding: 24px;
         border-radius: 12px;
+        z-index: 2;
       }
       .paper-card .meta {
         display: flex;
@@ -386,7 +397,7 @@
       }
       @media (max-width: 940px) {
         .hero, .release { grid-template-columns: 1fr; }
-        .orbit { min-height: 460px; }
+        .orbit { min-height: 590px; }
         .grid { grid-template-columns: 1fr; }
       }
       @media (max-width: 640px) {
@@ -394,7 +405,7 @@
         .nav-links { flex-wrap: wrap; }
         .hero { padding-top: 56px; }
         .graph-card { width: 100%; right: 0; }
-        .paper-card { right: 0; }
+        .paper-card { right: 0; top: 408px; }
       }
     </style>
   </head>
@@ -416,7 +427,8 @@
       <section class="hero">
         <div data-reveal>
           <p class="eyebrow">Local-first linked cards · Folium 1.5</p>
-          <h1>Think through cards, not folders.</h1>
+          <h1>Folium</h1>
+          <p class="tagline">Think through cards, not folders.</p>
           <p class="lead">
             Folium is a desktop knowledge workspace where boxes, double-links, potential links,
             graph focus, and temporary canvases help a thought become structure without forcing it too early.

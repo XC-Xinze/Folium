@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Folium</title>
+    <meta
+      name="description"
+      content="Folium is a local-first card workspace for thinking in links, sequences, and living context."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #f8f6f1;
+        --paper: #fffdf8;
+        --paper-warm: #fbf8f0;
+        --edge: #d8d3ca;
+        --ink: #1c1b1b;
+        --muted: #747878;
+        --accent: #536253;
+        --accent-soft: #d3e4d1;
+        --link: #385f73;
+        --rust: #ba635c;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 20% 0%, rgba(211, 228, 209, 0.32), transparent 32%),
+          linear-gradient(135deg, #fffdf8 0%, #f8f6f1 56%, #efebe4 100%);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .shell {
+        min-height: 100vh;
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        max-width: 1160px;
+        margin: 0 auto;
+        padding: 28px 28px 0;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .brand img {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+      }
+
+      .nav-links {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .nav-links a {
+        text-decoration: none;
+      }
+
+      .nav-links a:hover {
+        color: var(--ink);
+      }
+
+      .hero {
+        max-width: 1160px;
+        margin: 0 auto;
+        padding: 86px 28px 44px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 420px;
+        gap: 56px;
+        align-items: center;
+      }
+
+      .eyebrow {
+        margin: 0 0 20px;
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3 {
+        font-family: Newsreader, Georgia, serif;
+        letter-spacing: 0;
+      }
+
+      h1 {
+        margin: 0;
+        max-width: 680px;
+        font-size: clamp(52px, 8vw, 94px);
+        line-height: 0.94;
+        font-weight: 600;
+      }
+
+      .lead {
+        max-width: 640px;
+        margin: 28px 0 0;
+        color: #444748;
+        font-size: 18px;
+        line-height: 1.75;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 34px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 42px;
+        padding: 0 18px;
+        border-radius: 999px;
+        border: 1px solid var(--edge);
+        color: var(--ink);
+        background: rgba(255, 253, 248, 0.74);
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 800;
+        box-shadow: 0 8px 26px rgba(45, 45, 45, 0.06);
+      }
+
+      .button.primary {
+        color: #fff;
+        border-color: var(--accent);
+        background: var(--accent);
+      }
+
+      .hero-card {
+        position: relative;
+        min-height: 420px;
+      }
+
+      .logo-plate {
+        position: absolute;
+        inset: 12px 52px auto auto;
+        width: 250px;
+        height: 250px;
+        display: grid;
+        place-items: center;
+        border-radius: 22px;
+        border: 1px solid rgba(216, 211, 202, 0.74);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0)),
+          linear-gradient(135deg, var(--paper), var(--paper-warm));
+        box-shadow: 0 24px 68px rgba(45, 45, 45, 0.12);
+      }
+
+      .logo-plate img {
+        width: 168px;
+        height: 168px;
+      }
+
+      .mini-card {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 24px;
+        border: 1px solid var(--edge);
+        border-radius: 12px;
+        background: rgba(255, 253, 248, 0.88);
+        box-shadow: 0 18px 50px rgba(45, 45, 45, 0.10);
+        backdrop-filter: blur(14px);
+      }
+
+      .mini-card .meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .mini-card h2 {
+        margin: 18px 0 10px;
+        font-size: 30px;
+        line-height: 1.2;
+      }
+
+      .mini-card p {
+        margin: 0;
+        color: #444748;
+        line-height: 1.7;
+      }
+
+      .section {
+        max-width: 1160px;
+        margin: 0 auto;
+        padding: 72px 28px;
+      }
+
+      .section h2 {
+        margin: 0 0 26px;
+        font-size: clamp(34px, 5vw, 54px);
+        line-height: 1.05;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .feature {
+        min-height: 190px;
+        padding: 24px;
+        border: 1px solid rgba(216, 211, 202, 0.8);
+        border-radius: 10px;
+        background: rgba(255, 253, 248, 0.62);
+      }
+
+      .feature strong {
+        display: block;
+        margin-bottom: 12px;
+        color: var(--ink);
+        font-size: 15px;
+      }
+
+      .feature p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.7;
+      }
+
+      .philosophy {
+        display: grid;
+        grid-template-columns: 0.9fr 1.1fr;
+        gap: 48px;
+        align-items: start;
+        border-top: 1px solid rgba(216, 211, 202, 0.8);
+      }
+
+      .quote {
+        margin: 0;
+        color: var(--accent);
+        font-family: Newsreader, Georgia, serif;
+        font-size: clamp(28px, 4vw, 44px);
+        line-height: 1.16;
+      }
+
+      .copy {
+        color: #444748;
+        font-size: 16px;
+        line-height: 1.85;
+      }
+
+      .copy p:first-child {
+        margin-top: 0;
+      }
+
+      .footer {
+        max-width: 1160px;
+        margin: 0 auto;
+        padding: 34px 28px 56px;
+        color: var(--muted);
+        border-top: 1px solid rgba(216, 211, 202, 0.8);
+        font-size: 13px;
+      }
+
+      @media (max-width: 900px) {
+        .hero,
+        .philosophy {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-card {
+          min-height: 360px;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .nav {
+          align-items: flex-start;
+          gap: 18px;
+          flex-direction: column;
+        }
+
+        .nav-links {
+          flex-wrap: wrap;
+        }
+
+        .hero {
+          padding-top: 58px;
+        }
+
+        .logo-plate {
+          right: 0;
+          width: 210px;
+          height: 210px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <nav class="nav" aria-label="Primary navigation">
+        <a class="brand" href="#">
+          <img src="assets/folium-logo.png" alt="" />
+          <span>Folium</span>
+        </a>
+        <div class="nav-links">
+          <a href="#features">Features</a>
+          <a href="#philosophy">Philosophy</a>
+          <a href="documentation.html">Documentation</a>
+          <a href="https://github.com/XC-Xinze/Folium">GitHub</a>
+        </div>
+      </nav>
+
+      <main>
+        <section class="hero">
+          <div>
+            <p class="eyebrow">Local-first linked cards</p>
+            <h1>Think through cards, not folders.</h1>
+            <p class="lead">
+              Folium is a desktop knowledge workspace where cards, links, graph views, and temporary canvases
+              help a thought stay alive long enough to become structure.
+            </p>
+            <div class="actions">
+              <a class="button primary" href="https://github.com/XC-Xinze/Folium">View on GitHub</a>
+              <a class="button" href="documentation.html">Read documentation</a>
+              <a class="button" href="https://github.com/XC-Xinze/Folium#development">Run locally</a>
+            </div>
+          </div>
+
+          <div class="hero-card" aria-label="Folium preview">
+            <div class="logo-plate">
+              <img src="assets/folium-logo.png" alt="Folium logo" />
+            </div>
+            <article class="mini-card">
+              <div class="meta">
+                <span>Workspace</span>
+                <span>4 linked cards</span>
+              </div>
+              <h2>Links as a chain of thought</h2>
+              <p>
+                Pull cards into a workspace, annotate the relationships, and write real double-links back
+                only when the connection earns its place in the vault.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section id="features" class="section">
+          <h2>A quieter tool for serious thinking.</h2>
+          <div class="grid">
+            <article class="feature">
+              <strong>Plain Markdown vaults</strong>
+              <p>Your source of truth is ordinary Markdown. SQLite is only a fast local index.</p>
+            </article>
+            <article class="feature">
+              <strong>Chain reading</strong>
+              <p>Open a card and walk its relationships without losing the path that brought you there.</p>
+            </article>
+            <article class="feature">
+              <strong>Workspace canvases</strong>
+              <p>Use temporary cards, notes, colored relation labels, and apply-to-vault links when ready.</p>
+            </article>
+            <article class="feature">
+              <strong>Graph focus</strong>
+              <p>Explore structure visually while dimming unrelated links around the selected card.</p>
+            </article>
+            <article class="feature">
+              <strong>Potential links</strong>
+              <p>Surface latent relationships through local text analysis, without sending notes to a model.</p>
+            </article>
+            <article class="feature">
+              <strong>Desktop safety</strong>
+              <p>The packaged app uses a local backend, per-run API token, and guarded vault file routes.</p>
+            </article>
+          </div>
+        </section>
+
+        <section id="philosophy" class="section philosophy">
+          <p class="quote">Structure should emerge from use, not be imposed before the idea is ready.</p>
+          <div class="copy">
+            <p>
+              Folium keeps the Obsidian virtues that matter: local files, extensibility, and an interface
+              that can disappear when you are working. But it treats links as active routes through thought,
+              not just metadata around notes.
+            </p>
+            <p>
+              Workspaces are the temporary layer: messy, provisional, visual. The vault is the durable layer:
+              cleaner, calmer, and written back only when the relation is worth preserving.
+            </p>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        Folium 1.0 · macOS Apple Silicon local build · source-available until a license is selected.
+      </footer>
+    </div>
+  </body>
+</html>

@@ -1,6 +1,6 @@
 {
   "name": "folium",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "private": true,
   "main": "packages/desktop/src/main.js",
   "description": "Linked cards for thinking, with local-first Markdown storage",
@@ -32,7 +32,7 @@
   "dependencies": {
     "@fastify/cors": "^10.0.1",
     "@fastify/multipart": "^9.0.1",
-    "@fastify/static": "^8.0.1",
+    "@fastify/static": "^9.1.3",
     "archiver": "^7.0.1",
     "better-sqlite3": "^12.9.0",
     "chokidar": "^4.0.1",

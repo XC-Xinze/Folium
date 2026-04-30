@@ -1,96 +1,132 @@
-# Folium
+<p align="center">
+  <img src="docs/assets/folium-logo.png" alt="Folium logo" width="128" height="128" />
+</p>
 
-一个为深度研究者设计的卢曼卡片盒笔记系统。核心理念：**顺序服务于学习阶段，无序是知识构建的终极阶段**。
+<h1 align="center">Folium</h1>
 
-## 它不是什么
+<p align="center">
+  A local-first card workspace for thinking in links, sequences, and living context.
+</p>
 
-- 不是另一个 Obsidian 克隆（Obsidian 的双链是无序的，不利于学习阶段）
-- 不是 Logseq 的块级大纲（讨厌强制 bullet）
+<p align="center">
+  <a href="https://xc-xinze.github.io/Folium/">Website</a>
+  ·
+  <a href="https://xc-xinze.github.io/Folium/documentation.html">Documentation</a>
+  ·
+  <a href="docs/plugin-sdk-v0.md">Plugin SDK</a>
+  ·
+  <a href="docs/electron.md">Desktop Notes</a>
+</p>
 
-## 它是什么
+---
 
-- 卡片以 Markdown 文件存储，**完全兼容 Obsidian Vault**
-- 默认视图是**链式阅读**：打开一张卡片，下方依次铺开它链接的卡片完整正文
-- **段落级反向引用**：知道是谁、在什么语境引用了你（Logseq 的优点）
-- **潜在链接**以暗淡的视觉融入主流，被动发现而非主动检索
-- SQLite + FTS5 提供全文检索与潜在链接计算（无 LLM）
+Folium is a desktop-first Markdown knowledge workspace inspired by the good parts of Obsidian, Logseq, and Luhmann's Zettelkasten, but built around a different premise:
 
-## 技术栈
+> Links should help carry a chain of thought, not just decorate isolated notes.
 
-- 前端：Vite + React 18 + TypeScript + Tailwind + Framer Motion + TanStack Query + Zustand
-- 后端：Node + Fastify 5 + better-sqlite3 + chokidar
-- 存储：MD 文件（源） + SQLite（衍生索引）
-- monorepo：npm workspaces
+Cards are stored as plain Markdown files in a vault. Folium builds a local SQLite index over them, then gives you a chain view, workspace canvases, graph exploration, tags, backlinks, potential links, and temporary workspace cards that can later become real vault cards.
 
-## 启动
+## Highlights
+
+- **Local-first Markdown vaults**: your notes remain ordinary `.md` files.
+- **Chain reading**: click through links and keep the thinking path visible.
+- **Workspace canvases**: pull cards into a temporary thinking space, connect them, annotate links, and apply real links back to the vault when ready.
+- **Graph view**: a calm visual map with focus behavior for related cards and links.
+- **Potential links**: discover unlinked relationships without requiring an LLM.
+- **Tags and box filters**: filter links by manual links, tags, potential links, workspace links, and cards in the current index.
+- **Attachments and backups**: local attachment handling, PDF/open-in-system support, and vault backups.
+- **Plugin-ready architecture**: trusted local plugins can extend commands and UI through the early SDK.
+- **Desktop packaging**: Electron shell with an embedded local Fastify backend.
+
+## Screenshots
+
+The app is still moving quickly, so screenshots are best viewed on the project website:
+
+https://xc-xinze.github.io/Folium/
+
+## Install
+
+Folium 1.0 currently targets macOS Apple Silicon for the local packaged build.
+
+```bash
+npm install
+npm run pack:desktop
+open release/mac-arm64/Folium.app
+```
+
+The app is not code-signed yet. On macOS, the first launch may require allowing it from System Settings or using right-click -> Open.
+
+## Development
 
 ```bash
 npm install
 
-# 开两个终端，或后台跑
-npm run dev:backend     # http://127.0.0.1:8000
-npm run dev:frontend    # http://localhost:5173
+# Terminal 1
+npm run dev:backend
+
+# Terminal 2
+npm run dev:frontend
 ```
 
-打开 http://localhost:5173 即可。
+Open:
 
-### 配置 Vault 路径
+```text
+http://127.0.0.1:5173
+```
 
-默认使用项目内 `example-vault/`。换成你自己的：
+Desktop development:
 
 ```bash
-VAULT_PATH=~/MyZettelVault npm run dev:backend
+npm run dev:backend
+npm run dev:frontend
+npm run dev:desktop
 ```
 
-## 项目结构
+## Project Structure
 
-```
+```text
 Folium/
 ├── packages/
-│   ├── backend/        # Fastify API + SQLite 索引 + vault 监听
-│   │   └── src/
-│   │       ├── db/         # schema + connection
-│   │       ├── vault/      # MD parser + scanner + watcher + repository
-│   │       ├── services/   # links 计算（linked / referenced-from / potential）
-│   │       ├── routes/     # HTTP 端点
-│   │       └── hooks.ts    # 事件总线（插件扩展点）
-│   └── frontend/       # Vite + React UI
-│       └── src/
-│           ├── components/ # Sidebar / ChainView / CardView / SettingsView
-│           ├── lib/        # api 客户端、markdown 渲染、PluginRegistry
-│           └── store/      # Zustand UI state
-└── example-vault/      # 7 张样例卡片
+│   ├── backend/      Fastify API, SQLite index, vault scanner, watcher
+│   ├── frontend/     React, Vite, Tailwind, graph/workspace/card UI
+│   └── desktop/      Electron shell and preload bridge
+├── docs/             GitHub Pages, plugin notes, workspace model docs
+└── example-vault/    Development sample vault
 ```
 
-## 卡片格式
+## Card Format
 
 ```markdown
 ---
 luhmannId: 1a
-title: 维度灾难与特征选择器
-tags: [ML, TLS]
-crossLinks: [1a1, 3b]   # 手动指定的关联卡片
+title: Feature Selection and Dimensionality
+tags: [ML, Research]
+crossLinks: [1a1, 3b]
 ---
 
-正文中也可以用 [[1a1]] 或 [[标题]] 双链。`status` 不需要写入 frontmatter；系统会根据结构自动派生 `ATOMIC` / `INDEX`：顶层编号天然是 `INDEX`，有子卡的卡片也是 `INDEX`。
+Body text can include [[1a1]] or [[Card Title]] links.
 ```
 
-## 当前 MVP 完成的功能
+`status` is derived by the app. Top-level numbered cards and cards with children are treated as index cards.
 
-- ✅ MD 文件扫描 + 解析 + frontmatter
-- ✅ 卢曼编号自动派生 sortKey / parentId / depth
-- ✅ 文件变更实时同步索引（chokidar）
-- ✅ FTS5 全文索引
-- ✅ 链式阅读视图 + Linked / Potential / ReferencedFrom 三段
-- ✅ 潜在链接显示开关（关闭/仅标题/完整）
-- ✅ Tags + Index 侧栏
-- ✅ 设置页骨架
-- ✅ 后端事件钩子（card:beforeSave 等）+ 前端 PluginRegistry 接口
+## Security Model
 
-## 路线图
+Folium is designed as a local desktop app.
 
-- 卡片编辑器（当前是只读，编辑需直接改 .md 文件）
-- Promote / Demote 重编号操作
-- Graph View（语义缩放：放大到一定程度展开为完整内容）
-- 插件 SDK V2（动态加载 ES module）
-- 命令面板
+- The packaged backend binds to `127.0.0.1`.
+- Packaged API requests require an Electron-provided per-run token.
+- Vault file routes and backup restore paths are guarded against traversal and zip-slip.
+- Plugins are currently a **trusted local plugin** model, similar in spirit to Obsidian community plugins. They are not a hard sandbox.
+
+## Roadmap
+
+- Signed and notarized macOS builds.
+- Release artifacts through GitHub Releases.
+- Plugin SDK stabilization.
+- More graph/workspace export options.
+- Windows/Linux packaging.
+- Mobile-friendly architecture after the desktop workflow settles.
+
+## License
+
+No license has been selected yet. Treat the repository as source-available until a license is added.

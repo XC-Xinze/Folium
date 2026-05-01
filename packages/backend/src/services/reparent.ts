@@ -21,6 +21,7 @@ import { join, dirname } from 'node:path';
 import { config } from '../config.js';
 import { renameCardInAllScopes } from './positions.js';
 import { renameStarred } from './starred.js';
+import matter from 'gray-matter';
 
 export interface ReparentResult {
   /** oldId → newId */
@@ -169,28 +170,44 @@ export async function reparentCard(
   // step 2: tmp → 新名
   for (const m of fileMoves) await rename(m.tmp, m.to);
 
-  // 2. Rewrite references throughout vault
+  // 2. Rewrite structural metadata and explicit wikilinks throughout vault.
+  // Do not run broad raw-text replacements: plain title/body mentions such as
+  // "1a is an example" are user prose, not card identity metadata.
   let filesUpdated = 0;
   for await (const file of walkMd(config.vaultPath)) {
     const raw = await readFile(file, 'utf8');
-    let mut = raw;
+    const parsed = matter(raw, {});
+    let changed = false;
+    let body = parsed.content;
     for (const [oldId, newId] of renames) {
-      const escaped = escapeForRegex(oldId);
       // [[oldId]] 或 [[oldId|alias]] —— 别名保留
-      const wikiRe = new RegExp(`\\[\\[${escaped}(\\||\\])`, 'g');
-      mut = mut.replace(wikiRe, `[[${newId}$1`);
-      // frontmatter luhmannId / id 字段
-      const fmRe = new RegExp(
-        `^(\\s*(?:luhmannId|id)\\s*:\\s*)["']?${escaped}["']?\\s*$`,
-        'gm',
-      );
-      mut = mut.replace(fmRe, `$1${newId}`);
-      // crossLinks 数组里的引用（YAML 数组 ['1a2', '...']）
-      const arrRe = new RegExp(`(['"\\[,\\s])${escaped}(['"\\],\\s])`, 'g');
-      mut = mut.replace(arrRe, `$1${newId}$2`);
+      const wikiRe = new RegExp(`\\[\\[\\s*${escapeForRegex(oldId)}\\s*(\\|[^\\]]+)?\\s*\\]\\]`, 'g');
+      const nextBody = body.replace(wikiRe, (_m, alias?: string) => `[[${newId}${alias ?? ''}]]`);
+      if (nextBody !== body) {
+        body = nextBody;
+        changed = true;
+      }
+
+      if (String(parsed.data.luhmannId ?? '') === oldId) {
+        parsed.data.luhmannId = newId;
+        changed = true;
+      }
+      if (String(parsed.data.id ?? '') === oldId) {
+        parsed.data.id = newId;
+        changed = true;
+      }
+      if (Array.isArray(parsed.data.crossLinks)) {
+        const next = parsed.data.crossLinks.map((x: unknown) =>
+          String(x).trim() === oldId ? newId : x,
+        );
+        if (JSON.stringify(next) !== JSON.stringify(parsed.data.crossLinks)) {
+          parsed.data.crossLinks = next;
+          changed = true;
+        }
+      }
     }
-    if (mut !== raw) {
-      await writeFile(file, mut, 'utf8');
+    if (changed) {
+      await writeFile(file, matter.stringify(body, parsed.data), 'utf8');
       filesUpdated++;
     }
   }

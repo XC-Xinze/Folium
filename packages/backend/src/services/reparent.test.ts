@@ -84,4 +84,32 @@ describe('reparent data safety', () => {
     expect(updated?.edges).toHaveLength(1);
     expect(updated?.edges[0]).toMatchObject({ source: 'n-source', target: 'n-child' });
   });
+
+  it('does not rewrite plain title or body mentions when moving a card', async () => {
+    const vault = await mkdtemp(join(tmpdir(), 'zk-reparent-plain-'));
+    await mkdir(join(vault, '.zettel'), { recursive: true });
+    setActiveVaultPath(vault);
+
+    await writeCard(vault, '1', 'Parent card\n');
+    await writeCard(
+      vault,
+      '1a',
+      'Plain 1a should stay plain.\nExplicit self link [[1a]] should be retargeted.\n',
+      { title: 'Title says 1a plainly' },
+    );
+    await writeCard(vault, '2', 'Target parent\n', { crossLinks: ['1a'] });
+    const { db, repo } = await repoFromVault(vault);
+
+    const result = await reparentCard(db, repo, '1a', '2');
+
+    expect(result.renames).toEqual({ '1a': '2a' });
+    const moved = matter(await readFile(join(vault, '2a.md'), 'utf8'));
+    expect(moved.data.luhmannId).toBe('2a');
+    expect(moved.data.title).toBe('Title says 1a plainly');
+    expect(moved.content).toContain('Plain 1a should stay plain.');
+    expect(moved.content).toContain('Explicit self link [[2a]] should be retargeted.');
+
+    const target = matter(await readFile(join(vault, '2.md'), 'utf8'));
+    expect(target.data.crossLinks).toEqual(['2a']);
+  });
 });

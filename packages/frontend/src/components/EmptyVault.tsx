@@ -4,17 +4,19 @@ import { CalendarDays, FileText, FolderTree, Sparkles } from 'lucide-react';
 import { api } from '../lib/api';
 import { dialog } from '../lib/dialog';
 import { usePaneStore } from '../store/paneStore';
+import { useUIStore } from '../store/uiStore';
 
 /**
  * 空仓库的引导屏：第一次打开时给一个明确的"下一步"，而不是冷冰冰的提示。
  * 三个选项：
  *   - 一键种子：建一棵示例树，让人看到 INDEX/Folgezettel 长啥样
- *   - 创建第一张卡：弹 dialog 起 1
+ *   - 创建第一张卡：打开当前统一的新建卡片窗口
  *   - 今天的 daily：直接进入写作流
  */
 export function EmptyVault() {
   const qc = useQueryClient();
   const openTab = usePaneStore((s) => s.openTab);
+  const setNewCardOpen = useUIStore((s) => s.setNewCardOpen);
   const navigateTo = (boxId: string, focusId: string, title: string) =>
     openTab({ kind: 'card', title, cardBoxId: boxId, cardFocusId: focusId });
   const [creating, setCreating] = useState(false);
@@ -71,34 +73,8 @@ export function EmptyVault() {
     }
   };
 
-  const createFirst = async () => {
-    const id = await dialog.prompt('Pick an id for your first card (e.g. "1")', {
-      title: 'Create card',
-      defaultValue: '1',
-      confirmLabel: 'Create',
-    });
-    if (!id?.trim()) return;
-    const title = await dialog.prompt('Title?', {
-      title: 'Create card',
-      defaultValue: 'My first note',
-      confirmLabel: 'Create',
-    });
-    if (!title?.trim()) return;
-    setCreating(true);
-    try {
-      await api.createCard({
-        luhmannId: id.trim(),
-        title: title.trim(),
-        content: '',
-        tags: [],
-      });
-      refreshAll();
-      navigateTo(id.trim(), id.trim(), title.trim());
-    } catch (err) {
-      dialog.alert((err as Error).message, { title: 'Create failed' });
-    } finally {
-      setCreating(false);
-    }
+  const createFirst = () => {
+    setNewCardOpen(true);
   };
 
   const startDaily = async () => {

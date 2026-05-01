@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countUnlinkedHits, stripWikilinks, titleKeywords } from './links.js';
+import { contentKeywords, countUnlinkedHits, stripWikilinks, titleKeywords } from './links.js';
 
 describe('stripWikilinks', () => {
   it('removes wikilink wrappers and their contents', () => {
@@ -69,6 +69,27 @@ describe('titleKeywords', () => {
   it('returns the title unchanged when no splitter', () => {
     expect(titleKeywords('RBF')).toEqual(['RBF']);
     expect(titleKeywords('半监督学习')).toEqual(['半监督学习']);
+  });
+});
+
+describe('contentKeywords', () => {
+  it('extracts content terms while ignoring attachments and markup noise', () => {
+    const out = contentKeywords(
+      'RBF kernel model selection ![20260428](attachments/20260428.png) [[1a]] daily note',
+    );
+    expect(out).toContain('kernel');
+    expect(out).toContain('model');
+    expect(out).toContain('selection');
+    expect(out).not.toContain('attachments');
+    expect(out).not.toContain('20260428');
+    expect(out).not.toContain('daily');
+  });
+
+  it('creates conservative CJK content tokens', () => {
+    const out = contentKeywords('主动学习查询策略需要减少标注成本');
+    expect(out).toContain('主动学');
+    expect(out).toContain('学习查');
+    expect(out.length).toBeGreaterThanOrEqual(3);
   });
 });
 

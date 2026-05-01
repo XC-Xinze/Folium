@@ -131,6 +131,8 @@ interface NewCardBarProps {
 export function NewCardBar({ onCreated, variant = 'inline' }: NewCardBarProps = {}) {
   const focusedId = useUIStore((s) => s.focusedCardId);
   const focusedBoxId = useUIStore((s) => s.focusedBoxId);
+  const storedNewCardDraft = useUIStore((s) => s.newCardDraft);
+  const newCardDraft = variant === 'modal' ? storedNewCardDraft : null;
   const qc = useQueryClient();
 
   const [luhmannId, setLuhmannId] = useState('');
@@ -145,6 +147,7 @@ export function NewCardBar({ onCreated, variant = 'inline' }: NewCardBarProps = 
   const taRef = useRef<HTMLTextAreaElement>(null);
   const idInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const draftKey = `${newCardDraft?.luhmannId ?? ''}\n${newCardDraft?.title ?? ''}\n${newCardDraft?.content ?? ''}`;
 
   const tagsQ = useQuery({ queryKey: ['tags'], queryFn: api.listTags });
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
@@ -160,6 +163,16 @@ export function NewCardBar({ onCreated, variant = 'inline' }: NewCardBarProps = 
   useEffect(() => {
     if (!editingId) setLuhmannId(suggestedId);
   }, [suggestedId, editingId]);
+
+  useEffect(() => {
+    if (!newCardDraft) return;
+    if (newCardDraft.luhmannId) {
+      setLuhmannId(newCardDraft.luhmannId);
+      setEditingId(true);
+    }
+    if (newCardDraft.title !== undefined) setTitle(newCardDraft.title);
+    if (newCardDraft.content !== undefined) setContent(newCardDraft.content);
+  }, [draftKey, newCardDraft]);
 
   // Tag autocomplete candidates
   const tagCandidates = (() => {

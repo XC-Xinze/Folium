@@ -32,6 +32,8 @@ interface UIState {
   settingsOpen: boolean;
   /** 新建卡片弹窗开/关 */
   newCardOpen: boolean;
+  /** 新建卡片弹窗的预填值；用于 Master 下快速创建顶层 box */
+  newCardDraft: { luhmannId?: string; title?: string; content?: string } | null;
   /** ⌘P 命令面板开/关 */
   commandPaletteOpen: boolean;
   /** 主题：light/dark 强制；auto 跟随系统 */
@@ -54,6 +56,7 @@ interface UIState {
   setQuickSwitcherOpen: (b: boolean) => void;
   setSettingsOpen: (b: boolean) => void;
   setNewCardOpen: (b: boolean) => void;
+  openNewCard: (draft?: { luhmannId?: string; title?: string; content?: string }) => void;
   setCommandPaletteOpen: (b: boolean) => void;
   setTheme: (t: Theme) => void;
   setShortcut: (commandId: string, shortcut: string | null) => void;
@@ -77,6 +80,7 @@ export const useUIStore = create<UIState>()(
       quickSwitcherOpen: false,
       settingsOpen: false,
       newCardOpen: false,
+      newCardDraft: null,
       commandPaletteOpen: false,
       theme: 'auto',
       shortcutOverrides: {},
@@ -102,7 +106,8 @@ export const useUIStore = create<UIState>()(
       setViewMode: (m) => set({ viewMode: m }),
       setQuickSwitcherOpen: (b) => set({ quickSwitcherOpen: b }),
       setSettingsOpen: (b) => set({ settingsOpen: b }),
-      setNewCardOpen: (b) => set({ newCardOpen: b }),
+      setNewCardOpen: (b) => set({ newCardOpen: b, ...(b ? {} : { newCardDraft: null }) }),
+      openNewCard: (draft) => set({ newCardOpen: true, newCardDraft: draft ?? null }),
       setCommandPaletteOpen: (b) => set({ commandPaletteOpen: b }),
       setTheme: (t) => set({ theme: t }),
       setShortcut: (commandId, shortcut) =>

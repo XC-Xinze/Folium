@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, ChevronRight, Crown, FileQuestion, FolderTree, Star, Tag, Trash2, X } from 'lucide-react';
+import { CalendarDays, ChevronRight, Crown, FileQuestion, FolderTree, Plus, Star, Tag, Trash2, X } from 'lucide-react';
 import { api, type CardSummary, type IndexNode } from '../lib/api';
 import { dialog } from '../lib/dialog';
 import { useUIStore } from '../store/uiStore';
@@ -50,6 +50,15 @@ function buildFolgezettelTree(
   return childrenOf;
 }
 
+function nextTopLevelBoxId(cards: CardSummary[]): string {
+  const existing = new Set(cards.map((c) => c.luhmannId));
+  for (let n = 1; n < 100000; n++) {
+    const id = String(n);
+    if (!existing.has(id)) return id;
+  }
+  return String(existing.size + 1);
+}
+
 export function Sidebar() {
   const navigate = useNavigateToCard();
   const openTabFromStore = usePaneStore((s) => s.openTab);
@@ -58,6 +67,7 @@ export function Sidebar() {
   const focusedId = useUIStore((s) => s.focusedCardId);
   const focusedBoxId = useUIStore((s) => s.focusedBoxId);
   const focusedTag = useUIStore((s) => s.focusedTag);
+  const openNewCard = useUIStore((s) => s.openNewCard);
 
   const tagsQ = useQuery({ queryKey: ['tags'], queryFn: api.listTags });
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
@@ -196,28 +206,46 @@ export function Sidebar() {
       </header>
 
       {/* Master 按钮：vault 入口。Master 是个虚拟 box，只装顶级 index 卡（1/2/3...） */}
-      <button
-        onClick={() => {
-          const isActive = focusedBoxId === MASTER_BOX_ID;
-          openTabFromStore({
-            kind: 'card',
-            title: 'Master Index',
-            cardBoxId: MASTER_BOX_ID,
-            cardFocusId: MASTER_BOX_ID,
-          });
-          void isActive;
-        }}
-        className={`flex items-center gap-2 px-5 py-2.5 border-b border-gray-100 dark:border-[#363a4f] text-left hover:bg-amber-50 dark:hover:bg-amber-900/10 group transition-colors ${
+      <div
+        className={`flex items-center gap-2 px-5 py-2.5 border-b border-gray-100 dark:border-[#363a4f] hover:bg-amber-50 dark:hover:bg-amber-900/10 group transition-colors ${
           focusedBoxId === MASTER_BOX_ID ? 'bg-amber-50 dark:bg-amber-900/10' : ''
         }`}
-        title="Open master index — vault root"
       >
-        <Crown size={14} className="text-amber-500 shrink-0" />
-        <span className="text-[12px] font-bold text-ink dark:text-[#cad3f5] flex-1">
-          Master Index
-        </span>
-        <span className="text-[10px] text-gray-400 group-hover:text-amber-600">→</span>
-      </button>
+        <button
+          onClick={() => {
+            const isActive = focusedBoxId === MASTER_BOX_ID;
+            openTabFromStore({
+              kind: 'card',
+              title: 'Master Index',
+              cardBoxId: MASTER_BOX_ID,
+              cardFocusId: MASTER_BOX_ID,
+            });
+            void isActive;
+          }}
+          className="min-w-0 flex-1 flex items-center gap-2 text-left"
+          title="Open master index — vault root"
+        >
+          <Crown size={14} className="text-amber-500 shrink-0" />
+          <span className="text-[12px] font-bold text-ink dark:text-[#cad3f5] flex-1">
+            Master Index
+          </span>
+          <span className="text-[10px] text-gray-400 group-hover:text-amber-600">→</span>
+        </button>
+        <button
+          onClick={() => {
+            const nextId = nextTopLevelBoxId(cardsQ.data?.cards ?? []);
+            openNewCard({
+              luhmannId: nextId,
+              title: `Index ${nextId}`,
+              content: `# Index ${nextId}\n\n`,
+            });
+          }}
+          className="shrink-0 p-1.5 rounded-md text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
+          title="Create a new top-level box"
+        >
+          <Plus size={14} strokeWidth={2.4} />
+        </button>
+      </div>
 
       {/* Starred: 顶部置顶 */}
       {(starredQ.data?.ids ?? []).length > 0 && (

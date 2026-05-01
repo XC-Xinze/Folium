@@ -9,6 +9,9 @@ export interface TagRelated {
   jaccard: number;
 }
 
+const MIN_POTENTIAL_SCORE = 0.55;
+const MIN_SHARED_CONTENT_KEYWORDS = 3;
+
 /**
  * 找出 source 卡片正文中包含 [[targetId]] 或 [[target.title]] 的段落。
  * 段落以连续两个换行划分。
@@ -120,17 +123,35 @@ export function getPotentialLinks(
   const scores = new Map<string, { score: number; reasons: Set<string> }>();
   const bump = (id: string, delta: number, reason: string) => {
     if (excluded.has(id)) return;
+    const candidate = repo.getById(id);
+    if (!candidate || candidate.status === 'INDEX') return;
     const cur = scores.get(id) ?? { score: 0, reasons: new Set<string>() };
     cur.score += delta;
     cur.reasons.add(reason);
     scores.set(id, cur);
   };
 
+  const myKeywords = titleKeywords(card.title);
+
+  // ── 信号 0: title ↔ title —— 标题层面相互包含/重叠 ──
+  const titleRows = db
+    .prepare(`SELECT luhmann_id, title FROM cards WHERE luhmann_id != ? AND status != 'INDEX'`)
+    .all(card.luhmannId) as { luhmann_id: string; title: string }[];
+  for (const other of titleRows) {
+    if (excluded.has(other.luhmann_id)) continue;
+    const otherKeywords = titleKeywords(other.title);
+    let total = 0;
+    for (const kw of myKeywords) total += countUnlinkedHits(other.title, kw);
+    for (const kw of otherKeywords) total += countUnlinkedHits(card.title, kw);
+    if (total > 0) {
+      bump(other.luhmann_id, Math.min(total * 0.6, 1.2), `title overlap ×${total}`);
+    }
+  }
+
   // ── 信号 1: incoming —— 谁的正文里以纯文本形式提到了"我"？ ──
   // 不仅匹配完整标题，还匹配标题切片（"主动学习与查询策略" → 同时试 "主动学习" / "查询策略"）。
-  const myKeywords = titleKeywords(card.title);
   const allCardsWithContent = db
-    .prepare(`SELECT luhmann_id, content_md FROM cards WHERE luhmann_id != ?`)
+    .prepare(`SELECT luhmann_id, content_md FROM cards WHERE luhmann_id != ? AND status != 'INDEX'`)
     .all(card.luhmannId) as { luhmann_id: string; content_md: string }[];
   for (const row of allCardsWithContent) {
     if (excluded.has(row.luhmann_id)) continue;
@@ -139,14 +160,14 @@ export function getPotentialLinks(
     for (const kw of myKeywords) total += countUnlinkedHits(stripped, kw);
     total += countUnlinkedHits(stripped, card.luhmannId);
     if (total > 0) {
-      bump(row.luhmann_id, Math.min(total * 0.5, 1.5), `mentions this card ×${total}`);
+      bump(row.luhmann_id, Math.min(total * 0.7, 1.5), `mentions this card ×${total}`);
     }
   }
 
   // ── 信号 2: outgoing —— "我"的正文里以纯文本形式提到了别人？ ──
   const myStripped = stripPotentialNoise(card.contentMd);
   const allOthers = db
-    .prepare(`SELECT luhmann_id, title FROM cards WHERE luhmann_id != ?`)
+    .prepare(`SELECT luhmann_id, title FROM cards WHERE luhmann_id != ? AND status != 'INDEX'`)
     .all(card.luhmannId) as { luhmann_id: string; title: string }[];
   for (const other of allOthers) {
     if (excluded.has(other.luhmann_id)) continue;
@@ -156,25 +177,33 @@ export function getPotentialLinks(
     }
     total += countUnlinkedHits(myStripped, other.luhmann_id);
     if (total > 0) {
-      bump(other.luhmann_id, Math.min(total * 0.4, 1.0), `mentioned here ×${total}`);
+      bump(other.luhmann_id, Math.min(total * 0.7, 1.4), `mentioned here ×${total}`);
     }
   }
 
-  // ── 信号 3: FTS5 BM25 全文相似度（兜底） ──
+  // ── 信号 3: FTS5 BM25 正文相似度（兜底） ──
+  // 用正文关键词，而不是只拿标题去撞全库，避免退化成"正文匹配某个 index 名称"。
   try {
-    const ftsQuery = sanitizeFtsQuery(card.title);
+    const sourceContentKeywords = contentKeywords(card.contentMd);
+    const ftsQuery = sanitizeFtsQuery(sourceContentKeywords.slice(0, 12).join(' '));
     if (ftsQuery) {
       const rows = db
         .prepare(
-          `SELECT luhmann_id, bm25(cards_fts) AS rank
+          `SELECT luhmann_id, content_md, bm25(cards_fts) AS rank
            FROM cards_fts
            WHERE cards_fts MATCH ?
            ORDER BY rank LIMIT 30`,
         )
-        .all(ftsQuery) as { luhmann_id: string; rank: number }[];
+        .all(ftsQuery) as { luhmann_id: string; content_md: string; rank: number }[];
       for (const row of rows) {
+        const shared = sharedKeywordCount(sourceContentKeywords, contentKeywords(row.content_md));
+        if (shared < MIN_SHARED_CONTENT_KEYWORDS) continue;
         const norm = 1 / (1 + Math.max(0, row.rank));
-        bump(row.luhmann_id, norm * 0.3, 'content similarity');
+        bump(
+          row.luhmann_id,
+          0.45 + Math.min(shared * 0.08, 0.45) + norm * 0.08,
+          `content overlap ×${shared}`,
+        );
       }
     }
   } catch {
@@ -182,6 +211,7 @@ export function getPotentialLinks(
   }
 
   return [...scores.entries()]
+    .filter(([, v]) => v.score >= MIN_POTENTIAL_SCORE)
     .sort((a, b) => b[1].score - a[1].score)
     .slice(0, limit)
     .map(([id, v]) => {
@@ -251,6 +281,44 @@ function isUsefulPotentialKeyword(s: string): boolean {
   return true;
 }
 
+export function contentKeywords(markdown: string, limit = 80): string[] {
+  const text = stripPotentialNoise(markdown)
+    .toLowerCase()
+    .replace(/[`*_>#~]/g, ' ');
+  const out = new Map<string, number>();
+  const add = (token: string) => {
+    const t = token.trim();
+    if (!isUsefulPotentialKeyword(t)) return;
+    if (/^(this|that|with|from|have|will|into|about|there|their|card|note|index|workspace)$/i.test(t)) return;
+    out.set(t, (out.get(t) ?? 0) + 1);
+  };
+
+  for (const m of text.matchAll(/[a-z][a-z0-9-]{3,}/gi)) add(m[0]);
+
+  for (const m of text.matchAll(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]{2,}/gu)) {
+    const run = m[0];
+    if (run.length <= 8) {
+      add(run);
+    } else {
+      for (let i = 0; i <= run.length - 3; i++) add(run.slice(i, i + 3));
+    }
+  }
+
+  return [...out.entries()]
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([token]) => token);
+}
+
+function sharedKeywordCount(a: string[], b: string[]): number {
+  const bSet = new Set(b);
+  let n = 0;
+  for (const token of new Set(a)) {
+    if (bSet.has(token)) n++;
+  }
+  return n;
+}
+
 /**
  * 统计 phrase 在 body 中作为"裸"词的出现次数。
  *   - phrase 必须 >= 2 字符（避免单字符 ID 引爆假阳性）
@@ -282,6 +350,7 @@ function sanitizeFtsQuery(s: string): string {
   const tokens = s
     .replace(/["()*:^]/g, ' ')
     .split(/\s+/)
-    .filter(isUsefulPotentialKeyword);
+    .filter(isUsefulPotentialKeyword)
+    .slice(0, 16);
   return tokens.map((t) => `"${t}"`).join(' OR ');
 }

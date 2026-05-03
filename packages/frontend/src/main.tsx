@@ -11,9 +11,11 @@ if (window.zettelDesktop?.getApiToken) {
     const token = await tokenPromise;
     if (!token) return nativeFetch(input, init);
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const backendOrigin = window.zettelDesktop?.backendOrigin;
     const shouldAuth =
-      url.startsWith('http://127.0.0.1:8000/api/') ||
+      (backendOrigin ? url.startsWith(`${backendOrigin}/api/`) : false) ||
       url.startsWith('http://localhost:8000/api/') ||
+      url.startsWith('http://127.0.0.1:8000/api/') ||
       url.startsWith('/api/');
     if (!shouldAuth) return nativeFetch(input, init);
     const headers = new Headers(init.headers);

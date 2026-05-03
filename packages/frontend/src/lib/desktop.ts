@@ -1,4 +1,5 @@
 export interface ZettelDesktopApi {
+  backendOrigin?: string;
   getApiToken(): Promise<string>;
   selectDirectory(options?: {
     title?: string;

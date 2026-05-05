@@ -2,6 +2,26 @@ name: Build desktop packages
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to upload assets to, for example v1.5.2. Leave empty to only keep workflow artifacts."
+        required: false
+        type: string
+      build_linux_deb:
+        description: "Build Linux deb"
+        required: false
+        default: true
+        type: boolean
+      build_linux_rpm:
+        description: "Build Linux rpm. This can be slow on GitHub runners."
+        required: false
+        default: false
+        type: boolean
+      build_windows:
+        description: "Build Windows installer"
+        required: false
+        default: false
+        type: boolean
   push:
     tags:
       - "v*"
@@ -10,9 +30,11 @@ permissions:
   contents: write
 
 jobs:
-  linux:
-    name: Linux deb/rpm
+  linux-deb:
+    name: Linux deb
+    if: github.event_name == 'push' || inputs.build_linux_deb
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,27 +51,63 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Linux packages
-        run: npm run dist:linux
+      - name: Build Linux deb
+        run: npm run dist:linux:deb
 
-      - name: Upload Linux artifacts
+      - name: Upload Linux deb artifact
         uses: actions/upload-artifact@v4
         with:
-          name: folium-linux-packages
-          path: |
-            release/*.deb
-            release/*.rpm
+          name: folium-linux-deb
+          path: release/*.deb
 
-      - name: Upload Linux packages to release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Upload Linux deb to release
+        if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            release/*.deb
-            release/*.rpm
+          tag_name: ${{ inputs.release_tag }}
+          files: release/*.deb
+
+  linux-rpm:
+    name: Linux rpm
+    if: github.event_name == 'workflow_dispatch' && inputs.build_linux_rpm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install system package tools
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Linux rpm
+        run: npm run dist:linux:rpm
+
+      - name: Upload Linux rpm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: folium-linux-rpm
+          path: release/*.rpm
+
+      - name: Upload Linux rpm to release
+        if: inputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          files: release/*.rpm
 
   windows:
     name: Windows exe
+    if: github.event_name == 'push' || inputs.build_windows
     runs-on: windows-latest
     steps:
       - name: Checkout

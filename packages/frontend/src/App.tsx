@@ -18,6 +18,7 @@ import { useUIStore } from './store/uiStore';
 import { usePaneStore, type Pane, type Tab } from './store/paneStore';
 import { api } from './lib/api';
 import { dialog } from './lib/dialog';
+import { t } from './lib/i18n';
 import { registerCommand, useGlobalCommands } from './lib/commands';
 import { loadAllPlugins } from './lib/pluginLoader';
 import { usePaneBootstrap, usePaneSync, useStaleTabCleanup } from './lib/usePaneSync';
@@ -30,6 +31,7 @@ export function App() {
   const sidebarTab = useUIStore((s) => s.sidebarTab);
   const isMobile = useIsMobile();
   const theme = useUIStore((s) => s.theme);
+  const language = useUIStore((s) => s.language);
 
   // 把 active tab 同步到 uiStore（让老组件继续工作）+ 空 pane 启动种子 + 清持久化脏数据
   usePaneSync();
@@ -37,6 +39,14 @@ export function App() {
   useStaleTabCleanup();
 
   // Mobile：默认折叠 sidebar
+  useEffect(() => {
+    window.localStorage.setItem('folium-language', language);
+    document.documentElement.lang =
+      language === 'zh' || (language === 'auto' && navigator.language.toLowerCase().startsWith('zh'))
+        ? 'zh-Hans'
+        : 'en';
+  }, [language]);
+
   useEffect(() => {
     if (isMobile && !leftSidebarCollapsed) {
       if (!sessionStorage.getItem('mobile-sidebar-init')) {
@@ -415,6 +425,7 @@ function TopBarContext({
   tab: Tab | null;
   workspace?: Awaited<ReturnType<typeof api.getWorkspace>>;
 }) {
+  const language = useUIStore((s) => s.language);
   if (!tab) {
     return (
       <div className="hidden sm:flex min-w-0 items-center gap-2 text-[12px] text-gray-400">
@@ -425,17 +436,23 @@ function TopBarContext({
 
   const kindLabel =
     tab.kind === 'card'
-      ? 'Card'
+      ? t('common.card', {}, language)
+      : tab.kind === 'page'
+        ? t('common.page', {}, language)
+        : tab.kind === 'masonry'
+          ? t('common.masonry', {}, language)
       : tab.kind === 'workspace'
-        ? 'Workspace'
+        ? t('common.workspace', {}, language)
         : tab.kind === 'tag'
-          ? 'Tag'
+          ? t('common.tag', {}, language)
           : tab.kind === 'graph'
-            ? 'Graph'
-            : 'Settings';
+            ? t('common.graph', {}, language)
+            : t('common.settings', {}, language);
   const title =
     tab.kind === 'card'
       ? `${tab.cardFocusId ?? tab.cardBoxId ?? ''}${tab.title ? ` · ${tab.title}` : ''}`
+      : tab.kind === 'page'
+        ? `${tab.pageCardId ?? ''}${tab.title ? ` · ${tab.title}` : ''}`
       : tab.kind === 'tag'
         ? `#${tab.tagName ?? tab.title}`
         : tab.title;

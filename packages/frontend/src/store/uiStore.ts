@@ -8,6 +8,7 @@ export type SidebarTab = 'vault' | 'workspaces';
 export type WorkspacePanelPosition = 'right' | 'left' | 'top' | 'bottom';
 
 export type Theme = 'light' | 'dark' | 'auto';
+export type Language = 'auto' | 'en' | 'zh';
 export type WorkspaceRelationFilter = 'all' | 'draft' | 'vault' | 'temp' | 'workspace';
 
 interface UIState {
@@ -38,6 +39,8 @@ interface UIState {
   commandPaletteOpen: boolean;
   /** 主题：light/dark 强制；auto 跟随系统 */
   theme: Theme;
+  /** UI language. auto follows the browser language. */
+  language: Language;
   /** 用户自定义的快捷键映射：commandId → "Mod+Shift+K" 这种字符串 */
   shortcutOverrides: Record<string, string>;
   /** 每个 workspace 上一次使用的关系过滤器。 */
@@ -59,6 +62,7 @@ interface UIState {
   openNewCard: (draft?: { luhmannId?: string; title?: string; content?: string }) => void;
   setCommandPaletteOpen: (b: boolean) => void;
   setTheme: (t: Theme) => void;
+  setLanguage: (l: Language) => void;
   setShortcut: (commandId: string, shortcut: string | null) => void;
   setWorkspaceRelationFilter: (workspaceId: string, filter: WorkspaceRelationFilter) => void;
 }
@@ -83,6 +87,7 @@ export const useUIStore = create<UIState>()(
       newCardDraft: null,
       commandPaletteOpen: false,
       theme: 'auto',
+      language: 'auto',
       shortcutOverrides: {},
       workspaceRelationFilters: {},
       setFocus: (id) =>
@@ -110,6 +115,7 @@ export const useUIStore = create<UIState>()(
       openNewCard: (draft) => set({ newCardOpen: true, newCardDraft: draft ?? null }),
       setCommandPaletteOpen: (b) => set({ commandPaletteOpen: b }),
       setTheme: (t) => set({ theme: t }),
+      setLanguage: (l) => set({ language: l }),
       setShortcut: (commandId, shortcut) =>
         set((s) => {
           const next = { ...s.shortcutOverrides };
@@ -136,6 +142,7 @@ export const useUIStore = create<UIState>()(
         workspacePanelSize: state.workspacePanelSize,
         workspacePanelPinned: state.workspacePanelPinned,
         theme: state.theme,
+        language: state.language,
         shortcutOverrides: state.shortcutOverrides,
         workspaceRelationFilters: state.workspaceRelationFilters,
         ...(state.workspacePanelPinned && {

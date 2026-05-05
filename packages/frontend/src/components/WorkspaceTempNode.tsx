@@ -1,8 +1,10 @@
 import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpCircle, Link2, Trash2 } from 'lucide-react';
-import { renderMarkdown } from '../lib/markdown';
-import { isCardDrag, readCardDragData, setCardDragData } from '../lib/dragCard';
+import { attachMarkdownPostprocessors, attachResourceHandler, renderMarkdown } from '../lib/markdown';
+import { isCardDrag, isResourceDrag, readCardDragData, readResourceDragData, setCardDragData } from '../lib/dragCard';
+import { applyTextareaEdit, continueMarkdownList, indentMarkdownLines } from '../lib/markdownInput';
+import { api } from '../lib/api';
 
 interface TempNodeData {
   title: string;
@@ -34,6 +36,19 @@ export function WorkspaceTempNode({ data, selected }: NodeProps) {
   }, [editing]);
   useEffect(() => { if (d.savedW != null) setW(d.savedW); }, [d.savedW]);
   useEffect(() => { if (d.savedH != null) setH(d.savedH); }, [d.savedH]);
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!contentRef.current || editing) return;
+    return attachMarkdownPostprocessors(contentRef.current);
+  }, [d.content, editing]);
+  useEffect(() => {
+    if (!contentRef.current || editing) return;
+    return attachResourceHandler(
+      contentRef.current,
+      (id) => api.getResource(id).catch(() => null),
+      (rel) => { void api.openAttachment(rel); },
+    );
+  }, [d.content, editing]);
 
   const commit = () => {
     const patch: { title?: string; content?: string } = {};
@@ -46,7 +61,7 @@ export function WorkspaceTempNode({ data, selected }: NodeProps) {
   return (
     <div
       onDragOver={(e) => {
-        if (!isCardDrag(e)) return;
+        if (!isCardDrag(e) && !isResourceDrag(e)) return;
         e.preventDefault();
         e.stopPropagation();
         e.dataTransfer.dropEffect = 'copy';
@@ -55,16 +70,21 @@ export function WorkspaceTempNode({ data, selected }: NodeProps) {
       onDragLeave={() => setLinkDropOver(false)}
       onDrop={(e) => {
         setLinkDropOver(false);
-        if (!isCardDrag(e)) return;
+        if (!isCardDrag(e) && !isResourceDrag(e)) return;
         const dragged = readCardDragData(e);
-        if (!dragged) return;
+        const resource = readResourceDragData(e);
+        if (!dragged && !resource) return;
         e.preventDefault();
         e.stopPropagation();
-        if (dragged.workspaceNodeId && d.onWorkspaceNodeLinkDrop) {
+        if (resource?.workspaceNodeId && d.onWorkspaceNodeLinkDrop) {
+          d.onWorkspaceNodeLinkDrop(resource.workspaceNodeId);
+          return;
+        }
+        if (dragged?.workspaceNodeId && d.onWorkspaceNodeLinkDrop) {
           d.onWorkspaceNodeLinkDrop(dragged.workspaceNodeId);
           return;
         }
-        d.onCardLinkDrop?.(dragged.luhmannId);
+        if (dragged) d.onCardLinkDrop?.(dragged.luhmannId);
       }}
       className={`group relative bg-[#fffdf8] border-2 border-dashed border-accent/40 rounded-lg shadow-md min-h-[140px] ${
         linkDropOver ? 'ring-2 ring-accent ring-offset-2' : ''
@@ -153,6 +173,7 @@ export function WorkspaceTempNode({ data, selected }: NodeProps) {
                 setDraftTitle(d.title);
                 setDraftContent(d.content);
                 setEditing(false);
+                return;
               }
             }}
             placeholder="Title"
@@ -167,6 +188,32 @@ export function WorkspaceTempNode({ data, selected }: NodeProps) {
                 setDraftTitle(d.title);
                 setDraftContent(d.content);
                 setEditing(false);
+                return;
+              }
+              if (e.key === 'Tab') {
+                e.preventDefault();
+                applyTextareaEdit(
+                  e.currentTarget,
+                  setDraftContent,
+                  indentMarkdownLines(
+                    e.currentTarget.value,
+                    e.currentTarget.selectionStart,
+                    e.currentTarget.selectionEnd,
+                    e.shiftKey ? 'out' : 'in',
+                  ),
+                );
+                return;
+              }
+              if (e.key === 'Enter' && !(e.metaKey || e.ctrlKey || e.altKey || e.shiftKey)) {
+                const edit = continueMarkdownList(
+                  e.currentTarget.value,
+                  e.currentTarget.selectionStart,
+                  e.currentTarget.selectionEnd,
+                );
+                if (edit) {
+                  e.preventDefault();
+                  applyTextareaEdit(e.currentTarget, setDraftContent, edit);
+                }
               }
             }}
             placeholder="Markdown body…"
@@ -185,6 +232,7 @@ export function WorkspaceTempNode({ data, selected }: NodeProps) {
         >
           <div className="text-sm font-bold mb-1">{d.title || <span className="text-gray-400 italic text-xs">Untitled</span>}</div>
           <div
+            ref={contentRef}
             className="prose-card text-[12px] text-ink/90"
             dangerouslySetInnerHTML={{
               __html: d.content

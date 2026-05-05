@@ -11,6 +11,7 @@ import { scanVault } from './vault/scanner.js';
 import { watchVault } from './vault/watcher.js';
 import { cardRoutes } from './routes/cards.js';
 import { attachmentRoutes } from './routes/attachments.js';
+import { resourceRoutes } from './routes/resources.js';
 import { positionRoutes } from './routes/positions.js';
 import { workspaceRoutes } from './routes/workspaces.js';
 import { starredRoutes } from './routes/starred.js';
@@ -118,6 +119,7 @@ async function main() {
 
   await app.register(cardRoutes, { prefix: '/api' });
   await app.register(attachmentRoutes, { prefix: '/api' });
+  await app.register(resourceRoutes, { prefix: '/api' });
   await app.register(positionRoutes, { prefix: '/api' });
   await app.register(workspaceRoutes, { prefix: '/api' });
   await app.register(starredRoutes, { prefix: '/api' });

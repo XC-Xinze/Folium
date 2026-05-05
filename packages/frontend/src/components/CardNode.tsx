@@ -1,12 +1,12 @@
 import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronDown, ChevronRight, GripVertical, Image, Layers, Link2, Pencil, Star, Trash2, X } from 'lucide-react';
-import { isCardDrag, readCardDragData, setCardDragData } from '../lib/dragCard';
+import { BookOpen, Check, ChevronDown, ChevronRight, GripVertical, Image, Layers, Link2, Pencil, Star, Trash2, X } from 'lucide-react';
+import { isCardDrag, isResourceDrag, readCardDragData, readResourceDragData, setCardDragData } from '../lib/dragCard';
 import { dialog } from '../lib/dialog';
 import { api, type Card, type PositionMap } from '../lib/api';
 import { countWords, relativeTime } from '../lib/cardStats';
-import { attachAttachmentClickHandler, attachTransclusion, attachWikilinkHandler, renderMarkdown } from '../lib/markdown';
+import { attachAttachmentClickHandler, attachMarkdownPostprocessors, attachResourceHandler, attachTransclusion, attachWikilinkHandler, renderMarkdown } from '../lib/markdown';
 import type { CardNodeData } from '../lib/cardGraph';
 import { NODE_WIDTH } from '../lib/cardGraph';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
@@ -15,6 +15,7 @@ import { usePaneStore as usePaneStoreImported } from '../store/paneStore';
 import { applyTrigger, detectTrigger, formatInsertion, type Trigger } from '../lib/editorAutocomplete';
 import { pushUndo } from '../lib/undoStack';
 import { fuzzyScore } from '../lib/fuzzy';
+import { applyTextareaEdit, continueMarkdownList, indentMarkdownLines } from '../lib/markdownInput';
 import { EditorAutocomplete, type AutocompleteItem } from './EditorAutocomplete';
 
 export function CardNode({ data, id, selected, positionAbsoluteX, positionAbsoluteY }: NodeProps) {
@@ -120,6 +121,16 @@ export function CardNode({ data, id, selected, positionAbsoluteX, positionAbsolu
     setEditing(true);
   };
 
+  const openPage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!full) return;
+    usePaneStoreImported.getState().openTab({
+      kind: 'page',
+      title: full.title || full.luhmannId,
+      pageCardId: full.luhmannId,
+    });
+  };
+
   const saveEdit = async () => {
     if (!full) return;
     try {
@@ -212,6 +223,20 @@ export function CardNode({ data, id, selected, positionAbsoluteX, positionAbsolu
       });
     });
   }, [full?.luhmannId]);
+
+  useEffect(() => {
+    if (!contentRef.current) return;
+    return attachMarkdownPostprocessors(contentRef.current);
+  }, [full?.luhmannId, full?.contentMd]);
+
+  useEffect(() => {
+    if (!contentRef.current) return;
+    return attachResourceHandler(
+      contentRef.current,
+      (id) => api.getResource(id).catch(() => null),
+      (rel) => { void api.openAttachment(rel); },
+    );
+  }, [full?.luhmannId, full?.contentMd]);
 
   // ![[id]] 嵌入：内容 / 渲染完成后异步填充
   useEffect(() => {
@@ -381,12 +406,11 @@ export function CardNode({ data, id, selected, positionAbsoluteX, positionAbsolu
     const ta = textareaRef.current;
     const baseStart = ta.selectionStart;
     // 先插占位符，让用户立刻看到反馈
+    const token = `folium-upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let placeholder = '';
-    for (const f of files) placeholder += `![uploading ${f.name}…]()\n`;
+    for (const [index, f] of files.entries()) placeholder += `![uploading ${f.name}](upload://${token}-${index})\n`;
     insertAtCaret(placeholder);
-    const placeholderEnd = baseStart + placeholder.length;
 
-    let cursor = baseStart;
     let replacement = '';
     for (const f of files) {
       try {
@@ -399,11 +423,18 @@ export function CardNode({ data, id, selected, positionAbsoluteX, positionAbsolu
       } catch (err) {
         replacement += `<!-- upload failed: ${(err as Error).message} -->\n`;
       }
-      cursor += 1;
     }
-    void cursor;
     // 把所有 placeholder 一次性替换掉
-    insertAtCaret(replacement, { from: baseStart, to: placeholderEnd });
+    setDraftContent((current) =>
+      current.includes(placeholder)
+        ? current.replace(placeholder, replacement)
+        : current.slice(0, baseStart) + replacement + current.slice(baseStart + placeholder.length),
+    );
+    requestAnimationFrame(() => {
+      const pos = baseStart + replacement.length;
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(pos, pos);
+    });
   };
 
   return (
@@ -413,7 +444,7 @@ export function CardNode({ data, id, selected, positionAbsoluteX, positionAbsolu
       onDragOver={(e) => {
         // dragOver 阶段大多数浏览器禁止读 dataTransfer.getData —— 只能用 .types 判 mime。
         // 自身/顶级 vs 顶级 这些精细规则等到 drop 才检查。
-        if (!isCardDrag(e) || isGhost) return;
+        if ((!isCardDrag(e) && !isResourceDrag(e)) || isGhost) return;
         e.preventDefault();
         e.stopPropagation();
         e.dataTransfer.dropEffect = 'copy';
@@ -421,9 +452,31 @@ export function CardNode({ data, id, selected, positionAbsoluteX, positionAbsolu
       }}
       onDragLeave={() => setLinkDropOver(false)}
       onDrop={async (e) => {
-        if (!isCardDrag(e) || isGhost) return;
+        if ((!isCardDrag(e) && !isResourceDrag(e)) || isGhost) return;
         const dragged = readCardDragData(e);
+        const resource = readResourceDragData(e);
         setLinkDropOver(false);
+        if (resource) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (nodeData.isInWorkspace) {
+            if (resource.workspaceNodeId && nodeData.onWorkspaceNodeLinkDrop) {
+              await nodeData.onWorkspaceNodeLinkDrop(resource.workspaceNodeId);
+            }
+            return;
+          }
+          try {
+            await api.appendResourceLink(cardLuhmannId, resource.resourceId);
+            await Promise.all([
+              qc.invalidateQueries({ queryKey: ['card', cardLuhmannId] }),
+              qc.invalidateQueries({ queryKey: ['cards'] }),
+              qc.invalidateQueries({ queryKey: ['resource-references'] }),
+            ]);
+          } catch (err) {
+            dialog.alert((err as Error).message, { title: 'Resource link failed' });
+          }
+          return;
+        }
         if (!dragged || dragged.luhmannId === cardLuhmannId) return;
         e.preventDefault();
         e.stopPropagation();
@@ -581,6 +634,16 @@ export function CardNode({ data, id, selected, positionAbsoluteX, positionAbsolu
           <Star size={11} fill={isStarred ? 'currentColor' : 'none'} />
         </button>
       )}
+      {!isGhost && (
+        <button
+          onClick={openPage}
+          disabled={promoting || editing || !full}
+          className="absolute -top-2 right-[5.5rem] z-10 w-6 h-6 rounded-full zk-subtle-button border shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-accent hover:text-white transition-all disabled:opacity-30"
+          title={`Open ${cardLuhmannId} as page`}
+        >
+          <BookOpen size={11} />
+        </button>
+      )}
       {/* Resize: 8 handles visible on hover/select. Saved to positions.w/h */}
       {!isGhost && (
         <NodeResizer
@@ -691,6 +754,31 @@ export function CardNode({ data, id, selected, positionAbsoluteX, positionAbsolu
                   e.preventDefault();
                   setTrigger(null);
                   return;
+                }
+              }
+              if (e.key === 'Tab') {
+                e.preventDefault();
+                applyTextareaEdit(
+                  e.currentTarget,
+                  setDraftContent,
+                  indentMarkdownLines(
+                    e.currentTarget.value,
+                    e.currentTarget.selectionStart,
+                    e.currentTarget.selectionEnd,
+                    e.shiftKey ? 'out' : 'in',
+                  ),
+                );
+                return;
+              }
+              if (e.key === 'Enter' && !(e.metaKey || e.ctrlKey || e.altKey || e.shiftKey)) {
+                const edit = continueMarkdownList(
+                  e.currentTarget.value,
+                  e.currentTarget.selectionStart,
+                  e.currentTarget.selectionEnd,
+                );
+                if (edit) {
+                  e.preventDefault();
+                  applyTextareaEdit(e.currentTarget, setDraftContent, edit);
                 }
               }
             }}

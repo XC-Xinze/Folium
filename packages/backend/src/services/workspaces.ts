@@ -48,7 +48,17 @@ export interface NoteNode {
   h?: number;
 }
 
-export type WorkspaceNode = CardRefNode | TempCardNode | NoteNode;
+export interface ResourceRefNode {
+  kind: 'resource';
+  id: string;
+  resourceId: string;
+  x: number;
+  y: number;
+  w?: number;
+  h?: number;
+}
+
+export type WorkspaceNode = CardRefNode | TempCardNode | NoteNode | ResourceRefNode;
 
 export interface WorkspaceEdge {
   id: string;

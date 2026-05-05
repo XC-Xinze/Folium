@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, Crown, GripVertical, Network, Settings, SplitSquareHorizontal, SplitSquareVertical, Tag, X, XSquare } from 'lucide-react';
+import { BookOpen, ChevronDown, Columns3, Crown, GripVertical, Network, Settings, SplitSquareHorizontal, SplitSquareVertical, Tag, X, XSquare } from 'lucide-react';
 import { Canvas } from './Canvas';
 import { usePaneStore, type LeafPane, type Pane, type SplitPane, type Tab } from '../store/paneStore';
 import { useIsMobile } from '../lib/useIsMobile';
@@ -81,6 +81,12 @@ const WorkspaceView = lazy(() =>
 );
 const GraphView = lazy(() =>
   import('./GraphView').then((m) => ({ default: m.GraphView })),
+);
+const CardPageView = lazy(() =>
+  import('./CardPageView').then((m) => ({ default: m.CardPageView })),
+);
+const CardMasonryView = lazy(() =>
+  import('./CardMasonryView').then((m) => ({ default: m.CardMasonryView })),
 );
 
 /**
@@ -444,6 +450,10 @@ function TabIcon({ tab }: { tab: Tab }) {
     return <Crown size={11} className={`${cls} text-amber-500`} />;
   }
   switch (tab.kind) {
+    case 'page':
+      return <BookOpen size={11} className={cls} />;
+    case 'masonry':
+      return <Columns3 size={11} className={cls} />;
     case 'graph':
       return <Network size={11} className={cls} />;
     case 'tag':
@@ -495,6 +505,19 @@ function TabContent({ tab, paneId }: { tab: Tab; paneId: string }) {
         );
       }
       return <Hint>Card tab missing payload.</Hint>;
+    case 'page':
+      if (!tab.pageCardId) return <Hint>Page tab missing card.</Hint>;
+      return (
+        <Suspense fallback={<Hint>Loading page…</Hint>}>
+          <CardPageView cardId={tab.pageCardId} />
+        </Suspense>
+      );
+    case 'masonry':
+      return (
+        <Suspense fallback={<Hint>Loading masonry…</Hint>}>
+          <CardMasonryView />
+        </Suspense>
+      );
     case 'graph':
       return (
         <Suspense fallback={<Hint>Loading graph…</Hint>}>

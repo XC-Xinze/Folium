@@ -1,7 +1,9 @@
-import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react';
+import { NodeResizer, type NodeProps } from '@xyflow/react';
 import { useEffect, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { renderMarkdown } from '../lib/markdown';
+import { attachMarkdownPostprocessors, attachResourceHandler, renderMarkdown } from '../lib/markdown';
+import { applyTextareaEdit, continueMarkdownList, indentMarkdownLines } from '../lib/markdownInput';
+import { api } from '../lib/api';
 
 interface NoteNodeData {
   content: string;
@@ -25,6 +27,19 @@ export function WorkspaceNoteNode({ data, selected }: NodeProps) {
   }, [editing]);
   useEffect(() => { if (d.savedW != null) setW(d.savedW); }, [d.savedW]);
   useEffect(() => { if (d.savedH != null) setH(d.savedH); }, [d.savedH]);
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!contentRef.current || editing) return;
+    return attachMarkdownPostprocessors(contentRef.current);
+  }, [d.content, editing]);
+  useEffect(() => {
+    if (!contentRef.current || editing) return;
+    return attachResourceHandler(
+      contentRef.current,
+      (id) => api.getResource(id).catch(() => null),
+      (rel) => { void api.openAttachment(rel); },
+    );
+  }, [d.content, editing]);
 
   const commit = () => {
     if (draft !== d.content) d.onChange(draft);
@@ -48,13 +63,6 @@ export function WorkspaceNoteNode({ data, selected }: NodeProps) {
         }}
         onResizeEnd={(_e, params) => d.onResize?.(params.width, params.height)}
       />
-      <Handle id="top" type="target" position={Position.Top} className="!bg-yellow-400 !w-2 !h-2 !border-0" />
-      <Handle id="bottom" type="source" position={Position.Bottom} className="!bg-yellow-400 !w-2 !h-2 !border-0" />
-      <Handle id="left-in" type="target" position={Position.Left} className="!bg-transparent !w-2 !h-2 !border-0" />
-      <Handle id="left-out" type="source" position={Position.Left} className="!bg-transparent !w-2 !h-2 !border-0" />
-      <Handle id="right-in" type="target" position={Position.Right} className="!bg-transparent !w-2 !h-2 !border-0" />
-      <Handle id="right-out" type="source" position={Position.Right} className="!bg-transparent !w-2 !h-2 !border-0" />
-
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -76,6 +84,32 @@ export function WorkspaceNoteNode({ data, selected }: NodeProps) {
             if (e.key === 'Escape') {
               setDraft(d.content);
               setEditing(false);
+              return;
+            }
+            if (e.key === 'Tab') {
+              e.preventDefault();
+              applyTextareaEdit(
+                e.currentTarget,
+                setDraft,
+                indentMarkdownLines(
+                  e.currentTarget.value,
+                  e.currentTarget.selectionStart,
+                  e.currentTarget.selectionEnd,
+                  e.shiftKey ? 'out' : 'in',
+                ),
+              );
+              return;
+            }
+            if (e.key === 'Enter' && !(e.metaKey || e.ctrlKey || e.altKey || e.shiftKey)) {
+              const edit = continueMarkdownList(
+                e.currentTarget.value,
+                e.currentTarget.selectionStart,
+                e.currentTarget.selectionEnd,
+              );
+              if (edit) {
+                e.preventDefault();
+                applyTextareaEdit(e.currentTarget, setDraft, edit);
+              }
             }
           }}
           className="w-full h-full min-h-[120px] bg-transparent border-0 outline-none p-3 text-[12px] font-mono resize-none nodrag"
@@ -83,6 +117,7 @@ export function WorkspaceNoteNode({ data, selected }: NodeProps) {
         />
       ) : (
         <div
+          ref={contentRef}
           onDoubleClick={(e) => {
             e.stopPropagation();
             setDraft(d.content);

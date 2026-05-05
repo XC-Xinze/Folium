@@ -2,6 +2,7 @@
  * Canvas 自定义 edge 类型：
  *   - PotentialEdge：灰虚线 + 中点 "Link" 按钮 (promote 成 [[link]])
  *   - CrossEdge：蓝灰实线 + 中点 "X" 按钮 (unlink，移除 [[link]])
+ *   - ResourceEdge：黄褐虚线 + 中点 "X" 按钮 (移除 [[res_xxx]])
  *
  * 中点按钮用 EdgeLabelRenderer 绝对定位到 bezier midpoint，跟卡片角按钮不重叠。
  * 默认 opacity 低，hover 在 edge 区附近时高亮。
@@ -104,6 +105,56 @@ export function CrossEdge(props: EdgeProps) {
             disabled={removeMut.isPending}
             className="w-4 h-4 rounded-full border zk-subtle-button hover:text-[#ba635c] hover:border-[#ba635c]/45 shadow-sm flex items-center justify-center transition-colors opacity-50 hover:opacity-100"
             title={`Unlink: remove [[${target}]] from ${source}`}
+          >
+            <X size={9} />
+          </button>
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  );
+}
+
+export function ResourceEdge(props: EdgeProps) {
+  const { id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, data } = props;
+  const qc = useQueryClient();
+  const resourceId = (data as { resourceId?: string } | undefined)?.resourceId ?? target.replace(/^resource:/, '');
+  const [edgePath, labelX, labelY] = getBezierPath({
+    sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition,
+  });
+  const removeMut = useMutation({
+    mutationFn: () => api.removeResourceLink(source, resourceId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['card', source] });
+      qc.invalidateQueries({ queryKey: ['cards'] });
+      qc.invalidateQueries({ queryKey: ['resource-references'] });
+    },
+    onError: (err: Error) => dialog.alert(err.message, { title: 'Unlink resource failed' }),
+  });
+  const onUnlink = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (removeMut.isPending) return;
+    const ok = await dialog.confirm(`Remove [[${resourceId}]] from ${source}?`, {
+      title: 'Unlink resource',
+      description: 'This removes the resource reference from the card body. The resource file is kept.',
+      confirmLabel: 'Unlink',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    removeMut.mutate();
+  };
+  return (
+    <>
+      <BaseEdge id={id} path={edgePath} style={style} />
+      <EdgeLabelRenderer>
+        <div
+          className="absolute pointer-events-auto"
+          style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+        >
+          <button
+            onClick={onUnlink}
+            disabled={removeMut.isPending}
+            className="w-4 h-4 rounded-full border bg-[#f7efd7] text-[#9a6a2f] border-[#d6a21f]/40 hover:text-[#ba635c] hover:border-[#ba635c]/45 shadow-sm flex items-center justify-center transition-colors opacity-55 hover:opacity-100"
+            title={`Unlink resource: remove [[${resourceId}]] from ${source}`}
           >
             <X size={9} />
           </button>

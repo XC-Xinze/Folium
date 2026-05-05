@@ -1,6 +1,6 @@
 {
   "name": "folium",
-  "version": "1.5.0",
+  "version": "1.5.2",
   "private": true,
   "main": "packages/desktop/src/main.js",
   "description": "Linked cards for thinking, with local-first Markdown storage",
@@ -59,9 +59,11 @@
       "package.json",
       "package-lock.json",
       "packages/desktop/src/**/*",
+      "packages/desktop/assets/**/*",
       "packages/frontend/dist/**/*",
       "packages/backend/dist/**/*",
-      "packages/backend/package.json"
+      "packages/backend/package.json",
+      "plugins/**/*"
     ],
     "mac": {
       "category": "public.app-category.productivity",
@@ -73,7 +75,7 @@
     },
     "linux": {
       "category": "Office",
-      "icon": "packages/desktop/assets/icon-source.png",
+      "icon": "packages/desktop/assets/icons",
       "target": [
         "deb",
         "rpm"
@@ -97,6 +99,7 @@
       ]
     },
     "win": {
+      "icon": "packages/desktop/assets/icon.ico",
       "target": [
         "nsis"
       ]

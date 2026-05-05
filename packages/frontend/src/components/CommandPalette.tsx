@@ -17,6 +17,7 @@ export function CommandPalette() {
   const overrides = useUIStore((s) => s.shortcutOverrides);
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
+  const [commandRevision, setCommandRevision] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards, enabled: open });
@@ -31,6 +32,16 @@ export function CommandPalette() {
       return () => window.clearTimeout(t);
     }
   }, [open]);
+
+  useEffect(() => {
+    const bump = () => setCommandRevision((v) => v + 1);
+    window.addEventListener('folium:commands-changed', bump);
+    window.addEventListener('folium:plugins-reloaded', bump);
+    return () => {
+      window.removeEventListener('folium:commands-changed', bump);
+      window.removeEventListener('folium:plugins-reloaded', bump);
+    };
+  }, []);
 
   const items = useMemo(() => {
     const dynamic: Command[] = [
@@ -74,7 +85,7 @@ export function CommandPalette() {
       .sort((a, b) => b.score - a.score)
       .slice(0, 30)
       .map((x) => x.cmd);
-  }, [cardsQ.data?.cards, query, workspacesQ.data?.workspaces]);
+  }, [cardsQ.data?.cards, commandRevision, open, query, workspacesQ.data?.workspaces]);
 
   useEffect(() => {
     setActiveIdx(0);

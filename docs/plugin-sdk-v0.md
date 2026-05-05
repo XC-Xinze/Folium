@@ -112,6 +112,33 @@ export default function activate(ctx) {
 
 - `register(command)` returns a cleanup function.
 
+### `ctx.sdk.ribbon`
+
+- `registerAction({ id, title, icon, order, run })` adds an icon-only action to the left ribbon.
+
+Supported built-in icon names in SDK v0 are `table`, `diagram`, `download`, `sparkles`, and `plugin`.
+
+Ribbon actions are best for frequently used, low-friction commands. Keep larger workflows in the command palette or a settings/sidebar panel.
+
+### `ctx.sdk.markdown`
+
+- `registerPostprocessor({ id, process })` runs `process(root)` after Folium renders Markdown into a card, workspace note, temp card, or page preview.
+
+Use this for lightweight Markdown extensions that only need to transform already-rendered HTML, such as Mermaid diagrams:
+
+```js
+export default function activate(ctx) {
+  return ctx.sdk.markdown.registerPostprocessor({
+    id: 'example.markdown-highlight',
+    process(root) {
+      for (const el of root.querySelectorAll('mark')) {
+        el.classList.add('my-plugin-mark');
+      }
+    },
+  });
+}
+```
+
 ### `ctx.sdk.export`
 
 - `listAttachments()` returns vault attachment metadata.
@@ -155,3 +182,5 @@ Namespaced per plugin in `localStorage`.
 - `plugins/obsidian-export.js`: registers `Export: Obsidian-compatible vault` in the command palette.
   It exports cards as Markdown, writes card titles as Obsidian aliases, adds missing Folium links to a
   `Folium Links` section, includes attachments, and converts Folium workspaces to Obsidian `.canvas` files.
+- `plugins/quick-table.js`: registers quick Markdown table insertion and current-table formatting commands.
+- `plugins/mermaid-renderer.js`: renders fenced `mermaid` code blocks through a Markdown postprocessor.

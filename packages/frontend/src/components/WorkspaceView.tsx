@@ -19,7 +19,7 @@ import {
   getBezierPath,
   Position,
 } from '@xyflow/react';
-import { isCardDrag, readCardDragData } from '../lib/dragCard';
+import { isCardDrag, isResourceDrag, readCardDragData, readResourceDragData } from '../lib/dragCard';
 import { RenamableName } from './RenamableName';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -28,6 +28,7 @@ import {
   FilePlus,
   Layers,
   Link2,
+  PackageOpen,
   StickyNote,
   Undo2,
   X,
@@ -38,8 +39,10 @@ import { dialog } from '../lib/dialog';
 import { CardNode } from './CardNode';
 import { WorkspaceNoteNode } from './WorkspaceNoteNode';
 import { WorkspaceTempNode } from './WorkspaceTempNode';
+import { ResourceNode } from './ResourceNode';
 import { useUIStore, type WorkspaceRelationFilter } from '../store/uiStore';
 import { exportReactFlowCanvasAsPng } from '../lib/exportCanvasImage';
+import { t, type LanguagePreference } from '../lib/i18n';
 
 interface Props {
   workspaceId: string;
@@ -58,6 +61,18 @@ const RELATION_FILTER_OPTIONS: Array<{
   { id: 'temp', label: 'Temp links', description: 'Relations touching a workspace temp card.' },
   { id: 'workspace', label: 'Workspace only', description: 'Relations between notes or other local workspace items.' },
 ];
+
+function relationLabel(id: RelationFilter, language: LanguagePreference): string {
+  return t(`workspace.filter.${id}` as Parameters<typeof t>[0], {}, language);
+}
+
+function relationShortLabel(id: RelationFilter, language: LanguagePreference): string {
+  return t(`workspace.filter.${id}Short` as Parameters<typeof t>[0], {}, language);
+}
+
+function relationDescription(id: RelationFilter, language: LanguagePreference): string {
+  return t(`workspace.filter.${id}Desc` as Parameters<typeof t>[0], {}, language);
+}
 
 function sameWorkspacePair(a: Pick<WorkspaceEdge, 'source' | 'target'>, b: Pick<WorkspaceEdge, 'source' | 'target'>): boolean {
   return (a.source === b.source && a.target === b.target) || (a.source === b.target && a.target === b.source);
@@ -100,8 +115,8 @@ function edgeMatchesRelationFilter(edge: Edge, filter: RelationFilter): boolean 
         vaultLink?: boolean;
         vaultStructure?: boolean;
         bothCards?: boolean;
-        sourceKind?: 'card' | 'temp' | 'note';
-        targetKind?: 'card' | 'temp' | 'note';
+        sourceKind?: WorkspaceNode['kind'];
+        targetKind?: WorkspaceNode['kind'];
       }
     | undefined;
   if (!data) return true;
@@ -177,13 +192,22 @@ function WorkspaceInner({ workspaceId }: Props) {
     queryKey: ['workspace', workspaceId],
     queryFn: () => api.getWorkspace(workspaceId),
   });
+  const resourcesQ = useQuery({ queryKey: ['resources'], queryFn: () => api.listResources() });
+  const resourceMap = useMemo(
+    () => new Map((resourcesQ.data?.resources ?? []).map((resource) => [resource.id, resource] as const)),
+    [resourcesQ.data?.resources],
+  );
   const savedRelationFilter = useUIStore((s) => s.workspaceRelationFilters[workspaceId] ?? 'all');
   const setSavedRelationFilter = useUIStore((s) => s.setWorkspaceRelationFilter);
+  const language = useUIStore((s) => s.language);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [relationFilter, setRelationFilter] = useState<RelationFilter>(savedRelationFilter);
   const [relationMenuOpen, setRelationMenuOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const resourceInputRef = useRef<HTMLInputElement>(null);
+  const reactFlow = useReactFlow();
   useEffect(() => {
     setRelationFilter(savedRelationFilter);
   }, [savedRelationFilter, workspaceId]);
@@ -235,6 +259,34 @@ function WorkspaceInner({ workspaceId }: Props) {
                 if (!sourceNode) return; // source 不在本 workspace
                 if (sourceNode.id === n.id) return;
                 handlers.addEdgeBetween(sourceNode.id, n.id);
+              },
+            } as unknown as Record<string, unknown>,
+          };
+        }
+        if (n.kind === 'resource') {
+          return {
+            id: n.id,
+            type: 'resource',
+            position: { x: n.x, y: n.y },
+            width: n.w,
+            height: n.h,
+            data: {
+              resource: resourceMap.get(n.resourceId) ?? {
+                id: n.resourceId,
+                kind: 'file',
+                title: n.resourceId,
+                path: '',
+                tags: [],
+                parentBoxId: null,
+                note: '',
+                createdAt: '',
+                updatedAt: '',
+              },
+              workspaceNodeId: n.id,
+              onDeleteOverride: () => handlers.deleteNode(n.id),
+              onWorkspaceNodeLinkDrop: (sourceNodeId: string) => {
+                if (sourceNodeId === n.id) return;
+                handlers.addEdgeBetween(sourceNodeId, n.id);
               },
             } as unknown as Record<string, unknown>,
           };
@@ -330,7 +382,7 @@ function WorkspaceInner({ workspaceId }: Props) {
       });
       return { nodes: wsNodes, edges: wsEdges };
     },
-    [],
+    [resourceMap],
   );
 
   const relationCounts = useMemo(() => {
@@ -450,6 +502,61 @@ function WorkspaceInner({ workspaceId }: Props) {
     [mutateWs],
   );
 
+  const addResourceRefAt = useCallback(
+    (resourceId: string, x: number, y: number) => {
+      const trimmed = resourceId.trim();
+      if (!trimmed) return;
+      mutateWs((ws) => {
+        if (ws.nodes.some((n) => n.kind === 'resource' && n.resourceId === trimmed)) return ws;
+        return {
+          ...ws,
+          nodes: [
+            ...ws.nodes,
+            { kind: 'resource', id: randomUUID(), resourceId: trimmed, x, y } as WorkspaceNode,
+          ],
+        };
+      });
+    },
+    [mutateWs],
+  );
+
+  const createResourcesFromFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    const flowPos = reactFlow.screenToFlowPosition({
+      x: rect ? rect.left + rect.width / 2 : window.innerWidth / 2,
+      y: rect ? rect.top + rect.height / 2 : window.innerHeight / 2,
+    });
+    let offset = 0;
+    try {
+      for (const file of files) {
+        const resource = await api.uploadResource(file, {
+          title: file.name.replace(/\.[^.]+$/, ''),
+        });
+        addResourceRefAt(resource.id, flowPos.x - 130 + offset, flowPos.y - 100 + offset);
+        offset += 28;
+      }
+      await qc.invalidateQueries({ queryKey: ['resources'] });
+      await qc.invalidateQueries({ queryKey: ['tags'] });
+    } catch (err) {
+      await dialog.alert((err as Error).message, { title: 'Create resource failed' });
+    }
+  }, [addResourceRefAt, qc, reactFlow]);
+
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const editingTarget = target?.closest('input, textarea, [contenteditable="true"]');
+      if (editingTarget) return;
+      const files = Array.from(e.clipboardData?.files ?? []);
+      if (files.length === 0) return;
+      e.preventDefault();
+      void createResourcesFromFiles(files);
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [createResourcesFromFiles]);
+
   const [addCardInput, setAddCardInput] = useState('');
   const [promotePicker, setPromotePicker] = useState<{
     nodeId: string;
@@ -510,6 +617,9 @@ function WorkspaceInner({ workspaceId }: Props) {
       if (!conn.source || !conn.target) return;
       if (conn.source === conn.target) return;
       mutateWs((ws) => {
+        const sourceNode = ws.nodes.find((node) => node.id === conn.source);
+        const targetNode = ws.nodes.find((node) => node.id === conn.target);
+        if (sourceNode?.kind === 'note' || targetNode?.kind === 'note') return ws;
         const edges = dedupeWorkspaceEdges(ws.edges);
         if (hasWorkspacePair(edges, conn.source!, conn.target!)) return { ...ws, edges };
         return {
@@ -535,6 +645,9 @@ function WorkspaceInner({ workspaceId }: Props) {
     (sourceWsNodeId: string, targetWsNodeId: string) => {
       if (sourceWsNodeId === targetWsNodeId) return;
       mutateWs((ws) => {
+        const sourceNode = ws.nodes.find((node) => node.id === sourceWsNodeId);
+        const targetNode = ws.nodes.find((node) => node.id === targetWsNodeId);
+        if (sourceNode?.kind === 'note' || targetNode?.kind === 'note') return ws;
         const edges = dedupeWorkspaceEdges(ws.edges);
         // Workspace card links are semantic relationships, not separate A→B/B→A arrows.
         if (hasWorkspacePair(edges, sourceWsNodeId, targetWsNodeId)) return { ...ws, edges };
@@ -581,9 +694,6 @@ function WorkspaceInner({ workspaceId }: Props) {
     [mutateWs],
   );
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const reactFlow = useReactFlow();
-
   const exportImage = useCallback(async () => {
     try {
       await exportReactFlowCanvasAsPng({
@@ -599,7 +709,7 @@ function WorkspaceInner({ workspaceId }: Props) {
   // —— 拖卡入工作区
   const [dragHover, setDragHover] = useState(false);
   const onDragOver = useCallback((e: React.DragEvent) => {
-    if (!isCardDrag(e)) return;
+    if (!isCardDrag(e) && !isResourceDrag(e)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
     setDragHover(true);
@@ -610,9 +720,16 @@ function WorkspaceInner({ workspaceId }: Props) {
       e.preventDefault();
       setDragHover(false);
       const payload = readCardDragData(e);
-      if (!payload) return;
+      const resourcePayload = readResourceDragData(e);
+      if (!payload && !resourcePayload) return;
       // screen → flow 坐标
       const flowPos = reactFlow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      if (resourcePayload) {
+        addResourceRefAt(resourcePayload.resourceId, flowPos.x - 130, flowPos.y - 100);
+        return;
+      }
+      if (!payload) return;
+      if (payload.workspaceNodeId) return;
       // 居中到落点（card 视觉宽 ~340）
       mutateWs((ws) => {
         if (ws.nodes.some((n) => n.kind === 'card' && n.cardId === payload.luhmannId)) {
@@ -633,12 +750,12 @@ function WorkspaceInner({ workspaceId }: Props) {
         };
       });
     },
-    [reactFlow, mutateWs],
+    [addResourceRefAt, reactFlow, mutateWs],
   );
 
-  if (wsQ.isLoading) return <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">Loading workspace…</div>;
+  if (wsQ.isLoading) return <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">{t('workspace.loading', {}, language)}</div>;
   if (wsQ.error || !wsQ.data)
-    return <div className="w-full h-full flex items-center justify-center text-sm text-red-500">{String(wsQ.error ?? 'Workspace not found')}</div>;
+    return <div className="w-full h-full flex items-center justify-center text-sm text-red-500">{String(wsQ.error ?? t('workspace.notFound', {}, language))}</div>;
 
   return (
     <div
@@ -662,33 +779,51 @@ function WorkspaceInner({ workspaceId }: Props) {
           className="text-[13px] font-bold text-ink ml-1"
         />
         <span className="text-[10px] text-gray-400">
-          {wsQ.data.nodes.length} nodes · {wsQ.data.edges.length} edges
+          {wsQ.data.nodes.length} {t('workspace.nodes', {}, language)} · {wsQ.data.edges.length} {t('workspace.edges', {}, language)}
         </span>
         <div className="border-l border-paperEdge/80 mx-1 h-4" />
         <button
           onClick={() => addNote(200, 200)}
           className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded border border-transparent text-[#9a6a2f] dark:text-[#eed49f] hover:text-ink hover:border-[#d6c09b] dark:hover:border-[#eed49f]/40 hover:bg-[#f3e6c8]/70 dark:hover:bg-[#eed49f]/12"
-          title="Add sticky note"
+          title={t('workspace.note', {}, language)}
         >
-          <StickyNote size={12} /> Note
+          <StickyNote size={12} /> {t('workspace.note', {}, language)}
         </button>
         <button
           onClick={() => addTempCard(400, 200)}
           className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded border border-transparent text-accent hover:text-ink hover:border-accent/30 hover:bg-accentSoft"
-          title="Add temporary card"
+          title={t('workspace.tempCard', {}, language)}
         >
-          <FilePlus size={12} /> Temp card
+          <FilePlus size={12} /> {t('workspace.tempCard', {}, language)}
+        </button>
+        <input
+          ref={resourceInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.currentTarget.files ?? []);
+            e.currentTarget.value = '';
+            void createResourcesFromFiles(files);
+          }}
+        />
+        <button
+          onClick={() => resourceInputRef.current?.click()}
+          className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded border border-transparent text-[#9a6a2f] dark:text-[#eed49f] hover:text-ink hover:border-[#d6c09b] dark:hover:border-[#eed49f]/40 hover:bg-[#f3e6c8]/70 dark:hover:bg-[#eed49f]/12"
+          title={t('workspace.resource', {}, language)}
+        >
+          <PackageOpen size={12} /> {t('workspace.resource', {}, language)}
         </button>
         <div className="border-l border-paperEdge/80 mx-1 h-4" />
         <div className="relative">
           <button
             onClick={() => setRelationMenuOpen((open) => !open)}
             className="zk-subtle-button border flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full transition-colors"
-            title="Filter visible workspace relations"
+            title={t('workspace.relations', {}, language)}
           >
-            Relations
+            {t('workspace.relations', {}, language)}
             <span className="text-gray-500 dark:text-[#a5adcb]">
-              {RELATION_FILTER_OPTIONS.find((opt) => opt.id === relationFilter)?.label.replace(' relations', '')}
+              {relationShortLabel(relationFilter, language)}
             </span>
             <span className="text-gray-500 dark:text-[#a5adcb]">{relationCounts[relationFilter]}</span>
             <ChevronDown size={11} />
@@ -707,10 +842,10 @@ function WorkspaceInner({ workspaceId }: Props) {
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-bold">{option.label}</span>
+                    <span className="text-xs font-bold">{relationLabel(option.id, language)}</span>
                     <span className="font-mono text-[10px] text-gray-500 dark:text-[#a5adcb]">{relationCounts[option.id]}</span>
                   </div>
-                  <div className="mt-0.5 text-[10px] leading-snug text-gray-500 dark:text-[#a5adcb]">{option.description}</div>
+                  <div className="mt-0.5 text-[10px] leading-snug text-gray-500 dark:text-[#a5adcb]">{relationDescription(option.id, language)}</div>
                 </button>
               ))}
             </div>
@@ -726,7 +861,7 @@ function WorkspaceInner({ workspaceId }: Props) {
               setAddCardInput('');
             }
           }}
-          placeholder="vault card id"
+          placeholder={t('workspace.cardIdPlaceholder', {}, language)}
           className="w-24 text-[11px] font-mono px-2 py-0.5 border border-paperEdge rounded bg-paper/80 focus:border-accent outline-none"
         />
         <button
@@ -735,17 +870,17 @@ function WorkspaceInner({ workspaceId }: Props) {
             setAddCardInput('');
           }}
           className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded border border-transparent text-accent hover:text-ink hover:border-accent/30 hover:bg-accentSoft"
-          title="Add a vault card by luhmannId (e.g. 1a2)"
+          title={t('workspace.addCard', {}, language)}
         >
-          <Layers size={12} /> Add card
+          <Layers size={12} /> {t('workspace.addCard', {}, language)}
         </button>
       </div>
 
       {/* Empty-state hint */}
       {wsQ.data.nodes.length === 0 && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 text-center text-gray-400 text-sm pointer-events-none">
-          Click "Note" to add a sticky · drop a vault card here · link cards freely<br/>
-          <span className="text-[11px]">Then "Apply" an edge to write it back to the vault as a real [[link]]</span>
+          {t('workspace.emptyHint', {}, language)}<br/>
+          <span className="text-[11px]">{t('workspace.emptyHintApply', {}, language)}</span>
         </div>
       )}
       {promotePicker && (
@@ -796,6 +931,7 @@ const nodeTypes = {
   card: CardNode,
   wsNote: WorkspaceNoteNode,
   wsTemp: WorkspaceTempNode,
+  resource: ResourceNode,
 };
 
 function ParentCardPicker({

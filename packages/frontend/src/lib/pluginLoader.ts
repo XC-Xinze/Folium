@@ -149,6 +149,7 @@ export async function loadAllPlugins(): Promise<LoadedPlugin[]> {
     const lp = await loadOne(p.name);
     loaded.set(p.name, lp);
   }
+  window.dispatchEvent(new CustomEvent('folium:plugins-reloaded'));
   return [...loaded.values()];
 }
 

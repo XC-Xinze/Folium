@@ -89,7 +89,11 @@ let listener: ((e: KeyboardEvent) => void) | null = null;
 
 export function registerCommand(cmd: Command): () => void {
   commands.set(cmd.id, cmd);
-  return () => commands.delete(cmd.id);
+  window.dispatchEvent(new CustomEvent('folium:commands-changed'));
+  return () => {
+    commands.delete(cmd.id);
+    window.dispatchEvent(new CustomEvent('folium:commands-changed'));
+  };
 }
 
 export function listCommands(): Command[] {

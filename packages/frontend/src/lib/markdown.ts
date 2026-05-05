@@ -1,6 +1,7 @@
 import { marked } from 'marked';
 import createDOMPurify from 'dompurify';
 import { VAULT_BASE } from './backendUrl';
+import { PluginRegistry } from './pluginRegistry';
 
 const purifier = typeof window !== 'undefined' ? createDOMPurify(window) : null;
 
@@ -31,17 +32,90 @@ renderer.link = function (token) {
 export function renderMarkdown(md: string, onLink?: (target: string) => void): string {
   // 嵌入语法 ![[id]] 必须先于 [[link]] 处理
   let processed = md.replace(/!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target: string) => {
+    if (target.trim().startsWith('res_')) {
+      const safe = escapeAttr(target.trim());
+      return `<div class="resource-embed" data-resource="${safe}">Loading [[${safe}]]…</div>`;
+    }
     const safe = escapeAttr(target.trim());
     return `<div class="transclude" data-transclude="${safe}"><div class="transclude-loading">Loading [[${safe}]]…</div></div>`;
   });
   processed = processed.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target: string, alias?: string) => {
     const display = escapeHtml((alias ?? target).trim());
     const safe = escapeAttr(target.trim());
+    if (target.trim().startsWith('res_')) {
+      return `<span class="resource-link" data-resource-link="${safe}">${display}</span>`;
+    }
     return `<span class="wikilink" data-link="${safe}">${display}</span>`;
   });
   const html = marked.parse(processed, { async: false, renderer }) as string;
   void onLink;
   return sanitizeHtml(html);
+}
+
+export function attachResourceHandler(
+  root: HTMLElement,
+  getResource: (id: string) => Promise<{
+    id: string;
+    kind: 'image' | 'pdf' | 'audio' | 'video' | 'file';
+    title: string;
+    path: string;
+    tags: string[];
+  } | null>,
+  openResource: (relativePath: string) => void | Promise<void>,
+): () => void {
+  let cancelled = false;
+  const render = async () => {
+    const embeds = root.querySelectorAll<HTMLElement>('[data-resource]');
+    for (const el of embeds) {
+      const id = el.dataset.resource;
+      if (!id || el.dataset.resourceLoaded === '1') continue;
+      el.dataset.resourceLoaded = '1';
+      const resource = await getResource(id).catch(() => null);
+      if (cancelled) return;
+      if (!resource) {
+        el.innerHTML = `<div class="resource-missing">[[${escapeHtml(id)}]] not found</div>`;
+        continue;
+      }
+      el.innerHTML = resource.kind === 'image'
+        ? `
+          <figure class="resource-card resource-card-image" data-resource-open="${escapeAttr(resource.path)}">
+            <img src="${escapeAttr(rewriteAttachmentUrl(resource.path))}" alt="${escapeAttr(resource.title)}" />
+            <figcaption>${escapeHtml(resource.title)}</figcaption>
+          </figure>
+        `
+        : `
+          <div class="resource-card" data-resource-open="${escapeAttr(resource.path)}">
+            <span class="resource-kind">${escapeHtml(resource.kind)}</span>
+            <span class="resource-title">${escapeHtml(resource.title)}</span>
+          </div>
+        `;
+    }
+  };
+  const onClick = (e: Event) => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    const linked = target.closest<HTMLElement>('[data-resource-link]');
+    const open = target.closest<HTMLElement>('[data-resource-open]');
+    const id = linked?.dataset.resourceLink;
+    if (id) {
+      e.preventDefault();
+      void getResource(id).then((resource) => {
+        if (resource) return openResource(resource.path);
+      });
+      return;
+    }
+    const path = open?.dataset.resourceOpen;
+    if (path) {
+      e.preventDefault();
+      void openResource(path);
+    }
+  };
+  root.addEventListener('click', onClick);
+  void render();
+  return () => {
+    cancelled = true;
+    root.removeEventListener('click', onClick);
+  };
 }
 
 export function attachWikilinkHandler(
@@ -59,6 +133,27 @@ export function attachWikilinkHandler(
   };
   root.addEventListener('click', onClick);
   return () => root.removeEventListener('click', onClick);
+}
+
+export function attachMarkdownPostprocessors(root: HTMLElement): () => void {
+  let cancelled = false;
+  const run = async () => {
+    for (const processor of PluginRegistry.markdownPostprocessors.list()) {
+      if (cancelled) return;
+      try {
+        await processor.process(root);
+      } catch (err) {
+        console.warn('markdown postprocessor failed', processor.id, err);
+      }
+    }
+  };
+  const rerun = () => void run();
+  void run();
+  window.addEventListener('folium:plugins-reloaded', rerun);
+  return () => {
+    cancelled = true;
+    window.removeEventListener('folium:plugins-reloaded', rerun);
+  };
 }
 
 /**
@@ -161,7 +256,7 @@ function escapeAttr(s: string): string {
 function sanitizeHtml(html: string): string {
   if (!purifier) return html;
   return purifier.sanitize(html, {
-    ADD_ATTR: ['data-link', 'data-transclude'],
+    ADD_ATTR: ['data-link', 'data-transclude', 'data-mermaid-processed', 'data-resource', 'data-resource-link'],
     ADD_TAGS: ['span'],
   });
 }

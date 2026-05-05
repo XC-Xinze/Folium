@@ -11,16 +11,18 @@ import {
   type Edge,
   type Node,
 } from '@xyflow/react';
-import { Tag } from 'lucide-react';
-import { api, type PositionMap } from '../lib/api';
+import { PackageOpen, Tag } from 'lucide-react';
+import { api, type PositionMap, type ResourceCard } from '../lib/api';
 import { useUIStore } from '../store/uiStore';
 import { usePaneStore } from '../store/paneStore';
 import { CardNode } from './CardNode';
+import { ResourceNode, type ResourceNodeData } from './ResourceNode';
 import { TagRootNode } from './TagRootNode';
 import { applyAnchorPositions, buildTagGraph } from '../lib/cardGraph';
 import { dialog } from '../lib/dialog';
+import { t } from '../lib/i18n';
 
-const nodeTypes = { card: CardNode, 'tag-root': TagRootNode };
+const nodeTypes = { card: CardNode, resource: ResourceNode, 'tag-root': TagRootNode };
 
 interface Props {
   tag: string;
@@ -37,11 +39,13 @@ export function TagView(props: Props) {
 }
 
 function TagViewInner({ tag, paneId, tabId }: Props) {
-  // pane 模式下"返回"没意义 —— 关 tab 即可。把按钮藏起来，免得困惑用户。
-  void useUIStore;
+  // pane 模式下"返回"没意义 —— 关 tab 即可。
   const q = useQuery({ queryKey: ['tag-cards', tag], queryFn: () => api.getCardsByTag(tag) });
+  const resourcesQ = useQuery({ queryKey: ['resources'], queryFn: () => api.listResources() });
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
   const qc = useQueryClient();
+  const [showResources, setShowResources] = useState(true);
+  const language = useUIStore((s) => s.language);
   const [focusedCardId, setFocusedCardId] = useState<string | null>(null);
   const previousCardIdsRef = useRef<string[]>([]);
   const updateTab = usePaneStore((s) => s.updateTab);
@@ -66,6 +70,7 @@ function TagViewInner({ tag, paneId, tabId }: Props) {
         qc.refetchQueries({ queryKey: ['tags'] }),
         qc.refetchQueries({ queryKey: ['cards'] }),
         qc.refetchQueries({ queryKey: ['card'] }),
+        qc.refetchQueries({ queryKey: ['resources'] }),
         qc.refetchQueries({ queryKey: ['tag-cards'] }),
         qc.refetchQueries({ queryKey: ['related-batch'] }),
       ]);
@@ -104,6 +109,13 @@ function TagViewInner({ tag, paneId, tabId }: Props) {
     queryKey: ['positions', scope],
     queryFn: () => api.getPositions(scope),
   });
+
+  const taggedResources = useMemo(() => {
+    const target = tag.toLowerCase();
+    return (resourcesQ.data?.resources ?? []).filter((resource) =>
+      resource.tags.some((resourceTag) => resourceTag.toLowerCase() === target),
+    );
+  }, [resourcesQ.data?.resources, tag]);
 
   const graph = useMemo(() => {
     if (!q.data?.cards) return { nodes: [] as Node[], edges: [] as Edge[] };
@@ -149,8 +161,31 @@ function TagViewInner({ tag, paneId, tabId }: Props) {
             }),
       },
     }));
-    return { nodes: stamped, edges: raw.edges };
-  }, [tag, q.data, positionsQ.data, scope, qc, focusedCardId, renameCurrentTag]);
+    const resourceNodes = showResources
+      ? taggedResources.map<Node<ResourceNodeData>>((resource: ResourceCard, index: number) => {
+          const id = `resource:${resource.id}`;
+          const saved = positionsQ.data?.[id];
+          return {
+            id,
+            type: 'resource',
+            position: saved ?? { x: 520 + (index % 3) * 310, y: 140 + Math.floor(index / 3) * 270 },
+            data: {
+              resource,
+              onCardLinkDrop: async (sourceLuhmannId, resourceId) => {
+                await api.appendResourceLink(sourceLuhmannId, resourceId);
+                await Promise.all([
+                  qc.invalidateQueries({ queryKey: ['card', sourceLuhmannId] }),
+                  qc.invalidateQueries({ queryKey: ['cards'] }),
+                  qc.invalidateQueries({ queryKey: ['resources'] }),
+                  qc.invalidateQueries({ queryKey: ['resource-references'] }),
+                ]);
+              },
+            },
+          };
+        })
+      : [];
+    return { nodes: [...stamped, ...resourceNodes], edges: raw.edges };
+  }, [tag, q.data, positionsQ.data, scope, qc, focusedCardId, renameCurrentTag, showResources, taggedResources]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -196,6 +231,23 @@ function TagViewInner({ tag, paneId, tabId }: Props) {
           <span className="text-[12px] font-bold text-accent">#{tag}</span>
         </div>
         <span className="text-[11px] text-gray-500">{q.data?.cards.length ?? 0} cards</span>
+        {taggedResources.length > 0 && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowResources((value) => !value);
+            }}
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold transition-colors ${
+              showResources
+                ? 'border-[#d6c09b] bg-[#fff6db] text-[#9a6a2f]'
+                : 'border-gray-200 bg-white text-gray-400 hover:text-[#9a6a2f]'
+            }`}
+            title={showResources ? t('tag.hideResources', {}, language) : t('tag.showResources', {}, language)}
+          >
+            <PackageOpen size={10} />
+            {showResources ? t('tag.resourcesOn', {}, language) : t('tag.resourcesOff', {}, language)} · {taggedResources.length}
+          </button>
+        )}
       </div>
 
       {q.isLoading && (
@@ -208,13 +260,13 @@ function TagViewInner({ tag, paneId, tabId }: Props) {
           {String(q.error)}
         </div>
       )}
-      {q.data && q.data.cards.length === 0 && (
+      {q.data && q.data.cards.length === 0 && (!showResources || taggedResources.length === 0) && (
         <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">
-          No cards under this tag yet
+          {t('tag.noCards', {}, language)}
         </div>
       )}
 
-      {q.data && q.data.cards.length > 0 && (
+      {q.data && (q.data.cards.length > 0 || (showResources && taggedResources.length > 0)) && (
         <ReactFlow
           nodes={nodes}
           edges={edges}

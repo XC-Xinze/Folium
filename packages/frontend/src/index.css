@@ -4,10 +4,10 @@
 
 html, body, #root { height: 100%; }
 :root {
-  --font-ui: 'Inter';
-  --font-body: 'Inter';
-  --font-display: 'Newsreader';
-  --font-mono: 'JetBrains Mono';
+  --font-ui: 'Inter', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei';
+  --font-body: 'Inter', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei';
+  --font-display: 'Newsreader', 'Noto Serif SC', 'Songti SC', serif;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', 'Cascadia Mono', 'Microsoft YaHei Mono';
   --zk-bg: #f8f6f1;
   --zk-paper: #fffdf8;
   --zk-paper-warm: #fbf8f0;
@@ -23,7 +23,7 @@ html, body, #root { height: 100%; }
   --zk-shadow-paper-hover: 0 2px 4px rgba(45, 45, 45, 0.06), 0 18px 46px rgba(45, 45, 45, 0.13);
 }
 body {
-  font-family: var(--font-ui), 'Inter', system-ui, sans-serif;
+  font-family: var(--font-ui), system-ui, sans-serif;
   background:
     radial-gradient(circle at 20% 0%, rgba(211, 228, 209, 0.28), transparent 30%),
     linear-gradient(135deg, #fffdf8 0%, #f8f6f1 58%, #efebe4 100%);
@@ -290,6 +290,14 @@ html.dark .prose-card .wikilink:hover { background: #494d64; }
   text-decoration: underline;
 }
 html.dark .prose-card a { color: #9bc2cf; }
+.page-card-content {
+  max-width: 78ch;
+  margin: 0 auto;
+  width: 100%;
+}
+.page-card-content p {
+  font-size: 1rem;
+}
 
 /* Transclusion ![[id]]：嵌入卡片的视觉容器 */
 .transclude { margin: 0.5rem 0; }
@@ -324,6 +332,60 @@ html.dark .transclude-loading,
 html.dark .transclude-missing,
 html.dark .transclude-cycle {
   color: #6e738d; border-left-color: #494d64;
+}
+
+.prose-card .resource-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid #c4c7c7;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+}
+html.dark .prose-card .resource-card {
+  border-color: #494d64;
+  background: rgba(30, 32, 48, 0.72);
+}
+.prose-card .resource-card-image {
+  display: block;
+  padding: 8px;
+}
+.prose-card .resource-card-image img {
+  display: block;
+  max-width: 100%;
+  border-radius: 6px;
+}
+.prose-card .resource-card-image figcaption {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #747878;
+}
+.prose-card .resource-kind {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #536253;
+}
+html.dark .prose-card .resource-kind { color: #a7c7a1; }
+.prose-card .resource-title {
+  font-size: 12px;
+  font-weight: 700;
+}
+.prose-card .resource-link {
+  color: #536253;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+html.dark .prose-card .resource-link { color: #a7c7a1; }
+.resource-missing {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  font-style: italic;
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }

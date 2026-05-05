@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Moon, Sun, Monitor, RefreshCw, CheckCircle, XCircle, Trash2, ExternalLink } from 'lucide-react';
-import { useUIStore, type Theme } from '../store/uiStore';
+import { Clipboard, KeyRound, Moon, Sun, Monitor, RefreshCw, CheckCircle, XCircle, Trash2, ExternalLink, Download } from 'lucide-react';
+import { useUIStore, type Language, type Theme } from '../store/uiStore';
 import { api } from '../lib/api';
 import { dialog } from '../lib/dialog';
 import { PluginRegistry } from '../lib/pluginRegistry';
@@ -18,34 +18,39 @@ import { SearchReplacePanel } from './SearchReplacePanel';
 import { ExportPanel } from './ExportPanel';
 import { DiscoveriesPanel } from './DiscoveriesPanel';
 import type { FontSettings } from '../lib/api';
+import { API_BASE } from '../lib/backendUrl';
+import { getDesktopApiToken, isDesktopApp } from '../lib/desktop';
+import { t } from '../lib/i18n';
 
 export function SettingsView() {
   // 在 modal 模式下，"返回"只需要关弹窗；其他场景由模态外层处理
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
   const theme = useUIStore((s) => s.theme);
   const setTheme = useUIStore((s) => s.setTheme);
+  const language = useUIStore((s) => s.language);
+  const setLanguage = useUIStore((s) => s.setLanguage);
 
   const panels = PluginRegistry.settingsPanels.list().sort((a, b) => a.order - b.order);
 
   return (
     <div className="max-w-3xl mx-auto py-10 px-8 space-y-8 text-ink dark:text-gray-200">
       <header className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">Settings</h1>
+        <h1 className="text-xl font-bold">{t('settings.title', {}, language)}</h1>
         <button
           onClick={() => setSettingsOpen(false)}
           className="text-[11px] text-gray-500 dark:text-gray-400 hover:text-ink dark:hover:text-gray-100"
         >
-          Close
+          {t('common.close', {}, language)}
         </button>
       </header>
 
-      <Section title="Appearance">
-        <Field label="Theme" hint="Light, dark, or follow your system preference">
+      <Section title={t('settings.appearance', {}, language)}>
+        <Field label={t('settings.theme', {}, language)} hint={t('settings.themeHint', {}, language)}>
           <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-full p-1">
             {([
-              ['light', <Sun key="s" size={12} />, 'Light'],
-              ['dark', <Moon key="m" size={12} />, 'Dark'],
-              ['auto', <Monitor key="a" size={12} />, 'Auto'],
+              ['light', <Sun key="s" size={12} />, t('settings.light', {}, language)],
+              ['dark', <Moon key="m" size={12} />, t('settings.dark', {}, language)],
+              ['auto', <Monitor key="a" size={12} />, t('settings.auto', {}, language)],
             ] as Array<[Theme, JSX.Element, string]>).map(([value, icon, label]) => (
               <button
                 key={value}
@@ -62,52 +67,82 @@ export function SettingsView() {
             ))}
           </div>
         </Field>
+        <Field label={t('settings.language', {}, language)} hint={t('settings.languageHint', {}, language)}>
+          <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-full p-1">
+            {([
+              ['auto', <Monitor key="la" size={12} />, t('settings.auto', {}, language)],
+              ['en', <span key="en" className="text-[11px] font-black">EN</span>, t('settings.english', {}, language)],
+              ['zh', <span key="zh" className="text-[11px] font-black">中</span>, t('settings.chinese', {}, language)],
+            ] as Array<[Language, JSX.Element, string]>).map(([value, icon, label]) => (
+              <button
+                key={value}
+                onClick={() => setLanguage(value)}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${
+                  language === value
+                    ? 'bg-white dark:bg-gray-700 text-ink dark:text-gray-100 shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-ink dark:hover:text-gray-200'
+                }`}
+              >
+                {icon}
+                {label}
+              </button>
+            ))}
+          </div>
+        </Field>
         <FontSettingsPanel />
       </Section>
 
-      <Section title="General">
-        <Field label="Vault structure" hint="The selected folder is the vault root. Cards live as Markdown files in it; attachments live in attachments/; app data lives in .zettel/.">
+      <Section title={t('settings.aiApi', {}, language)}>
+        <LocalApiPanel language={language} />
+      </Section>
+
+      <Section title={t('settings.general', {}, language)}>
+        <Field label={t('settings.vaultStructure', {}, language)} hint={t('settings.vaultStructureHint', {}, language)}>
           <code className="text-[12px] bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded">{`(env: VAULT_PATH)`}</code>
         </Field>
       </Section>
 
-      <Section title="Attachments">
+      <Section title={t('settings.attachments', {}, language)}>
         <AttachmentPolicyField />
         <AttachmentManager />
       </Section>
 
-      <Section title="Backup & Recovery">
+      <Section title={t('settings.backupRecovery', {}, language)}>
         <BackupAndRecoveryPanel />
       </Section>
 
-      <Section title="Maintenance">
+      <Section title={t('settings.maintenance', {}, language)}>
         <MaintenancePanel />
       </Section>
 
-      <Section title="Hotkeys">
+      <Section title={t('settings.hotkeys', {}, language)}>
         <HotkeysPanel />
       </Section>
 
-      <Section title="Discoveries">
+      <Section title={t('settings.discoveries', {}, language)}>
         <DiscoveriesPanel />
       </Section>
 
-      <Section title="Search & Replace">
+      <Section title={t('settings.searchReplace', {}, language)}>
         <SearchReplacePanel />
       </Section>
 
-      <Section title="Export">
+      <Section title={t('settings.export', {}, language)}>
         <ExportPanel />
       </Section>
 
-      <Section title="Trash">
+      <Section title={t('settings.trash', {}, language)}>
         <TrashPanel />
       </Section>
 
-      <Section title="Plugins">
+      <Section title={t('settings.plugins', {}, language)}>
         <PluginsPanel />
         <p className="text-[11px] text-gray-400 dark:text-gray-500">
-          {PluginRegistry.commands.list().length} commands · {PluginRegistry.sidebarItems.list().length} sidebar items · {panels.length} settings panels registered
+          {t('settings.pluginStats', {
+            commands: PluginRegistry.commands.list().length,
+            sidebarItems: PluginRegistry.sidebarItems.list().length,
+            panels: panels.length,
+          }, language)}
         </p>
       </Section>
 
@@ -141,6 +176,7 @@ const DEFAULT_FONTS: FontSettings = {
 
 function FontSettingsPanel() {
   const qc = useQueryClient();
+  const language = useUIStore((s) => s.language);
   const settingsQ = useQuery({ queryKey: ['vault-settings'], queryFn: api.getVaultSettings });
   const fonts = settingsQ.data?.settings.fonts ?? DEFAULT_FONTS;
   const mut = useMutation({
@@ -154,25 +190,25 @@ function FontSettingsPanel() {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
       <FontSelect
-        label="UI"
+        label={t('settings.font.ui', {}, language)}
         value={fonts.ui}
         disabled={mut.isPending}
         onChange={(value) => patchFont('ui', value)}
       />
       <FontSelect
-        label="Card body"
+        label={t('settings.font.body', {}, language)}
         value={fonts.body}
         disabled={mut.isPending}
         onChange={(value) => patchFont('body', value)}
       />
       <FontSelect
-        label="Headings"
+        label={t('settings.font.headings', {}, language)}
         value={fonts.display}
         disabled={mut.isPending}
         onChange={(value) => patchFont('display', value)}
       />
       <FontSelect
-        label="Code / IDs"
+        label={t('settings.font.code', {}, language)}
         value={fonts.mono}
         disabled={mut.isPending}
         onChange={(value) => patchFont('mono', value)}
@@ -211,8 +247,66 @@ function FontSelect({
   );
 }
 
+function LocalApiPanel({ language }: { language: Language }) {
+  const [copied, setCopied] = useState<string | null>(null);
+  const copy = async (label: string, value: string) => {
+    await navigator.clipboard.writeText(value);
+    setCopied(label);
+    window.setTimeout(() => setCopied(null), 1200);
+  };
+  const copyToken = async () => {
+    const token = await getDesktopApiToken();
+    if (!token) {
+      await dialog.alert(t('api.devUnprotected', {}, language), { title: t('settings.aiApi', {}, language) });
+      return;
+    }
+    await copy('token', token);
+  };
+  const authHeader = 'X-Folium-Token: <token>';
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-2 text-[12px]">
+        <div className="font-bold text-gray-500 dark:text-gray-400">{t('api.endpoint', {}, language)}</div>
+        <div className="flex items-center gap-2 min-w-0">
+          <code className="min-w-0 truncate bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded">{API_BASE}</code>
+          <button
+            onClick={() => void copy('endpoint', API_BASE)}
+            className="shrink-0 inline-flex items-center gap-1 rounded border border-gray-200 dark:border-gray-700 px-2 py-1 text-[11px] font-bold hover:bg-gray-50 dark:hover:bg-gray-800"
+          >
+            <Clipboard size={11} />
+            {copied === 'endpoint' ? t('api.copied', {}, language) : t('api.copyEndpoint', {}, language)}
+          </button>
+        </div>
+        <div className="font-bold text-gray-500 dark:text-gray-400">{t('api.auth', {}, language)}</div>
+        <div className="flex items-center gap-2 min-w-0">
+          <code className="min-w-0 truncate bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded">
+            {isDesktopApp() ? authHeader : t('api.devUnprotected', {}, language)}
+          </code>
+          {isDesktopApp() && (
+            <button
+              onClick={() => void copyToken()}
+              className="shrink-0 inline-flex items-center gap-1 rounded border border-gray-200 dark:border-gray-700 px-2 py-1 text-[11px] font-bold hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
+              <KeyRound size={11} />
+              {copied === 'token' ? t('api.copied', {}, language) : t('api.copyToken', {}, language)}
+            </button>
+          )}
+        </div>
+      </div>
+      <p className="text-[11px] text-gray-400 dark:text-gray-500">
+        {isDesktopApp() ? t('api.desktopProtected', {}, language) : t('api.devUnprotected', {}, language)}
+      </p>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400">
+        {t('api.docsHint', {}, language)}
+      </p>
+    </div>
+  );
+}
+
 function MaintenancePanel() {
   const qc = useQueryClient();
+  const language = useUIStore((s) => s.language);
   const repairMut = useMutation({
     mutationFn: api.repairWorkspaces,
     onSuccess: async (report) => {
@@ -230,9 +324,9 @@ function MaintenancePanel() {
   return (
     <div className="flex items-center justify-between gap-4">
       <div>
-        <div className="text-sm font-semibold">Repair workspace data</div>
+        <div className="text-sm font-semibold">{t('maintenance.repairTitle', {}, language)}</div>
         <p className="text-[12px] text-gray-500 dark:text-gray-400 mt-1">
-          Normalizes old edge states, removes dangling edges, and merges duplicate card nodes.
+          {t('maintenance.repairHint', {}, language)}
         </p>
       </div>
       <button
@@ -241,15 +335,21 @@ function MaintenancePanel() {
         className="shrink-0 inline-flex items-center gap-1.5 text-[12px] font-bold px-3 py-2 rounded bg-accent text-white hover:bg-accent/90 disabled:opacity-50"
       >
         <RefreshCw size={13} className={repairMut.isPending ? 'animate-spin' : ''} />
-        Repair
+        {t('maintenance.repair', {}, language)}
       </button>
     </div>
   );
 }
 
 function PluginsPanel() {
+  const language = useUIStore((s) => s.language);
   const [plugins, setPlugins] = useState<LoadedPlugin[]>(() => listLoadedPlugins());
   const [reloading, setReloading] = useState(false);
+  const [installing, setInstalling] = useState<string | null>(null);
+  const official = useQuery({
+    queryKey: ['official-plugins'],
+    queryFn: api.listOfficialPlugins,
+  });
   // 切回这个面板时刷一下显示（启动加载可能还没完）
   useEffect(() => {
     setPlugins(listLoadedPlugins());
@@ -272,12 +372,65 @@ function PluginsPanel() {
       setReloading(false);
     }
   };
+  const installOfficial = async (name: string) => {
+    setInstalling(name);
+    try {
+      await api.installOfficialPlugin(name);
+      await official.refetch();
+      setPlugins(await reloadPlugins());
+    } catch (err) {
+      await dialog.alert((err as Error).message, { title: t('plugins.installFailed', {}, language) });
+    } finally {
+      setInstalling(null);
+    }
+  };
   return (
     <div className="space-y-3">
+      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/35 p-3 space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[12px] font-bold">{t('plugins.official', {}, language)}</div>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+              {t('plugins.officialHint', {}, language)}
+            </p>
+          </div>
+          <button
+            onClick={() => void official.refetch()}
+            className="text-[10px] font-bold px-2 py-1 rounded border border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-800"
+          >
+            {t('common.refresh', {}, language)}
+          </button>
+        </div>
+        <div className="grid gap-2">
+          {(official.data?.plugins ?? []).map((p) => (
+            <div
+              key={p.name}
+              className="flex items-center gap-3 rounded-md bg-white dark:bg-[#1e2030] border border-gray-200/70 dark:border-gray-700 px-3 py-2"
+            >
+              <div className="min-w-0">
+                <div className="text-[12px] font-bold truncate">{p.title}</div>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{p.description}</p>
+              </div>
+              <div className="flex-1" />
+              {p.installed && <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">{t('plugins.installed', {}, language)}</span>}
+              <button
+                onClick={() => void installOfficial(p.name)}
+                disabled={installing === p.name || reloading}
+                className="shrink-0 inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                <Download size={11} />
+                {p.installed ? t('common.update', {}, language) : t('common.install', {}, language)}
+              </button>
+            </div>
+          ))}
+          {!official.isLoading && (official.data?.plugins.length ?? 0) === 0 && (
+            <p className="text-[11px] text-gray-400">{t('plugins.noneOfficial', {}, language)}</p>
+          )}
+        </div>
+      </div>
       <div className="flex items-center justify-between">
         <p className="text-[12px] text-gray-500 dark:text-gray-400">
-          Drop <code className="text-[11px] px-1 rounded bg-gray-100 dark:bg-gray-800">.js</code> files into{' '}
-          <code className="text-[11px] px-1 rounded bg-gray-100 dark:bg-gray-800">~/your-vault/.zettel/plugins/</code> and reload.
+          {t('plugins.dropHint', {}, language)}
         </p>
         <button
           onClick={onReload}
@@ -285,11 +438,11 @@ function PluginsPanel() {
           className="text-[11px] font-bold flex items-center gap-1.5 px-2.5 py-1 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40"
         >
           <RefreshCw size={11} className={reloading ? 'animate-spin' : ''} />
-          Reload
+          {t('plugins.reload', {}, language)}
         </button>
       </div>
       {plugins.length === 0 ? (
-        <p className="text-[11px] text-gray-400">No plugins loaded.</p>
+        <p className="text-[11px] text-gray-400">{t('plugins.noneLoaded', {}, language)}</p>
       ) : (
         <ul className="space-y-1">
           {plugins.map((p) => (
@@ -319,7 +472,7 @@ function PluginsPanel() {
                 disabled={reloading}
                 className="text-[10px] font-bold px-2 py-0.5 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
               >
-                {isPluginEnabled(p.name) ? 'Disable' : 'Enable'}
+                {isPluginEnabled(p.name) ? t('common.disable', {}, language) : t('common.enable', {}, language)}
               </button>
             </li>
           ))}
@@ -360,6 +513,7 @@ function Field({
 
 function AttachmentPolicyField() {
   const qc = useQueryClient();
+  const language = useUIStore((s) => s.language);
   const settingsQ = useQuery({ queryKey: ['vault-settings'], queryFn: api.getVaultSettings });
   const policy = settingsQ.data?.settings.attachmentPolicy ?? 'global';
   const mut = useMutation({
@@ -369,8 +523,8 @@ function AttachmentPolicyField() {
   });
   return (
     <Field
-      label="Attachment location"
-      hint="Where pasted/uploaded files land. per-box puts them under attachments/<focused-box-id>/"
+      label={t('attachments.location', {}, language)}
+      hint={t('attachments.locationHint', {}, language)}
     >
       <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-full p-1">
         {(['global', 'per-box'] as const).map((value) => (
@@ -384,7 +538,7 @@ function AttachmentPolicyField() {
                 : 'text-gray-500 dark:text-gray-400 hover:text-ink dark:hover:text-gray-200'
             }`}
           >
-            {value === 'global' ? 'Global' : 'Per-box'}
+            {value === 'global' ? t('attachments.global', {}, language) : t('attachments.perBox', {}, language)}
           </button>
         ))}
       </div>
@@ -400,11 +554,12 @@ function formatBytes(n: number): string {
 
 function AttachmentManager() {
   const qc = useQueryClient();
+  const language = useUIStore((s) => s.language);
   const attachmentsQ = useQuery({ queryKey: ['attachments'], queryFn: api.listAttachments });
   const deleteMut = useMutation({
     mutationFn: ({ path, force }: { path: string; force?: boolean }) => api.deleteAttachment(path, { force }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['attachments'] }),
-    onError: (err: Error) => dialog.alert(err.message, { title: 'Delete attachment failed' }),
+    onError: (err: Error) => dialog.alert(err.message, { title: t('attachments.deleteFailed', {}, language) }),
   });
   const attachments = attachmentsQ.data?.attachments ?? [];
 
@@ -426,23 +581,23 @@ function AttachmentManager() {
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-[12px] font-semibold">Attachment files</div>
+          <div className="text-[12px] font-semibold">{t('attachments.files', {}, language)}</div>
           <div className="text-[11px] text-gray-400 dark:text-gray-500">
-            PDFs and other files stay in the vault's attachments folder. Referenced files can be opened here.
+            {t('attachments.filesHint', {}, language)}
           </div>
         </div>
         <button
           onClick={() => attachmentsQ.refetch()}
           className="text-[11px] font-bold px-2.5 py-1 rounded border border-gray-200 dark:border-[#363a4f] hover:bg-gray-50 dark:hover:bg-gray-800"
         >
-          Refresh
+          {t('common.refresh', {}, language)}
         </button>
       </div>
 
       <div className="border border-gray-200 dark:border-[#363a4f] rounded-lg overflow-hidden">
-        {attachmentsQ.isLoading && <div className="px-3 py-3 text-[12px] text-gray-400">Loading attachments...</div>}
+        {attachmentsQ.isLoading && <div className="px-3 py-3 text-[12px] text-gray-400">{t('attachments.loading', {}, language)}</div>}
         {!attachmentsQ.isLoading && attachments.length === 0 && (
-          <div className="px-3 py-3 text-[12px] text-gray-400">No attachments found.</div>
+          <div className="px-3 py-3 text-[12px] text-gray-400">{t('attachments.none', {}, language)}</div>
         )}
         {attachments.map((file) => (
           <div
@@ -452,13 +607,15 @@ function AttachmentManager() {
             <div className="min-w-0 flex-1">
               <div className="font-mono text-[11px] truncate">{file.relativePath}</div>
               <div className="text-[10px] text-gray-400">
-                {formatBytes(file.size)} · {file.referencedBy.length === 0 ? 'unused' : `used by ${file.referencedBy.map((r) => r.luhmannId).join(', ')}`}
+                {formatBytes(file.size)} · {file.referencedBy.length === 0
+                  ? t('attachments.unused', {}, language)
+                  : t('attachments.usedBy', { ids: file.referencedBy.map((r) => r.luhmannId).join(', ') }, language)}
               </div>
             </div>
             <button
-              onClick={() => api.openAttachment(file.relativePath).catch((err) => dialog.alert((err as Error).message, { title: 'Open attachment failed' }))}
+              onClick={() => api.openAttachment(file.relativePath).catch((err) => dialog.alert((err as Error).message, { title: t('attachments.openFailed', {}, language) }))}
               className="p-1 text-gray-400 hover:text-accent"
-              title="Open attachment"
+              title={t('attachments.open', {}, language)}
             >
               <ExternalLink size={14} />
             </button>
@@ -470,7 +627,7 @@ function AttachmentManager() {
                   ? 'text-gray-300 hover:text-red-500'
                   : 'text-gray-400 hover:text-red-500'
               } disabled:opacity-40`}
-              title={file.referencedBy.length > 0 ? 'Delete referenced file' : 'Delete unused file'}
+              title={file.referencedBy.length > 0 ? t('attachments.deleteReferenced', {}, language) : t('attachments.deleteUnused', {}, language)}
             >
               <Trash2 size={14} />
             </button>

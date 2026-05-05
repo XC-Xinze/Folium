@@ -13,18 +13,23 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, RotateCcw, Send } from 'lucide-react';
-import { api, type Card, type PositionMap, type Workspace, type WorkspaceEdge, type WorkspaceNode } from '../lib/api';
+import { Download, ImagePlus, RotateCcw, Send } from 'lucide-react';
+import { api, type Card, type PositionMap, type ResourceCard, type Workspace, type WorkspaceEdge, type WorkspaceNode } from '../lib/api';
 import { dialog } from '../lib/dialog';
 import { randomUUID } from '../lib/uuid';
 import { CardNode } from './CardNode';
-import { CrossEdge, PotentialEdge } from './CanvasEdges';
+import { ResourceNode, type ResourceNodeData } from './ResourceNode';
+import { CrossEdge, PotentialEdge, ResourceEdge } from './CanvasEdges';
 import { applyAnchorPositions, buildGraph, computeBackbone, MASTER_BOX_ID, resolveCollisions, type CardNodeData } from '../lib/cardGraph';
 import { DEFAULT_CARD_FLAGS, usePaneStore as usePaneStoreImported, type CardDisplayFlags } from '../store/paneStore';
 import { exportReactFlowCanvasAsPng } from '../lib/exportCanvasImage';
+import { useUIStore } from '../store/uiStore';
+import { t } from '../lib/i18n';
 
-const nodeTypes = { card: CardNode };
-const edgeTypes = { potential: PotentialEdge, cross: CrossEdge };
+const RESOURCE_NODE_PREFIX = 'resource:';
+const resourceNodeId = (id: string) => `${RESOURCE_NODE_PREFIX}${id}`;
+const nodeTypes = { card: CardNode, resource: ResourceNode };
+const edgeTypes = { potential: PotentialEdge, cross: CrossEdge, resource: ResourceEdge };
 
 interface SuperlinkEdgeOption {
   sourceCardId: string;
@@ -59,7 +64,9 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange }: Props
   const setFlag = (k: keyof CardDisplayFlags, v: boolean) => onFlagChange?.(k, v);
   const setShowPotential = (v: boolean) => setFlag('potential', v);
   const qc = useQueryClient();
+  const language = useUIStore((s) => s.language);
   const flowRootRef = useRef<HTMLDivElement>(null);
+  const resourceInputRef = useRef<HTMLInputElement>(null);
 
   const isMaster = focusedBoxId === MASTER_BOX_ID;
 
@@ -116,6 +123,17 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange }: Props
     enabled: backboneIds.length > 0,
   });
 
+  const resourcesQ = useQuery({
+    queryKey: ['resources', focusedBoxId],
+    queryFn: () => api.listResources(focusedBoxId),
+    enabled: !isMaster,
+  });
+  const resourceRefsQ = useQuery({
+    queryKey: ['resource-references'],
+    queryFn: api.listResourceReferences,
+    enabled: !isMaster,
+  });
+
   // 位置按 box 隔离：不同 box 即使是同一张卡，也有各自独立的位置
   const scope = `box:${focusedBoxId}`;
   const positionsQ = useQuery({
@@ -152,23 +170,87 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange }: Props
       showBoxCards: true,
       workspaceLinks: !isMaster ? workspaceLinksQ.data?.links ?? [] : [],
     });
+    const resourceNodes = (resourcesQ.data?.resources ?? []).map<Node<ResourceNodeData>>((resource, index) => {
+      const id = resourceNodeId(resource.id);
+      const saved = positionsQ.data?.[id];
+      return {
+        id,
+        type: 'resource',
+        position: saved
+          ? { x: saved.x, y: saved.y }
+          : { x: 420 + (index % 3) * 300, y: 80 + Math.floor(index / 3) * 300 },
+        data: {
+          resource,
+          onCardLinkDrop: async (sourceLuhmannId: string, resourceId: string) => {
+            await api.appendResourceLink(sourceLuhmannId, resourceId);
+            await Promise.all([
+              qc.invalidateQueries({ queryKey: ['card', sourceLuhmannId] }),
+              qc.invalidateQueries({ queryKey: ['cards'] }),
+              qc.invalidateQueries({ queryKey: ['resource-references'] }),
+            ]);
+          },
+          onDeleteOverride: async () => {
+            const ok = await dialog.confirm(`Delete resource "${resource.title}"?`, {
+              title: 'Delete resource',
+              description: 'This removes the resource record and deletes the file from attachments/resources. Existing card references may become unresolved.',
+              confirmLabel: 'Delete',
+              variant: 'danger',
+            });
+            if (!ok) return;
+            await api.deleteResource(resource.id);
+            await Promise.all([
+              qc.invalidateQueries({ queryKey: ['resources', focusedBoxId] }),
+              qc.invalidateQueries({ queryKey: ['resources'] }),
+              qc.invalidateQueries({ queryKey: ['resource-references'] }),
+              qc.invalidateQueries({ queryKey: ['tags'] }),
+            ]);
+          },
+        },
+      };
+    });
     const anchored = applyAnchorPositions(raw.nodes, raw.edges, positionsQ.data ?? {});
     // 一次性碰撞解算：把自动布局产生的重叠抹掉，但锁定用户手动拖过的位置
     const finalNodes = resolveCollisions(anchored, positionsQ.data ?? {});
     // 把 scope 印到每个节点 data 上，CardNode 直接读，多 pane 同屏不串
-    const stamped = finalNodes.map((n) => ({
+    const stamped = [...finalNodes, ...resourceNodes].map((n) => ({
       ...n,
       data: {
         ...(n.data as object),
-        scope,
-        superlinkSelection: {
-          active: superlinkMode,
-          selected: superlinkSelectedIds.has(((n.data as CardNodeData).card?.luhmannId) ?? String(n.id)),
-          onToggle: toggleSuperlinkCard,
-        },
+        ...(n.type === 'card'
+          ? {
+              scope,
+              superlinkSelection: {
+                active: superlinkMode,
+                selected: superlinkSelectedIds.has(((n.data as CardNodeData).card?.luhmannId) ?? String(n.id)),
+                onToggle: toggleSuperlinkCard,
+              },
+            }
+          : {}),
       },
     }));
-    return { nodes: stamped, edges: raw.edges };
+    const visibleCardIds = new Set(finalNodes.map((node) => String(node.id)));
+    const visibleResourceIds = new Set((resourcesQ.data?.resources ?? []).map((resource) => resource.id));
+    const resourceEdges: Edge[] = (resourceRefsQ.data?.references ?? [])
+      .filter((ref) => visibleCardIds.has(ref.cardId) && visibleResourceIds.has(ref.resourceId))
+      .map((ref) => ({
+        id: `resource:${ref.cardId}:${ref.resourceId}`,
+        source: ref.cardId,
+        target: resourceNodeId(ref.resourceId),
+        type: 'resource',
+        label: 'resource',
+        data: { resourceId: ref.resourceId },
+        style: {
+          stroke: '#d6a21f',
+          strokeWidth: 2,
+          strokeDasharray: '5 3',
+        },
+        labelStyle: {
+          fill: '#9a6a2f',
+          fontWeight: 700,
+          fontSize: 10,
+        },
+      }));
+    return { nodes: stamped, edges: [...raw.edges, ...resourceEdges] };
   }, [
     scope,
     cardsQ.data,
@@ -180,6 +262,8 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange }: Props
     relatedBatchQ.data,
     showPotential,
     workspaceLinksQ.data,
+    resourcesQ.data?.resources,
+    resourceRefsQ.data?.references,
     positionsQ.data,
     superlinkMode,
     superlinkSelectedIds,
@@ -211,6 +295,57 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange }: Props
       dialog.alert((err as Error).message, { title: 'Export image failed' });
     }
   }, [focusedBoxId, nodes]);
+
+  const uploadResourceFile = useCallback(async (file: File) => {
+    if (isMaster) return;
+    const title = await dialog.prompt('Create a resource in this box?', {
+      title: 'Resource',
+      description: 'This does not create a Luhmann card. The file becomes an indexable resource inside the current box.',
+      defaultValue: file.name.replace(/\.[^.]+$/, ''),
+      confirmLabel: 'Create',
+    });
+    if (!title?.trim()) return;
+    try {
+      await api.uploadResource(file, { parentBoxId: focusedBoxId, title: title.trim() });
+      await qc.invalidateQueries({ queryKey: ['resources', focusedBoxId] });
+      await qc.invalidateQueries({ queryKey: ['resources'] });
+      await qc.invalidateQueries({ queryKey: ['tags'] });
+    } catch (err) {
+      await dialog.alert((err as Error).message, { title: 'Create resource failed' });
+    }
+  }, [focusedBoxId, isMaster, qc]);
+
+  const createResourcesFromFiles = useCallback(async (files: File[]) => {
+    if (isMaster || files.length === 0) return;
+    try {
+      for (const file of files) {
+        await api.uploadResource(file, {
+          parentBoxId: focusedBoxId,
+          title: file.name.replace(/\.[^.]+$/, ''),
+        });
+      }
+      await qc.invalidateQueries({ queryKey: ['resources', focusedBoxId] });
+      await qc.invalidateQueries({ queryKey: ['resources'] });
+      await qc.invalidateQueries({ queryKey: ['tags'] });
+    } catch (err) {
+      await dialog.alert((err as Error).message, { title: 'Create resource failed' });
+    }
+  }, [focusedBoxId, isMaster, qc]);
+
+  useEffect(() => {
+    if (isMaster) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const editingTarget = target?.closest('input, textarea, [contenteditable="true"]');
+      if (editingTarget) return;
+      const files = Array.from(e.clipboardData?.files ?? []);
+      if (files.length === 0) return;
+      e.preventDefault();
+      void createResourcesFromFiles(files);
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [createResourcesFromFiles, isMaster]);
 
   // 切换 box 时清缓存（避免跨 box 的位置串联）；同 box 内切换焦点时保留位置
   const prevBoxRef = useRef(focusedBoxId);
@@ -488,17 +623,39 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange }: Props
         <HistoryButtons />
         <span className="w-px h-4 bg-paperEdge/80 dark:bg-[#494d64]" />
         <div className="flex items-center gap-1.5">
-          <EdgeToggle color="#cbd5e1" label="Potential" active={showPotential} onClick={() => setShowPotential(!showPotential)} title="Text-similarity potential edges (gray dashed)" />
+          <EdgeToggle color="#cbd5e1" label={t('canvas.potential', {}, language)} active={showPotential} onClick={() => setShowPotential(!showPotential)} title="Text-similarity potential edges (gray dashed)" />
         </div>
         <span className="w-px h-4 bg-paperEdge/80 dark:bg-[#494d64]" />
         <button
           onClick={() => void resetLayout()}
           className="shrink-0 text-[10px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full border zk-subtle-button transition-colors"
-          title="Reset saved layout for this box"
+          title={t('canvas.resetLayout', {}, language)}
         >
           <RotateCcw size={12} strokeWidth={2.4} />
-          <span>Reset Layout</span>
+          <span>{t('canvas.resetLayout', {}, language)}</span>
         </button>
+        {!isMaster && (
+          <>
+            <input
+              ref={resourceInputRef}
+              type="file"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.currentTarget.files?.[0];
+                e.currentTarget.value = '';
+                if (file) void uploadResourceFile(file);
+              }}
+            />
+            <button
+              onClick={() => resourceInputRef.current?.click()}
+              className="shrink-0 text-[10px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full border zk-subtle-button transition-colors"
+              title={t('canvas.resource', {}, language)}
+            >
+              <ImagePlus size={12} strokeWidth={2.4} />
+              <span>{t('canvas.resource', {}, language)}</span>
+            </button>
+          </>
+        )}
         <div className="flex-1" />
         {superlinkMode ? (
           <div className="shrink-0 flex items-center gap-1.5">
@@ -511,31 +668,31 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange }: Props
               title="Create a workspace from picked cards"
             >
               <Send size={12} strokeWidth={2.4} />
-              <span>Create Workspace</span>
+              <span>{t('canvas.createWorkspace', {}, language)}</span>
             </button>
             <button
               onClick={() => setSuperlinkWorkspacePickerOpen(true)}
               className="text-[10px] font-bold px-2.5 py-1 rounded-full border zk-subtle-button hover:bg-accentSoft transition-colors"
               title="Add picked cards to an existing workspace"
             >
-              Add to Workspace
+              {t('canvas.addToWorkspace', {}, language)}
             </button>
             <button
               onClick={cancelSuperlinkMode}
               className="text-[10px] font-bold px-2.5 py-1 rounded-full border zk-subtle-button transition-colors"
               title="Exit pick mode"
             >
-              Cancel
+              {t('canvas.cancelPick', {}, language)}
             </button>
           </div>
         ) : (
           <button
             onClick={startSuperlinkMode}
             className="shrink-0 text-[10px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full border zk-subtle-button transition-colors"
-            title="Pick cards on the canvas and copy them into a new workspace"
+            title={t('canvas.pickCards', {}, language)}
           >
             <Send size={12} strokeWidth={2.4} />
-            <span>Pick Cards</span>
+            <span>{t('canvas.pickCards', {}, language)}</span>
           </button>
         )}
         <AddFocusedToWorkspace focusedCardId={focusedCardId} />
@@ -563,7 +720,7 @@ function CanvasInner({ focusedBoxId, focusedCardId, flags, onFlagChange }: Props
         <button
           type="button"
           className="absolute bottom-[116px] right-4 z-20 flex h-[31px] w-[31px] items-center justify-center rounded-full border border-paperEdge bg-paper/85 text-muted shadow-paper backdrop-blur transition-colors hover:bg-accentSoft hover:text-ink hover:border-accent/35"
-          title="Export canvas as PNG"
+          title={t('canvas.exportImage', {}, language)}
           aria-label="Export canvas as PNG"
           onClick={() => void exportImage()}
         >
@@ -685,6 +842,7 @@ function HistoryButtons() {
  */
 function AddFocusedToWorkspace({ focusedCardId }: { focusedCardId: string }) {
   const qc = useQueryClient();
+  const language = useUIStore((s) => s.language);
   const [open, setOpen] = useState(false);
   const [popPos, setPopPos] = useState<{ top: number; right: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -778,7 +936,7 @@ function AddFocusedToWorkspace({ focusedCardId }: { focusedCardId: string }) {
         className="shrink-0 text-[10px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full border zk-subtle-button hover:text-accent transition-colors cursor-pointer active:cursor-grabbing"
         title="Click to pick a workspace · Drag onto a workspace tab to add"
       >
-        + Workspace
+        {t('canvas.workspaceButton', {}, language)}
       </button>
       {open && popPos && createPortal(
         <div
@@ -787,11 +945,11 @@ function AddFocusedToWorkspace({ focusedCardId }: { focusedCardId: string }) {
           className="min-w-[220px] bg-white dark:bg-[#1e2030] border border-gray-200 dark:border-[#363a4f] rounded-md shadow-lg overflow-hidden"
         >
           <div className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-100 dark:border-[#363a4f]">
-            Add {focusedCardId} to…
+            {t('canvas.addFocusedTo', { id: focusedCardId }, language)}
           </div>
           <div className="max-h-60 overflow-y-auto">
             {list.length === 0 ? (
-              <div className="text-[11px] text-gray-400 px-3 py-2">No workspaces yet</div>
+              <div className="text-[11px] text-gray-400 px-3 py-2">{t('canvas.noWorkspaces', {}, language)}</div>
             ) : (
               list.map((ws) => (
                 <button
@@ -809,7 +967,7 @@ function AddFocusedToWorkspace({ focusedCardId }: { focusedCardId: string }) {
             className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold border-t border-gray-100 dark:border-[#363a4f] text-accent hover:bg-accentSoft"
           >
             <span>+</span>
-            <span>New workspace…</span>
+            <span>{t('canvas.newWorkspace', {}, language)}</span>
           </button>
         </div>,
         document.body,

@@ -25,3 +25,7 @@ export async function selectVaultDirectory(options?: {
 }): Promise<string | null> {
   return window.zettelDesktop?.selectDirectory(options) ?? null;
 }
+
+export async function getDesktopApiToken(): Promise<string> {
+  return window.zettelDesktop?.getApiToken().catch(() => '') ?? '';
+}

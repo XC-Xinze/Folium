@@ -34,6 +34,19 @@ export interface ViewModeSpec {
   Component: ComponentType;
 }
 
+export interface RibbonActionSpec {
+  id: string;
+  title: string;
+  icon?: 'table' | 'diagram' | 'download' | 'sparkles' | 'plugin';
+  order?: number;
+  run: () => void;
+}
+
+export interface MarkdownPostprocessorSpec {
+  id: string;
+  process: (root: HTMLElement) => void | Promise<void>;
+}
+
 class Registry<T extends { id: string }> {
   private items = new Map<string, T>();
   register(item: T): void {
@@ -52,6 +65,8 @@ export const PluginRegistry = {
   sidebarItems: new Registry<SidebarItemSpec>(),
   settingsPanels: new Registry<SettingsPanelSpec>(),
   viewModes: new Registry<ViewModeSpec>(),
+  ribbonActions: new Registry<RibbonActionSpec>(),
+  markdownPostprocessors: new Registry<MarkdownPostprocessorSpec>(),
 };
 
 export type PluginRegistryShape = typeof PluginRegistry;

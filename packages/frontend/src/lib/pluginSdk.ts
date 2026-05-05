@@ -63,6 +63,21 @@ export interface PluginSdk {
   commands: {
     register(command: Command): () => void;
   };
+  ribbon: {
+    registerAction(input: {
+      id: string;
+      title: string;
+      icon?: 'table' | 'diagram' | 'download' | 'sparkles' | 'plugin';
+      order?: number;
+      run: () => void;
+    }): () => void;
+  };
+  markdown: {
+    registerPostprocessor(input: {
+      id: string;
+      process: (root: HTMLElement) => void | Promise<void>;
+    }): () => void;
+  };
   export: {
     listAttachments(): Promise<AttachmentEntry[]>;
     downloadZip(input: {
@@ -238,6 +253,22 @@ export function createPluginSdk(pluginName: string, disposables: Array<() => voi
     commands: {
       register(command) {
         const cleanup = registerCommand(command);
+        disposables.push(cleanup);
+        return cleanup;
+      },
+    },
+    ribbon: {
+      registerAction(input) {
+        PluginRegistry.ribbonActions.register(input);
+        const cleanup = () => PluginRegistry.ribbonActions.unregister(input.id);
+        disposables.push(cleanup);
+        return cleanup;
+      },
+    },
+    markdown: {
+      registerPostprocessor(input) {
+        PluginRegistry.markdownPostprocessors.register(input);
+        const cleanup = () => PluginRegistry.markdownPostprocessors.unregister(input.id);
         disposables.push(cleanup);
         return cleanup;
       },

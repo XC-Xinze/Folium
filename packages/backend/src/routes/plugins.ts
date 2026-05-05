@@ -1,9 +1,41 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { config } from '../config.js';
+import { assertSafeFileName } from '../security/pathGuards.js';
 
 const PLUGINS_DIR_REL = '.zettel/plugins';
+const OFFICIAL_PLUGINS = [
+  {
+    name: 'quick-table.js',
+    title: 'Quick Table',
+    description: 'Insert and format Markdown tables from the command palette or shortcut.',
+  },
+  {
+    name: 'mermaid-renderer.js',
+    title: 'Mermaid Renderer',
+    description: 'Render fenced mermaid code blocks inside cards and workspace notes.',
+  },
+  {
+    name: 'obsidian-export.js',
+    title: 'Obsidian Export',
+    description: 'Export the current vault as an Obsidian-compatible Markdown bundle.',
+  },
+];
+
+async function readOfficialPlugin(name: string): Promise<string | null> {
+  const safeName = assertSafeFileName(name, '.js');
+  const candidates = [
+    join(process.cwd(), 'plugins', safeName),
+    resolve(import.meta.dirname, '..', '..', '..', '..', 'plugins', safeName),
+    resolve(import.meta.dirname, '..', '..', '..', 'plugins', safeName),
+  ];
+  for (const candidate of candidates) {
+    const src = await readFile(candidate, 'utf8').catch(() => null);
+    if (src !== null) return src;
+  }
+  return null;
+}
 
 /**
  * 插件加载：用户把 .js 文件放进 ${vault}/.zettel/plugins/，前端启动时
@@ -11,6 +43,34 @@ const PLUGINS_DIR_REL = '.zettel/plugins';
  * 不是真隔离——和 Obsidian 一个套路。
  */
 export const pluginRoutes: FastifyPluginAsync = async (app) => {
+  app.get('/plugins/official', async () => {
+    const installed = new Set((await app.inject({ method: 'GET', url: '/api/plugins' })
+      .then((res) => JSON.parse(res.payload) as { plugins?: Array<{ name: string }> })
+      .catch(() => ({ plugins: [] }))).plugins?.map((p) => p.name) ?? []);
+    return {
+      plugins: OFFICIAL_PLUGINS.map((p) => ({ ...p, installed: installed.has(p.name) })),
+    };
+  });
+
+  app.post<{ Params: { name: string } }>('/plugins/official/:name/install', async (req, reply) => {
+    const name = req.params.name;
+    if (!OFFICIAL_PLUGINS.some((p) => p.name === name)) {
+      return reply.code(404).send({ error: 'unknown_official_plugin' });
+    }
+    const src = await readOfficialPlugin(name);
+    if (!src) return reply.code(404).send({ error: 'official_plugin_not_bundled' });
+
+    let dir: string;
+    try {
+      dir = join(config.vaultPath, PLUGINS_DIR_REL);
+    } catch {
+      return reply.code(404).send({ error: 'no_active_vault' });
+    }
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, name), src, 'utf8');
+    return { ok: true, name };
+  });
+
   app.get('/plugins', async () => {
     let dir: string;
     try {

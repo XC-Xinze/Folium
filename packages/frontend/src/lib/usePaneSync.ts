@@ -43,6 +43,8 @@ export function usePaneSync(): void {
     // viewMode 旧字段：仍然给老 hotkey 用，但布局不再依赖它
     switch (tab.kind) {
       case 'card':
+      case 'page':
+      case 'masonry':
         setViewMode('chain');
         break;
       case 'graph':
@@ -117,6 +119,7 @@ export function useStaleTabCleanup(): void {
           (tab.cardFocusId && !cardIds.has(tab.cardFocusId))
         );
       }
+      if (tab.kind === 'page') return !!tab.pageCardId && !cardIds.has(tab.pageCardId);
       if (tab.kind === 'workspace') return !!tab.workspaceId && !wsIds.has(tab.workspaceId);
       if (tab.kind === 'tag') return !!tab.tagName && !tagNames.has(tab.tagName);
       return false;

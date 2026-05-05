@@ -1,15 +1,16 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, ChevronRight, Crown, FileQuestion, FolderTree, Plus, Star, Tag, Trash2, X } from 'lucide-react';
-import { api, type CardSummary, type IndexNode } from '../lib/api';
+import { CalendarDays, ChevronRight, Crown, FileQuestion, FolderTree, PackageOpen, Plus, Star, Tag, Trash2, X } from 'lucide-react';
+import { api, type CardSummary, type IndexNode, type ResourceCard } from '../lib/api';
 import { dialog } from '../lib/dialog';
 import { useUIStore } from '../store/uiStore';
 import { usePaneStore } from '../store/paneStore';
 import { useNavigateToCard } from '../lib/useNavigateToCard';
-import { isCardDrag, readCardDragData, setCardDragData } from '../lib/dragCard';
+import { isCardDrag, readCardDragData, setCardDragData, setResourceDragData } from '../lib/dragCard';
 import { pushUndo } from '../lib/undoStack';
 import { VaultPicker } from './VaultPicker';
 import { MASTER_BOX_ID } from '../lib/cardGraph';
+import { t } from '../lib/i18n';
 
 /** Folgezettel 父：剥末尾连续同类（数字 / 字母）。daily 这种非 luhmann 返 null */
 function parentOfId(id: string): string | null {
@@ -67,12 +68,14 @@ export function Sidebar() {
   const focusedId = useUIStore((s) => s.focusedCardId);
   const focusedBoxId = useUIStore((s) => s.focusedBoxId);
   const focusedTag = useUIStore((s) => s.focusedTag);
+  const language = useUIStore((s) => s.language);
   const openNewCard = useUIStore((s) => s.openNewCard);
 
   const tagsQ = useQuery({ queryKey: ['tags'], queryFn: api.listTags });
   const cardsQ = useQuery({ queryKey: ['cards'], queryFn: api.listCards });
   const indexesQ = useQuery({ queryKey: ['indexes'], queryFn: api.listIndexes });
   const starredQ = useQuery({ queryKey: ['starred'], queryFn: api.listStarred });
+  const resourcesQ = useQuery({ queryKey: ['resources'], queryFn: () => api.listResources() });
   const qc = useQueryClient();
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.deleteCard(id),
@@ -163,6 +166,7 @@ export function Sidebar() {
       qc.refetchQueries({ queryKey: ['related-batch'] }),
       qc.refetchQueries({ queryKey: ['referenced-from'] }),
       qc.refetchQueries({ queryKey: ['tag-cards'] }),
+      qc.refetchQueries({ queryKey: ['resources'] }),
     ]);
   };
   const renameTagMut = useMutation({
@@ -202,7 +206,7 @@ export function Sidebar() {
   return (
     <aside className="w-72 h-full border-r border-gray-200 bg-white dark:bg-[#1e2030] dark:border-[#363a4f] flex flex-col">
       <header className="h-12 px-5 flex items-center border-b border-gray-100">
-        <span className="font-bold text-sm tracking-tight">Vault</span>
+        <span className="font-bold text-sm tracking-tight">{t('sidebar.vault', {}, language)}</span>
       </header>
 
       {/* Master 按钮：vault 入口。Master 是个虚拟 box，只装顶级 index 卡（1/2/3...） */}
@@ -223,11 +227,11 @@ export function Sidebar() {
             void isActive;
           }}
           className="min-w-0 flex-1 flex items-center gap-2 text-left"
-          title="Open master index — vault root"
+          title={t('sidebar.masterIndex', {}, language)}
         >
           <Crown size={14} className="text-amber-500 shrink-0" />
           <span className="text-[12px] font-bold text-ink dark:text-[#cad3f5] flex-1">
-            Master Index
+            {t('sidebar.masterIndex', {}, language)}
           </span>
           <span className="text-[10px] text-gray-400 group-hover:text-amber-600">→</span>
         </button>
@@ -241,7 +245,7 @@ export function Sidebar() {
             });
           }}
           className="shrink-0 p-1.5 rounded-md text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
-          title="Create a new top-level box"
+          title={t('sidebar.createTopBox', {}, language)}
         >
           <Plus size={14} strokeWidth={2.4} />
         </button>
@@ -249,7 +253,7 @@ export function Sidebar() {
 
       {/* Starred: 顶部置顶 */}
       {(starredQ.data?.ids ?? []).length > 0 && (
-        <Section icon={<Star size={12} />} title="STARRED">
+        <Section icon={<Star size={12} />} title={t('sidebar.starred', {}, language)}>
           {(() => {
             const cardById = new Map((cardsQ.data?.cards ?? []).map((c) => [c.luhmannId, c]));
             const dailyRe = /^daily(\d{4})(\d{2})(\d{2})$/;
@@ -300,10 +304,10 @@ export function Sidebar() {
         }}
         className="contents"
       >
-      <Section icon={<FolderTree size={12} />} title="FOLGEZETTEL" scroll>
+      <Section icon={<FolderTree size={12} />} title={t('sidebar.folgezettel', {}, language)} scroll>
         {(folgezettelTree.get(null) ?? []).length === 0 ? (
           <div className="text-[11px] text-gray-400 px-3 py-1.5 leading-relaxed">
-            No cards yet. Create one and the tree will auto-build by Folgezettel id.
+            {t('sidebar.noCards', {}, language)}
           </div>
         ) : (
           (folgezettelTree.get(null) ?? []).map((id) => (
@@ -325,9 +329,9 @@ export function Sidebar() {
       </div>
 
       {/* Tags: 内联 chips，自动换行；右键改名 */}
-      <Section icon={<Tag size={12} />} title="TAGS">
+      <Section icon={<Tag size={12} />} title={t('sidebar.tags', {}, language)}>
         {(tagsQ.data?.tags ?? []).length === 0 ? (
-          <div className="text-[11px] text-gray-400 px-3 py-1.5">No tags yet</div>
+          <div className="text-[11px] text-gray-400 px-3 py-1.5">{t('sidebar.noTags', {}, language)}</div>
         ) : (
           <ChunkedList
             items={(tagsQ.data?.tags ?? [])
@@ -413,8 +417,24 @@ export function Sidebar() {
         )}
       </Section>
 
+      <Section icon={<PackageOpen size={12} />} title={t('sidebar.resources', {}, language)}>
+        {(resourcesQ.data?.resources ?? []).length === 0 ? (
+          <div className="text-[11px] text-gray-400 px-3 py-1.5">{t('sidebar.noResources', {}, language)}</div>
+        ) : (
+          <ChunkedList
+            items={(resourcesQ.data?.resources ?? []).slice().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))}
+            initial={30}
+            step={30}
+            label="resources"
+            render={(resource) => (
+              <ResourceListItem key={resource.id} resource={resource} />
+            )}
+          />
+        )}
+      </Section>
+
       {/* DAILY: 最近的每日笔记，时间倒序 */}
-      <Section icon={<CalendarDays size={12} />} title="DAILY">
+      <Section icon={<CalendarDays size={12} />} title={t('sidebar.daily', {}, language)}>
         <DailyMiniCalendar
           dailies={dailies}
           focusedId={focusedId}
@@ -441,6 +461,38 @@ export function Sidebar() {
 
       <VaultPicker />
     </aside>
+  );
+}
+
+function ResourceListItem({ resource }: { resource: ResourceCard }) {
+  const language = useUIStore((s) => s.language);
+  const workspaceOnly = !resource.parentBoxId;
+  return (
+    <div
+      draggable
+      onDragStart={(e) => setResourceDragData(e, { resourceId: resource.id, title: resource.title })}
+      className={`group flex items-center gap-2 px-3 py-1.5 rounded-md text-left min-w-0 cursor-grab active:cursor-grabbing transition-colors ${
+        workspaceOnly
+          ? 'bg-[#fff6db]/70 hover:bg-[#f3e6c8] dark:bg-[#3a2f1f]/35 dark:hover:bg-[#4a3a22]/55'
+          : 'hover:bg-gray-50 dark:hover:bg-[#24273a]'
+      }`}
+      title={`${resource.title} · ${resource.id}${workspaceOnly ? ' · workspace resource' : ''}`}
+    >
+      <span className={`text-[9px] font-black uppercase tracking-wider w-9 shrink-0 ${
+        workspaceOnly ? 'text-[#9a6a2f] dark:text-[#eed49f]' : 'text-accent'
+      }`}>
+        {resource.kind}
+      </span>
+      <span className="text-[12px] truncate flex-1 min-w-0">{resource.title}</span>
+      {workspaceOnly && (
+        <span className="rounded-full bg-[#f3e6c8] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#9a6a2f] dark:bg-[#4a3a22] dark:text-[#eed49f]">
+          {t('resource.workspaceOnly', {}, language)}
+        </span>
+      )}
+      {resource.tags.length > 0 && (
+        <span className="text-[10px] text-gray-400 shrink-0">#{resource.tags[0]}</span>
+      )}
+    </div>
   );
 }
 

@@ -85,7 +85,16 @@ export interface NoteNode {
   w?: number;
   h?: number;
 }
-export type WorkspaceNode = CardRefNode | TempCardNode | NoteNode;
+export interface ResourceRefNode {
+  kind: 'resource';
+  id: string;
+  resourceId: string;
+  x: number;
+  y: number;
+  w?: number;
+  h?: number;
+}
+export type WorkspaceNode = CardRefNode | TempCardNode | NoteNode | ResourceRefNode;
 
 export interface WorkspaceEdge {
   id: string;
@@ -166,6 +175,24 @@ export interface AttachmentEntry {
   size: number;
   mtime: number;
   referencedBy: Array<{ luhmannId: string; title: string }>;
+}
+
+export interface ResourceCard {
+  id: string;
+  kind: 'image' | 'pdf' | 'audio' | 'video' | 'file';
+  title: string;
+  path: string;
+  tags: string[];
+  parentBoxId: string | null;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResourceReference {
+  resourceId: string;
+  cardId: string;
+  cardTitle: string;
 }
 
 export interface PluginExportFile {
@@ -560,6 +587,25 @@ export const api = {
   },
   listPlugins: () =>
     get<{ plugins: Array<{ name: string; size: number; mtime: number }> }>(`/plugins`),
+  listOfficialPlugins: () =>
+    get<{
+      plugins: Array<{
+        name: string;
+        title: string;
+        description: string;
+        installed: boolean;
+      }>;
+    }>(`/plugins/official`),
+  installOfficialPlugin: async (name: string): Promise<{ ok: boolean; name: string }> => {
+    const res = await fetch(`${BASE}/plugins/official/${encodeURIComponent(name)}/install`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
   getPluginSource: async (name: string): Promise<string> => {
     const res = await fetch(`${BASE}/plugins/${encodeURIComponent(name)}`);
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
@@ -582,6 +628,77 @@ export const api = {
     return res.json();
   },
   listAttachments: () => get<{ attachments: AttachmentEntry[] }>(`/attachments`),
+  listResources: (parentBoxId?: string | null) =>
+    get<{ resources: ResourceCard[] }>(
+      parentBoxId === undefined
+        ? `/resources`
+        : `/resources?parentBoxId=${encodeURIComponent(parentBoxId ?? '')}`,
+    ),
+  listResourceReferences: () => get<{ references: ResourceReference[] }>(`/resources/references`),
+  getResource: (id: string) => get<ResourceCard>(`/resources/${encodeURIComponent(id)}`),
+  updateResource: async (
+    id: string,
+    patch: Partial<Pick<ResourceCard, 'title' | 'tags' | 'parentBoxId' | 'note'>>,
+  ): Promise<ResourceCard> => {
+    const res = await fetch(`${BASE}/resources/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? j.error ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+  deleteResource: async (id: string): Promise<{ resource: ResourceCard; fileDeleted: boolean }> => {
+    const res = await fetch(`${BASE}/resources/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? j.error ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+  uploadImageResource: async (
+    file: File,
+    input: { parentBoxId?: string | null; title?: string; tags?: string; note?: string } = {},
+  ): Promise<ResourceCard> => {
+    const fd = new FormData();
+    fd.append('file', file, file.name);
+    if (input.title) fd.append('title', input.title);
+    if (input.tags) fd.append('tags', input.tags);
+    if (input.note) fd.append('note', input.note);
+    const url = input.parentBoxId
+      ? `${BASE}/resources/image?parentBoxId=${encodeURIComponent(input.parentBoxId)}`
+      : `${BASE}/resources/image`;
+    const res = await fetch(url, { method: 'POST', body: fd });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? j.error ?? `${res.status} ${res.statusText}`);
+    }
+    const body = await res.json() as { resource: ResourceCard };
+    return body.resource;
+  },
+  uploadResource: async (
+    file: File,
+    input: { parentBoxId?: string | null; title?: string; tags?: string; note?: string } = {},
+  ): Promise<ResourceCard> => {
+    const fd = new FormData();
+    fd.append('file', file, file.name);
+    if (input.title) fd.append('title', input.title);
+    if (input.tags) fd.append('tags', input.tags);
+    if (input.note) fd.append('note', input.note);
+    const url = input.parentBoxId
+      ? `${BASE}/resources?parentBoxId=${encodeURIComponent(input.parentBoxId)}`
+      : `${BASE}/resources`;
+    const res = await fetch(url, { method: 'POST', body: fd });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? j.error ?? `${res.status} ${res.statusText}`);
+    }
+    const body = await res.json() as { resource: ResourceCard };
+    return body.resource;
+  },
   deleteAttachment: async (
     relativePath: string,
     opts?: { force?: boolean },
@@ -760,6 +877,34 @@ export const api = {
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
       throw new Error(j.error ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+  appendResourceLink: async (
+    sourceId: string,
+    resourceId: string,
+    opts?: { embed?: boolean },
+  ): Promise<{ alreadyLinked: boolean }> => {
+    const res = await fetch(`${BASE}/cards/${encodeURIComponent(sourceId)}/append-resource-link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resourceId, embed: opts?.embed }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? j.error ?? `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  },
+  removeResourceLink: async (sourceId: string, resourceId: string): Promise<{ removed: boolean }> => {
+    const res = await fetch(`${BASE}/cards/${encodeURIComponent(sourceId)}/remove-resource-link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resourceId }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.message ?? j.error ?? `${res.status} ${res.statusText}`);
     }
     return res.json();
   },

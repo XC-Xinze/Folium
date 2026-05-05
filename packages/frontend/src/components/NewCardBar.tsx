@@ -6,6 +6,7 @@ import { usePaneStore } from '../store/paneStore';
 import { makeMarkdownInsert, uploadAttachment } from '../lib/uploadAttachment';
 import { api } from '../lib/api';
 import { API_BASE } from '../lib/backendUrl';
+import { applyTextareaEdit, continueMarkdownList, indentMarkdownLines } from '../lib/markdownInput';
 
 // status 是 derived from structure（有 Folgezettel 子卡 = INDEX），用户不再手动选
 interface CreateBody {
@@ -342,9 +343,35 @@ export function NewCardBar({ onCreated, variant = 'inline' }: NewCardBarProps = 
         return;
       }
     }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      applyTextareaEdit(
+        e.currentTarget,
+        setContent,
+        indentMarkdownLines(
+          e.currentTarget.value,
+          e.currentTarget.selectionStart,
+          e.currentTarget.selectionEnd,
+          e.shiftKey ? 'out' : 'in',
+        ),
+      );
+      return;
+    }
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       submit();
+      return;
+    }
+    if (e.key === 'Enter' && !(e.metaKey || e.ctrlKey || e.altKey || e.shiftKey)) {
+      const edit = continueMarkdownList(
+        e.currentTarget.value,
+        e.currentTarget.selectionStart,
+        e.currentTarget.selectionEnd,
+      );
+      if (edit) {
+        e.preventDefault();
+        applyTextareaEdit(e.currentTarget, setContent, edit);
+      }
     }
   };
 
@@ -553,8 +580,9 @@ export function NewCardBar({ onCreated, variant = 'inline' }: NewCardBarProps = 
             accept="image/*,.pdf,.zip,.txt,.md"
             multiple
             onChange={(e) => {
-              void handleFiles(e.target.files);
+              const files = Array.from(e.target.files ?? []);
               if (fileInputRef.current) fileInputRef.current.value = '';
+              void handleFiles(files);
             }}
           />
           <button

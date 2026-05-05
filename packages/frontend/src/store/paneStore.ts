@@ -8,7 +8,7 @@ import { persist } from 'zustand/middleware';
  * Split 是二叉的（左右或上下），ratio ∈ (0,1)。
  */
 
-export type TabKind = 'card' | 'graph' | 'tag' | 'settings' | 'workspace';
+export type TabKind = 'card' | 'page' | 'masonry' | 'graph' | 'tag' | 'settings' | 'workspace';
 
 /** 卡片 tab 的边类型显示开关 —— 每个 tab 独立 */
 export interface CardDisplayFlags {
@@ -28,6 +28,7 @@ export interface Tab {
   // ── kind 相关 payload ──
   cardBoxId?: string;
   cardFocusId?: string;
+  pageCardId?: string;
   tagName?: string;
   workspaceId?: string;
   /** 仅 kind='card' 用：边类型开关。缺省走 DEFAULT_CARD_FLAGS */
@@ -220,6 +221,10 @@ function tabsEqual(a: Omit<Tab, 'id'>, b: Tab): boolean {
   switch (a.kind) {
     case 'card':
       return a.cardBoxId === b.cardBoxId && a.cardFocusId === b.cardFocusId;
+    case 'page':
+      return a.pageCardId === b.pageCardId;
+    case 'masonry':
+      return true;
     case 'tag':
       return a.tagName === b.tagName;
     case 'workspace':
@@ -239,6 +244,12 @@ function renameId(id: string | undefined, renames: Record<string, string>): stri
 }
 
 function renameCardTabRefs(tab: Tab, renames: Record<string, string>): Tab {
+  if (tab.kind === 'page') {
+    const pageCardId = renameId(tab.pageCardId, renames);
+    const title = renames[tab.title] ?? tab.title;
+    if (pageCardId === tab.pageCardId && title === tab.title) return tab;
+    return { ...tab, pageCardId, title };
+  }
   if (tab.kind !== 'card') return tab;
   const cardBoxId = renameId(tab.cardBoxId, renames);
   const cardFocusId = renameId(tab.cardFocusId, renames);
@@ -741,6 +752,11 @@ export const usePaneStore = create<PaneStore>()(
             return {
               ...n,
               tabs: n.tabs.map((tab) => {
+                if (tab.kind === 'page') {
+                  return tab.pageCardId === deletedId
+                    ? { ...tab, title: 'Missing card', pageCardId: undefined }
+                    : tab;
+                }
                 if (tab.kind !== 'card') return tab;
                 const boxDeleted = tab.cardBoxId === deletedId;
                 const focusDeleted = tab.cardFocusId === deletedId;

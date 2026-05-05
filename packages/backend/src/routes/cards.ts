@@ -12,6 +12,7 @@ import { findDiscoveryClusters } from '../services/discoveries.js';
 import { parseCardFile } from '../vault/parser.js';
 import { updateCardFile, writeNewCard } from '../vault/writer.js';
 import { deleteTag, renameTag } from '../services/renameTag.js';
+import { deleteResourceTag, getResource, listResources, renameResourceTag } from '../services/resources.js';
 
 export const cardRoutes: FastifyPluginAsync = async (app) => {
   const db = getDb();
@@ -167,7 +168,19 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
          GROUP BY tag ORDER BY count DESC`,
       )
       .all() as { name: string; count: number }[];
-    return { tags: rows };
+    const counts = new Map<string, number>();
+    for (const row of rows) counts.set(row.name, row.count);
+    for (const resource of await listResources()) {
+      for (const rawTag of resource.tags) {
+        const tag = rawTag.trim().toLowerCase();
+        if (!tag) continue;
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+    const tags = [...counts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    return { tags };
   });
 
   const newCardSchema = z.object({
@@ -336,6 +349,59 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
   );
 
   /**
+   * 把资源引用写入真实卡正文。资源不是 Luhmann 卡，因此不进入 cross_links；
+   * 这里只追加 [[res_xxx]]，让 Markdown 层负责打开/嵌入资源。
+   */
+  app.post<{ Params: { id: string }; Body: { resourceId: string; embed?: boolean } }>(
+    '/cards/:id/append-resource-link',
+    async (req, reply) => {
+      const card = repo.getById(req.params.id);
+      if (!card) return reply.code(404).send({ error: 'not_found' });
+      const resourceId = req.body?.resourceId?.trim();
+      if (!resourceId) return reply.code(400).send({ error: 'resourceId required' });
+      const resource = await getResource(resourceId);
+      if (!resource) return reply.code(404).send({ error: 'resource_not_found' });
+      const escaped = resourceId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const linkRe = new RegExp(`!?\\[\\[${escaped}(?:\\|[^\\]]+)?\\]\\]`);
+      if (linkRe.test(card.contentMd)) return { card, alreadyLinked: true };
+      const prefix = req.body?.embed && resource.kind === 'image' ? '!' : '';
+      const newBody = card.contentMd.replace(/\s+$/, '') + `\n\n${prefix}[[${resourceId}]]\n`;
+      try {
+        await updateCardFile(card.filePath, { content: newBody });
+        const reparsed = await parseCardFile(card.filePath);
+        if (reparsed) repo.upsertOne(reparsed);
+        return { card: reparsed ?? card, alreadyLinked: false };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return reply.code(400).send({ error: 'append_resource_failed', message: msg });
+      }
+    },
+  );
+
+  app.post<{ Params: { id: string }; Body: { resourceId: string } }>(
+    '/cards/:id/remove-resource-link',
+    async (req, reply) => {
+      const card = repo.getById(req.params.id);
+      if (!card) return reply.code(404).send({ error: 'not_found' });
+      const resourceId = req.body?.resourceId?.trim();
+      if (!resourceId) return reply.code(400).send({ error: 'resourceId required' });
+      const escaped = resourceId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const linkRe = new RegExp(`!?\\[\\[${escaped}(?:\\|[^\\]]+)?\\]\\]\\s*`, 'g');
+      if (!linkRe.test(card.contentMd)) return { removed: false };
+      const newBody = card.contentMd.replace(linkRe, '').replace(/\n{3,}/g, '\n\n');
+      try {
+        await updateCardFile(card.filePath, { content: newBody });
+        const reparsed = await parseCardFile(card.filePath);
+        if (reparsed) repo.upsertOne(reparsed);
+        return { removed: true };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return reply.code(400).send({ error: 'remove_resource_failed', message: msg });
+      }
+    },
+  );
+
+  /**
    * 取消双链：移除 source 卡 body 里指向 targetId 的 [[link]]（含可选 |alias）。
    * 顺手清掉因此可能留下的空行。幂等：找不到也返回 ok。
    */
@@ -400,7 +466,8 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
     async (req, reply) => {
       try {
         const result = await renameTag(db, repo, req.params.tag, req.body.newName);
-        return result;
+        const resourceResult = await renameResourceTag(req.params.tag, req.body.newName);
+        return { ...result, resourcesUpdated: resourceResult.updated };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         return reply.code(400).send({ error: 'rename_failed', message: msg });
@@ -410,8 +477,10 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
 
   app.delete<{ Params: { tag: string } }>('/tags/:tag', async (req, reply) => {
     try {
-      const result = await deleteTag(db, repo, decodeURIComponent(req.params.tag));
-      return result;
+      const tag = decodeURIComponent(req.params.tag);
+      const result = await deleteTag(db, repo, tag);
+      const resourceResult = await deleteResourceTag(tag);
+      return { ...result, resourcesUpdated: resourceResult.updated };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       return reply.code(400).send({ error: 'delete_failed', message: msg });
